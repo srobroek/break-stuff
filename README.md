@@ -33,11 +33,7 @@ Pin a release by appending `@<tag>` to the marketplace-add, e.g.
 `srobroek/break-stuff@break-stuff--v0.1.0`.
 
 
-> ⚠️ **A full-repo scan is slow and token-hungry.** Running break-stuff against an
-> entire repository can take an hour or more and consume a significant number of
-> tokens. It is a deliberately thorough, multi-agent process. **Scope tightly:**
-> point it at a single directory, a diff, a PR, or one surface. A whole-repo,
-> all-surface run is the exception, not the default.
+
 
 ## Requirements
 
@@ -94,6 +90,12 @@ break-stuff — red-team the PreToolUse guards in packages/hooks-bash-safety
 break-stuff — fuzz the FITS header parser in this crate
 break-stuff — audit this PR for security and robustness issues
 ```
+
+> ⚠️ **A full-repo scan is slow and token-hungry.** Running break-stuff against an
+> entire repository can take an hour or more and consume a significant number of
+> tokens. It is a deliberately thorough, multi-agent process. **Scope tightly:**
+> point it at a single directory, a diff, a PR, or one surface. A whole-repo,
+> all-surface run is the exception, not the default.
 
 It runs a five-agent campaign:
 
