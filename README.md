@@ -97,7 +97,7 @@ break-stuff — audit this PR for security and robustness issues
 > point it at a single directory, a diff, a PR, or one surface. A whole-repo,
 > all-surface run is the exception, not the default.
 
-It runs a five-agent campaign:
+It runs a five-agent campaign per surface:
 
 1. scout — recon per surface: trust map, invariants, idiom census, repo-specific rules
 2. fuzzer — writes harnesses, seed corpora, and attack vectors (runs nothing)
@@ -125,9 +125,7 @@ say so.
 ## Tools
 
 break-stuff drives mature, widely-used tools rather than reinventing them. Recon
-picks which apply to a target and builds the harness that aims them. Every tool is
-optional: a missing one is a reported coverage gap, never a silent skip. Grouped by
-job:
+picks which apply to a target and builds the harness that aims them. Note that these tools are installed in the container on-demand depending on the agent's needs, and that these tools are driven by the agent based on its findings. 
 
 ### Static analysis & SAST
 
