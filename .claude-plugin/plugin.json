@@ -1,0 +1,9 @@
+{
+  "name": "jackhammer",
+  "version": "0.1.0",
+  "description": "Offensive and robustness auditing for code, scripts, hooks, and agents. Marketplace for the break-stuff package.",
+  "author": {
+    "name": "Sjors Robroek"
+  },
+  "license": "Apache-2.0"
+}

@@ -29,13 +29,24 @@ compilation:
   placement:
     min_instructions_per_file: 1
 marketplace:
-  - name: break-stuff
-    source: ./packages/break-stuff
-    category: security
-    tags:
-      - skill
-      - agent
-      - security
-      - hardening
-      - fuzzing
-      - robustness
+  owner:
+    name: srobroek
+    url: https://github.com/srobroek
+  outputs:
+    claude: {}
+    codex: {}
+  versioning:
+    strategy: tag_pattern
+  build:
+    tagPattern: '{name}--v{version}'
+  packages:
+    - name: break-stuff
+      source: ./packages/break-stuff
+      category: security
+      tags:
+        - skill
+        - agent
+        - security
+        - hardening
+        - fuzzing
+        - robustness
