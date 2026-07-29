@@ -80,10 +80,12 @@ MUST Draft reasoning in your working turns between tool calls -- that text
   sending, check the first line: if anything precedes `VERDICT:`, delete it.
   "L1" is notation, never printed.
 
-Per-finding table: # | bead | tier | impact | evidence
-Refutation rationale -- one tight paragraph per REFUTED or demoted finding; omit if none.
-Controls found that the reporter missed -- omit if none.
-Confirmed strongest findings -- omit if none.
-Gaps in your own judgement -- what you could not determine; omit if none.
-MUST Never reprint code, diffs, or file contents. Evidence is `path:line` plus a command.
-CAP uncapped (scales with finding count)
+Stamp each finding wisp with its `tier` and `impact` and write the refutation
+rationale into the wisp comment per `beads-store.md`, so the report generator reads
+tiers from the graph.
+
+Return only: the L1 VERDICT line with the per-tier counts; the count of findings
+demoted or refuted; a one-line note of any judgement gap.
+MUST Return the thin summary above, never the per-finding table. The tiers and rationale live on the wisps; repeating them in the reply bloats the orchestrator.
+MUST Never reprint code, diffs, or file contents. Evidence is `path:line` plus a command, stored in the wisp.
+CAP 120w. The return points at the stamped wisps.

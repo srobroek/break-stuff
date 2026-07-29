@@ -33,13 +33,20 @@ clean).
 | Decision | **decision** bead under the epic, for an accepted-risk or scope ruling that outlives one finding |
 
 ```
-EPIC=$(bd create "break-stuff run-<id>" --type epic --silent \
-  --metadata '{"run_id":"run-<id>","target":"<resolved target>","base_sha":"<sha>","budget":{"wall_s":60,"jobs":4,"mem_mb":2048},"artifacts":"<abs>/.break-stuff/run-<id>/artifacts"}')
-S1=$(bd create "surface: shell" --parent "$EPIC" --labels brk-surface --silent \
-  --metadata '{"surface":"shell","scope":["packages/*/scripts/**","**/*.sh"]}')
+# Capture the id with --json | jq -r .id. Do NOT use --silent to capture an id:
+# on bd 1.1.2 --silent prints a multi-line status block, so EPIC becomes
+# "  Status: open" and every child create fails "parent issue not found",
+# a silently broken run graph. --json emits a parseable object; jq pulls the id.
+EPIC=$(bd create "break-stuff run-<id>" --type epic --json \
+  --metadata '{"run_id":"run-<id>","target":"<resolved target>","base_sha":"<sha>","budget":{"wall_s":60,"jobs":4,"mem_mb":2048},"artifacts":"<abs>/.break-stuff/run-<id>/artifacts"}' \
+  | jq -r '.id')
+S1=$(bd create "surface: shell" --parent "$EPIC" --labels brk-surface --json \
+  --metadata '{"surface":"shell","scope":["packages/*/scripts/**","**/*.sh"]}' \
+  | jq -r '.id')
 bd dep cycles                 # must stay clean
 ```
 
+MUST Capture a bead id with `bd create ... --json | jq -r '.id'`, never with `--silent`. On bd 1.1.2 `--silent` prints a status block rather than a bare id, so the capture is garbage and the run graph is silently broken from the first child.
 MUST Label harness and crash wisps `non-work` as well as their own label. Generic ready and claim selectors exclude `non-work`, which keeps a coordination wisp out of any other agent's work queue.
 MUST Use `--metadata` for stamps, since it merges with existing keys and never clobbers `surface` or `scope`.
 
@@ -95,8 +102,9 @@ Every finding carries both axes plus its locus, written as metadata so the repor
 generator reads structure rather than prose:
 
 ```
-bd create "finding: <one-line claim>" --parent <surface> --labels brk-finding --silent \
-  --metadata '{"tier":"PROVEN","impact":"HIGH","locus":"src/auth/token.rs:88","surface":"code","cwe":"CWE-190","repro":"<abs path to minimized input>"}'
+FINDING=$(bd create "finding: <one-line claim>" --parent <surface> --labels brk-finding --json \
+  --metadata '{"tier":"PROVEN","impact":"HIGH","locus":"src/auth/token.rs:88","surface":"code","cwe":"CWE-190","repro":"<abs path to minimized input>"}' \
+  | jq -r '.id')
 ```
 
 | Field | Values |

@@ -144,6 +144,8 @@ Emit per `report-template.md`, reading the finding set from beads rather than fr
 the agents' replies. Cite bead IDs, list every written artifact by path, and state
 every coverage gap.
 
+MUST Manage the run by reading the graph, not by holding agent returns. Every agent returns a thin pointer (counts, bead ids, artifact paths) and writes its findings to wisps and artifacts, so the orchestrator's context stays flat across any number of surfaces and never compacts. Read the fat payloads from the wisps the returns point at, only when the report needs them.
+
 ## Step 10: patch
 
 Only on explicit approval. Spawn `hardener` per approved finding, then re-run the

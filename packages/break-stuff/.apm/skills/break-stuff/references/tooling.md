@@ -90,7 +90,7 @@ duplicates a registry pack and rots silently (a mixed-language rule that passes
 | Recon-synthesized | rules `scout` writes and validates during recon, from this repo's own invariants and the agentic-pattern list in `surfaces/agents.md` | this repo's contracts, and agentic patterns no registry pack covers |
 | Shipped corpora | `corpora/prompt-injection.md`, `scripts/fuzz-cli.py` | payload classes and the decision-contract harness |
 
-MUST Select a registry pack that fits the detected language rather than `semgrep --config auto`, since auto fetches an unpredictable set over the network and its result is not reproducible.
+MUST Select a registry pack that fits the detected language rather than `opengrep --config auto`, since auto fetches an unpredictable set over the network and its result is not reproducible.
 MUST Run a recon-synthesized rule against a known-positive from this repo before trusting a zero-match result, since a rule that matches nothing reads exactly like a clean repo.
 ## Out of scope: LLM red-teaming
 
@@ -111,7 +111,7 @@ starts without provisioning anything.
 
 | Route | Used for | Example |
 |---|---|---|
-| `uvx <tool>` | Python-packaged scanners and generators | `uvx semgrep`, `uvx zizmor`, `uvx schemathesis` |
+| `uvx <tool>` | Python-packaged scanners and generators | `mise x ubi:opengrep/opengrep -- opengrep`, `uvx zizmor`, `uvx schemathesis` |
 | `uvx --with <lib> <cmd>` | Python libraries a runner imports | `uvx --with hypothesis pytest` |
 | `npx --yes -p <pkg> <bin>` | JS-packaged tools with no project config | `npx --yes -p @ast-grep/cli ast-grep` |
 | `npx <tool>` | project-local JS tools, so the repo's config and plugin versions apply | `npx eslint` |

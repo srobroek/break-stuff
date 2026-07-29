@@ -17,17 +17,17 @@ set -euo pipefail
 #   install-tools.sh --dry-run --install ... show the commands without running them
 #
 # Bundles:
-#   core     semgrep gitleaks                    (cross-surface floor)
+#   core     opengrep gitleaks ast-grep                    (cross-surface floor)
 #   shell    shellcheck shfmt                    (shell scripts, hooks, guards)
-#   python   bandit ruff atheris hypothesis      (Python code + fuzzing)
+#   python   bandit atheris hypothesis            (Python code + fuzzing)
 #   rust     cargo-audit cargo-fuzz clippy       (Rust code + fuzzing)
-#   go       gosec golangci-lint                 (Go; go test -fuzz is built in)
+#   go       gosec                 (Go; go test -fuzz is built in)
 #   js-ts    eslint jazzer.js fast-check          (project-local)
 #   native   afl++ llvm                          (C/C++ with sanitizers)
 #   infra    trivy checkov hadolint tflint kube-linter
 #   ci       zizmor actionlint pinact            (workflow injection + pinning)
-#   deps     osv-scanner grype                   (CVEs; prefer the dep-audit package)
-#   supply   guarddog scorecard poutine kingfisher trufflehog
+#   deps     osv-scanner                         (CVEs; prefer the dep-audit package)
+#   supply   guarddog poutine kingfisher trufflehog
 #                                                (MALICIOUS packages, CI/CD supply chain,
 #                                                 validated secrets -- not just known CVEs)
 #   mutate   radamsa zzuf honggfuzz              (seed-driven + coverage-guided mutators;
@@ -65,7 +65,6 @@ tools_for() {
   # means the tool must be resident (compiled, or needs an instrumented build).
   case "$1" in
     core)
-      echo "semgrep|semgrep|pipx|uvx semgrep, or: mise use pipx:semgrep|semgrep|pipx:semgrep|uvx semgrep"
       echo "gitleaks|gitleaks|brew|mise use aqua:gitleaks/gitleaks|gitleaks|aqua:gitleaks/gitleaks|mise x aqua:gitleaks/gitleaks -- gitleaks"
       echo "ast-grep|ast-grep|cargo|mise use cargo:ast-grep  (npm pkg is @ast-grep/cli and the bin is ast-grep; bare npm ast-grep is an unrelated stub)|ast-grep|cargo:ast-grep|npx --yes -p @ast-grep/cli ast-grep"
       echo "opengrep|opengrep|ubi|mise use ubi:opengrep/opengrep  (LGPL semgrep fork; restores rules the semgrep licence change closed)|opengrep|ubi:opengrep/opengrep|mise x ubi:opengrep/opengrep -- opengrep"
@@ -76,7 +75,6 @@ tools_for() {
       ;;
     python)
       echo "bandit|bandit|pipx|uvx bandit|bandit|pipx:bandit|uvx bandit"
-      echo "ruff|ruff|pipx|uvx ruff, or: mise use aqua:astral-sh/ruff|ruff|aqua:astral-sh/ruff|uvx ruff"
       echo "atheris|atheris|pip-user|uvx --with atheris python  (needs a matching CPython build)|atheris||uvx --with atheris python"
       echo "hypothesis|hypothesis|pip-user|prefer the project dev deps; else: uvx --with hypothesis pytest|hypothesis||uvx --with hypothesis pytest"
       echo "hypofuzz|hypofuzz|pip-user|OPT-IN coverage-guided hypothesis: uvx --with hypofuzz hypothesis fuzz|hypofuzz||uvx --with hypofuzz hypothesis fuzz"
@@ -88,12 +86,10 @@ tools_for() {
       echo "miri|cargo-miri|rustup|rustup +nightly component add miri  (interprets MIR to find real UB in unsafe: OOB, use-after-free, invalid aliasing)|miri||cargo +nightly miri"
       echo "cargo-careful|cargo-careful|cargo|mise use cargo:cargo-careful  (runs std with debug assertions and extra UB checks)|cargo-careful|cargo:cargo-careful|cargo careful"
       echo "cargo-deny|cargo-deny|cargo|mise use cargo:cargo-deny  (advisory, licence, and banned-crate policy)|cargo-deny|cargo:cargo-deny|cargo deny"
-      echo "cargo-vet|cargo-vet|cargo|mise use cargo:cargo-vet  (human-audit supply chain against a shared trust store)|cargo-vet|cargo:cargo-vet|cargo vet"
       echo "cargo-semver-checks|cargo-semver-checks|cargo|mise use cargo:cargo-semver-checks  (breaking-change detection vs a baseline)|cargo-semver-checks|cargo:cargo-semver-checks|cargo semver-checks"
       ;;
     go)
       echo "gosec|gosec|go|go run github.com/securego/gosec/v2/cmd/gosec@latest|gosec|go:github.com/securego/gosec/v2/cmd/gosec|go run github.com/securego/gosec/v2/cmd/gosec@latest"
-      echo "golangci-lint|golangci-lint|brew|mise use aqua:golangci/golangci-lint  (bundles gosec; enable it in .golangci.yml)|golangci-lint|aqua:golangci/golangci-lint|go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
       ;;
     js-ts)
       echo "eslint|eslint|npm-local|npm i -D eslint eslint-plugin-security  (project-local: the repo config and plugin versions must match)|eslint||npx eslint"
@@ -118,11 +114,9 @@ tools_for() {
       ;;
     deps)
       echo "osv-scanner|osv-scanner|brew|mise use aqua:google/osv-scanner  (prefer the dep-audit package when present)|osv-scanner|aqua:google/osv-scanner|go run github.com/google/osv-scanner/cmd/osv-scanner@latest"
-      echo "grype|grype|brew|mise use aqua:anchore/grype  (OPT-IN: overlaps trivy vuln scanning)|grype|aqua:anchore/grype|mise x aqua:anchore/grype -- grype"
       ;;
     supply)
       echo "guarddog|guarddog|pipx|uvx guarddog  (MALICIOUS package detection: typosquats, install-time exfil, obfuscated payloads -- not CVEs)|guarddog||uvx guarddog"
-      echo "scorecard|scorecard|brew|mise use aqua:ossf/scorecard  (scores a dependency's own security posture)|scorecard|aqua:ossf/scorecard|mise x aqua:ossf/scorecard -- scorecard"
       echo "poutine|poutine|ubi|mise use ubi:boostsecurityio/poutine  (CI/CD supply-chain: poisoned pipeline execution, artifact tampering; complements zizmor)|poutine|ubi:boostsecurityio/poutine|mise x ubi:boostsecurityio/poutine -- poutine"
       echo "kingfisher|kingfisher|ubi|mise use ubi:mongodb/kingfisher  (secrets scanner that LIVE-VALIDATES a hit against the provider, so a finding is a confirmed live key)|kingfisher|ubi:mongodb/kingfisher|mise x ubi:mongodb/kingfisher -- kingfisher"
       echo "trufflehog|trufflehog|ubi|mise use ubi:trufflesecurity/trufflehog  (800+ verified detectors plus git-history scanning)|trufflehog|ubi:trufflesecurity/trufflehog|mise x ubi:trufflesecurity/trufflehog -- trufflehog"
@@ -150,7 +144,7 @@ tools_for() {
     agentcfg)
       echo "snyk-agent-scan|snyk-agent-scan|pipx|uvx snyk-agent-scan scan <config>  (MCP config audit: tool poisoning, cross-origin escalation, rug-pull. NEEDS a SNYK_TOKEN, and LAUNCHES stdio servers as subprocesses unless the consent prompt is declined)|snyk-agent-scan||uvx snyk-agent-scan"
       echo "agentic-radar|agentic-radar|pipx|uvx agentic-radar  (static map of an agentic system's tools and flows; upstream quiet since 2025-11)|agentic-radar||uvx agentic-radar"
-      echo "semgrep-tob|semgrep|pipx|uvx semgrep --config p/trailofbits  (Trail of Bits rule pack; fetches over the network, so it needs the user's agreement)|semgrep||uvx semgrep --config p/trailofbits"
+      echo "opengrep-tob|opengrep|ubi|mise x ubi:opengrep/opengrep -- opengrep --config p/trailofbits  (Trail of Bits rule pack via opengrep; fetches over the network, so it needs agreement)|opengrep|ubi:opengrep/opengrep|mise x ubi:opengrep/opengrep -- opengrep --config p/trailofbits"
       ;;
     web)
       echo "retire|retire|npm|npx --yes retire  (known-vulnerable JS libs in the bundle)|retire||npx --yes retire"

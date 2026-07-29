@@ -74,15 +74,15 @@ MUST Draft observations and reasoning in your working turns between tool
   first characters. Before sending, check the first line: if anything
   precedes `STATUS:`, delete it. "L1" is notation, never printed.
 
-Coverage:
-- Scanners run: one line each (tool: result summary)
-- Scanners skipped or INVALID: tool plus what it would have caught, and why
-- Harnesses: executed / total, with exec counts and any `budget_exhausted`
-- Entry points reached, and any left unexercised
-- Scope: files and dirs scanned
+File every finding as a finding wisp and every crash as a crash wisp on the surface
+node per `beads-store.md`, with the full evidence in each wisp and any large output
+in an artifact file. Write the coverage detail (scanners run/skipped/INVALID,
+harness exec counts, entry points reached) to a coverage artifact. The RETURN is
+thin: the orchestrator reads findings from the graph, not from your reply.
 
-Wisps filed: crash wisp ids, finding wisp ids.
-Findings table: # | bead | file:line | Finding | Source | Evidence | Impact
-Notes -- omit if empty.
-MUST Never reprint code blocks or file contents. Evidence is `file:line` plus a command.
-CAP uncapped (findings scale with scope)
+Return only: the L1 STATUS line; counts (findings filed, crashes filed, scanners
+run/skipped/invalid, harnesses executed/total); the crash-wisp and finding-wisp id
+range; the coverage artifact path.
+MUST Return the thin summary above, never the findings table. Findings live in the wisps; repeating them in the reply bloats the orchestrator and triggers a compaction.
+MUST Never reprint code blocks or file contents. Evidence is `file:line` plus a command, stored in the wisp.
+CAP 150w. The return points at the wisps and the coverage artifact.

@@ -71,7 +71,7 @@ it differently. Establish the pattern, then hunt the exception:
 | How do its hooks decide? | the guard whose default differs from the others |
 
 MUST Count both sides. "3 of 47 handlers skip the auth decorator" is a finding; "a handler lacks a decorator" without the census is noise.
-DEFAULT Derive the census with a tool where one fits: `ast-grep` for a structural pattern, `rg` with a count for a textual one, `semgrep` with a rule written on the spot.
+DEFAULT Derive the census with a tool where one fits: `ast-grep` for a structural pattern, `rg` with a count for a textual one, `opengrep` with a rule written on the spot.
 
 ### 4. Synthesize repo-specific rules
 
@@ -94,10 +94,10 @@ rules:
 ```
 
 MUST Write the rule against the invariant discovered here rather than against a generic pattern, since a rule that encodes this repo's own contract has a false-positive rate the generic ruleset cannot match.
-MUST Validate every synthesized rule before use, with `semgrep --validate` or `ast-grep scan --dry-run`, because an invalid rule matches nothing and looks clean.
+MUST Validate every synthesized rule before use, with `opengrep --validate` or `ast-grep scan --dry-run`, because an invalid rule matches nothing and looks clean.
 MUST Test each rule against a known-positive and a known-negative from the repo, so a rule that matches everything or nothing is caught before it produces a report.
 MUST Write synthesized rules into the artifacts dir and list them in the report, since they are the campaign's most reusable output.
-DEFAULT Prefer `ast-grep` for a structural deviation, and `semgrep` when the rule needs dataflow or several languages.
+DEFAULT Prefer `ast-grep` for a structural deviation, and `opengrep` when the rule needs dataflow or several languages.
 
 ### 5. Aim the standard rulesets
 
@@ -143,7 +143,7 @@ up, rather than in a directory only this skill reads:
 | `.semgrep/` or `semgrep.yml` | a new rule file beside the existing ones |
 | `ast-grep` with `sgconfig.yml` | the configured `ruleDirs` path |
 | a CI security job | the ruleset that job already invokes |
-| pre-commit hooks | a `semgrep` or `ast-grep` hook entry with the rule file |
+| pre-commit hooks | a `opengrep` or `ast-grep` hook entry with the rule file |
 | no security lint config at all | propose one path in the report, and let the user decide rather than inventing a convention |
 
 MUST Graduate every rule behind a confirmed finding, since a fixed bug whose detection rule was thrown away is a bug free to return.

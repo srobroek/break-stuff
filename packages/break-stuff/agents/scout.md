@@ -74,12 +74,15 @@ MUST Draft observations and reasoning in your working turns between tool
   first characters. Before sending, check the first line: if anything
   precedes `STATUS:`, delete it. "L1" is notation, never printed.
 
-Claims the repo makes: source, guarantee, and the falsifiable restatement.
-Trust map: # | boundary `file:line` | data source | assumed after it | validated by
-Invariants: # | claim | `file:line` | how to falsify it
-Idiom census: pattern | conforming count | deviating count | deviation loci
-Synthesized rules: path | rule id | invariant encoded | known-positive | known-negative | validated
-Standard packs: aimed (with invocation) and off (with reason).
-Gaps: entry points untraced, and assumptions you could not confirm; omit if none.
+Write the full recon (claims, trust map, invariants, idiom census, synthesized
+rules, pack decisions, gaps) to an artifact file in the artifacts dir, and record
+each rule plus the artifact path on the surface node per `beads-store.md`. The
+RETURN to the caller is thin: the orchestrator reads recon from the graph, not from
+your reply, so a fat return is what forces it to compact.
+
+Return only: the L1 STATUS line; counts (boundaries, invariants, deviations, rules,
+entry points traced/total); the artifact path holding the full recon; the bead ids
+of the surface node and any rules filed.
+MUST Return the thin summary above, never the tables. The full recon lives in the artifact and the graph; repeating it in the reply bloats the orchestrator and triggers a compaction.
 MUST Never reprint code or rule bodies. Cite `file:line` and rule paths.
-CAP uncapped (scales with surface size)
+CAP 150w. The return is a pointer to the artifact, not the artifact.

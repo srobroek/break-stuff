@@ -18,7 +18,7 @@ frontend with native IPC behind it.
 | Tool | Tier | Class | Run recipe | Catches | Overlap |
 |------|------|-------|-----------|---------|---------|
 | eslint-plugin-security + no-unsanitized | default-on | local | `npx eslint --format json .` with the plugins | `innerHTML`, `dangerouslySetInnerHTML`, `document.write`, `eval`, `javascript:` URLs | project-local; the DOM-sink detector `code.md` lacks |
-| semgrep xss pack | default-on | local | `uvx semgrep --config p/xss --config p/javascript --json <files>` | reflected and stored XSS patterns, template injection | registry pack |
+| semgrep xss pack | default-on | local | `mise x ubi:opengrep/opengrep -- opengrep --config p/xss --config p/javascript --json <files>` | reflected and stored XSS patterns, template injection | registry pack |
 | retire.js | default-on | local | `npx retire --outputformat json` | known-vulnerable JS libraries shipped in the bundle | complements osv-scanner with browser-lib CVEs |
 | nuclei | opt-in | dynamic | `nuclei -u <local-url> -json -o <artifacts>/nuclei.json` | live findings against the running app: headers, exposures, known CVEs | dynamic; needs the dev server up |
 | ZAP baseline | opt-in | dynamic | `zap-baseline.py -t <local-url> -J <artifacts>/zap.json` | passive scan: CSP, cookie flags, missing headers, mixed content | dynamic; passive by default |

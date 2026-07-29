@@ -60,8 +60,12 @@ MUST Draft reasoning in your working turns between tool calls -- that text
   sending, check the first line: if anything precedes `STATUS:`, delete it.
   "L1" is notation, never printed.
 
-Group table: # | wisp | class | impact | locus | duplicates | minimized size | reproduce
-INVALID crashes -- omit if none.
-Notes -- omit if empty.
+File one finding wisp per distinct minimized crash on the surface node, close each
+subsumed crash wisp, and store the minimized input as an artifact per
+`beads-store.md`.
+
+Return only: the L1 STATUS line; counts (distinct groups, total crashes,
+INVALID); the finding-wisp id range.
+MUST Return the thin summary above, never the group table. The groups live in the wisps; repeating them in the reply bloats the orchestrator.
 MUST Never reprint crash input contents or code. Reference paths and `file:line`.
-CAP uncapped (scales with crash count)
+CAP 120w. The return points at the wisps.
