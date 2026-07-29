@@ -1,4 +1,8 @@
-# jackhammer
+# Break stuff
+
+Unleash havoc on your repos by letting your agents use tools at their disposal to try and find holes in your code, application, prompts, and more. Uses both deterministic and non-deterministic tooling for maximum chaos. 
+
+## Quick Start
 
 Offensive and robustness auditing for code, scripts, hooks, and agents.
 
@@ -39,18 +43,30 @@ fuzz, or break something.
 
 ## Install
 
+
+Note
 **Claude Code**
 
 ```
-/plugin marketplace add srobroek/jackhammer
-/plugin install break-stuff@jackhammer
+claude plugin marketplace add srobroek/break-stuff
+claude plugin install break-stuff@break-stuff
+
+```
+
+**Codex**
+
+Note: Codex has not been fully tested yet, run at your own risk. 
+```
+codex plugin marketplace add srobroek/break-stuff
+codex plugin add break-stuff@break-stuff
 ```
 
 **APM** (Codex, and other APM runtimes)
 
 ```
-apm marketplace add srobroek/jackhammer --name jackhammer
-apm install break-stuff@jackhammer --target codex
+apm marketplace add srobroek/break-stuff --name break-stuff
+apm install break-stuff@break-stuff --target claude
+apm install break-stuff@break-stuff --target codex
 ```
 
 Pin a release by appending `@<tag>` to the marketplace-add, e.g.
@@ -111,5 +127,7 @@ say so.
 | `.../scripts/run-contained.sh` | the container wrapper every execution phase runs through |
 | `.../references/containers/` | per-surface Dockerfiles (rust, python, node), extensible |
 | `packages/break-stuff/.apm/agents/` | scout, fuzzer, gremlin, triager, challenger, hardener |
+
+
 
 License: Apache-2.0
