@@ -1,0 +1,41 @@
+name: jackhammer
+version: 0.1.0
+description: Offensive and robustness auditing for code, scripts, hooks, and agents. Marketplace for the break-stuff package.
+author: Sjors Robroek
+license: Apache-2.0
+type: hybrid
+targets:
+  - claude
+  - codex
+includes: auto
+scripts:
+  build-release-please: python3 .apm/scripts/build-release-please.py
+  check-release-please: python3 .apm/scripts/build-release-please.py --check
+  build-marketplace-block: python3 .apm/scripts/build-marketplace-block.py
+  check-marketplace-block: python3 .apm/scripts/build-marketplace-block.py --check
+  build-marketplace: apm pack && python3 .apm/scripts/build-marketplace-block.py
+  inject-agent-models: uv run --script .apm/scripts/inject-agent-models.py
+  check-agent-models: uv run --script .apm/scripts/inject-agent-models.py --check
+  build-native-plugins: uv run --script .apm/scripts/build-native-plugins.py
+  check-native-plugins: uv run --script .apm/scripts/build-native-plugins.py --check
+  render-docs: uv run --script .apm/scripts/render-docs.py all
+  check-docs: uv run --script .apm/scripts/render-docs.py all --check
+  build-artifacts: uv run --script .apm/scripts/build-native-plugins.py && uv run --script .apm/scripts/render-docs.py all && apm run build-marketplace
+compilation:
+  strategy: distributed
+  source_attribution: true
+  exclude:
+    - packages/**
+  placement:
+    min_instructions_per_file: 1
+marketplace:
+  - name: break-stuff
+    source: ./packages/break-stuff
+    category: security
+    tags:
+      - skill
+      - agent
+      - security
+      - hardening
+      - fuzzing
+      - robustness

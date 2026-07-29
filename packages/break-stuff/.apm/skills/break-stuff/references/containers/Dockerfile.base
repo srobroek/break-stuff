@@ -1,0 +1,26 @@
+# break-stuff base image. Every surface image extends this.
+#
+# Two jobs: a non-root user that OWNS /artifacts (so a named volume is writable
+# without --user gymnastics and without running root), and the cross-surface
+# floor tools. Per-surface images add their toolchain on top; the agent may add a
+# thin extension layer at recon time when a target needs a tool the base lacks
+# (see references/isolation.md, "Extending an image").
+#
+# Build: docker build -f Dockerfile.base -t break-stuff/base:1 .
+FROM debian:stable-slim
+
+# Cross-surface floor: shell + config scanners that apply to any target.
+RUN apt-get update -q \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl git ripgrep shellcheck jq python3 python3-pip \
+ && rm -rf /var/lib/apt/lists/*
+
+# A non-root user that owns the artifacts mount. The named volume inherits this
+# ownership on first mount, so the campaign writes findings without running root
+# and without a host-uid match.
+RUN useradd --create-home --uid 1000 breaker \
+ && mkdir -p /artifacts /scratch \
+ && chown breaker:breaker /artifacts /scratch
+USER breaker
+WORKDIR /scratch
+VOLUME /artifacts

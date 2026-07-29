@@ -1,0 +1,7 @@
+# Python surface. Base + atheris/hypothesis/bandit/ruff/semgrep.
+ARG BASE=break-stuff/base:1
+FROM ${BASE}
+USER root
+RUN pip3 install --no-cache-dir --break-system-packages \
+      atheris hypothesis bandit ruff semgrep 2>&1 | tail -1 || true
+USER breaker
