@@ -32,6 +32,12 @@ apm install break-stuff@break-stuff --target codex
 Pin a release by appending `@<tag>` to the marketplace-add, e.g.
 `srobroek/break-stuff@break-stuff--v0.1.0`.
 
+> ⚠️ **A full-repo scan is slow and token-hungry.** Running break-stuff against an
+> entire repository can take an hour or more and consume a significant number of
+> tokens. It is a deliberately thorough, multi-agent process. **Scope tightly:**
+> point it at a single directory, a diff, a PR, or one surface. A whole-repo,
+> all-surface run is the exception, not the default.
+
 ## Requirements
 
 - beads (`bd`) — the task-graph substrate the campaign records its run into.
@@ -112,6 +118,100 @@ say so.
 - Execution is container-isolated: target mounted read-only, network denied, resource-capped, non-root
 - A campaign never generates an input whose effect is irreversible; it fuzzes the code path that *receives* `rm -rf`, it never runs it
 - Product code is patched only on explicit approval, behind a verification re-run
+
+## Tools
+
+break-stuff drives mature, widely-used tools rather than reinventing them. Recon
+picks which apply to a target and builds the harness that aims them. Every tool is
+optional: a missing one is a reported coverage gap, never a silent skip. Grouped by
+job:
+
+### Static analysis & SAST
+
+| Tool | What it does |
+|---|---|
+| [Semgrep](https://github.com/semgrep/semgrep) | AST/dataflow pattern scanning across languages |
+| [Opengrep](https://github.com/opengrep/opengrep) | LGPL Semgrep fork with the closed rules restored |
+| [Joern](https://github.com/joernio/joern) | code-property-graph interprocedural taint queries |
+| [ast-grep](https://github.com/ast-grep/ast-grep) | structural search and repo-specific rule synthesis |
+| [weggli](https://github.com/weggli-rs/weggli) | C/C++ semantic vulnerability pattern search |
+| [Bearer](https://github.com/Bearer/bearer) | dataflow SAST for sensitive-data leak paths |
+| [Ruff](https://github.com/astral-sh/ruff) · [Bandit](https://github.com/PyCQA/bandit) | Python lint + security lint |
+| [Clippy](https://github.com/rust-lang/rust-clippy) · [gosec](https://github.com/securego/gosec) · [golangci-lint](https://github.com/golangci/golangci-lint) | Rust and Go lint/security |
+
+### Fuzzing & property testing
+
+| Tool | What it does |
+|---|---|
+| [AFL++](https://github.com/AFLplusplus/AFLplusplus) · [honggfuzz](https://github.com/google/honggfuzz) · [libFuzzer](https://llvm.org/docs/LibFuzzer.html) | coverage-guided native fuzzers |
+| [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) | libFuzzer for Rust |
+| [atheris](https://github.com/google/atheris) | coverage-guided fuzzer for Python |
+| [Jazzer.js](https://github.com/CodeIntelligenceTesting/jazzer.js) | coverage-guided fuzzer for JS/TS |
+| [Hypothesis](https://github.com/HypothesisWorks/hypothesis) · [HypoFuzz](https://github.com/Zac-HD/hypofuzz) | Python property-based + coverage-guided testing |
+| [proptest](https://github.com/proptest-rs/proptest) · [fast-check](https://github.com/dubzzz/fast-check) | property testing for Rust and JS/TS |
+| [radamsa](https://gitlab.com/akihe/radamsa) · [zzuf](https://github.com/samhocevar/zzuf) | seed-driven mutation fuzzers |
+| [schemathesis](https://github.com/schemathesis/schemathesis) | API fuzzing from an OpenAPI/GraphQL spec |
+| [Grammarinator](https://github.com/renatahodovan/grammarinator) · [dharma](https://github.com/MozillaSecurity/dharma) | grammar-based generation |
+
+### Crash triage & minimization
+
+| Tool | What it does |
+|---|---|
+| [CASR](https://github.com/ispras/casr) | crash triage, dedup by stack, severity |
+| [shrinkray](https://github.com/DRMacIver/shrinkray) | generic test-case reducer |
+| [C-Reduce](https://github.com/csmith-project/creduce) | C/C++ source reduction |
+
+### Supply chain & dependencies
+
+| Tool | What it does |
+|---|---|
+| [osv-scanner](https://github.com/google/osv-scanner) · [Grype](https://github.com/anchore/grype) | CVE scanning across lockfiles |
+| [cargo-audit](https://github.com/rustsec/rustsec) · [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) · [cargo-vet](https://github.com/mozilla/cargo-vet) | Rust advisory, licence, and audit policy |
+| [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks) | Rust breaking-change detection |
+| [GuardDog](https://github.com/DataDog/guarddog) | malicious-package detection (typosquats, install-time exfil) |
+| [OSSF Scorecard](https://github.com/ossf/scorecard) | dependency security-posture scoring |
+
+### Secrets
+
+| Tool | What it does |
+|---|---|
+| [gitleaks](https://github.com/gitleaks/gitleaks) | secret detection across the tree and git history |
+| [TruffleHog](https://github.com/trufflesecurity/trufflehog) | 800+ verified secret detectors |
+| [Kingfisher](https://github.com/mongodb/kingfisher) | secret scanner that live-validates a hit |
+
+### Infra, CI & containers
+
+| Tool | What it does |
+|---|---|
+| [Trivy](https://github.com/aquasecurity/trivy) · [Checkov](https://github.com/bridgecrewio/checkov) | IaC misconfig, container, and secret scanning |
+| [hadolint](https://github.com/hadolint/hadolint) · [kube-linter](https://github.com/stackrox/kube-linter) | Dockerfile and Kubernetes linting |
+| [zizmor](https://github.com/zizmorcore/zizmor) · [poutine](https://github.com/boostsecurityio/poutine) | CI/CD workflow-injection and supply-chain scanning |
+| [actionlint](https://github.com/rhysd/actionlint) · [pinact](https://github.com/suzuki-shunsuke/pinact) | GitHub Actions lint and SHA-pinning |
+| [tflint](https://github.com/terraform-linters/tflint) | Terraform provider-aware linting |
+
+### Web & frontend
+
+| Tool | What it does |
+|---|---|
+| [Nuclei](https://github.com/projectdiscovery/nuclei) | template-driven DAST against a local dev server |
+| [OWASP ZAP](https://github.com/zaproxy/zaproxy) | passive/active web scanning |
+| [retire.js](https://github.com/RetireJS/retire.js) | known-vulnerable JS library detection |
+| [eslint-plugin-no-unsanitized](https://github.com/mozilla/eslint-plugin-no-unsanitized) | DOM-sink XSS lint |
+
+### Shell & native
+
+| Tool | What it does |
+|---|---|
+| [ShellCheck](https://github.com/koalaman/shellcheck) · [shfmt](https://github.com/mvdan/sh) | shell lint and format |
+| [Miri](https://github.com/rust-lang/miri) · [cargo-careful](https://github.com/RalfJung/cargo-careful) | Rust undefined-behaviour detection |
+| [cargo-geiger](https://github.com/geiger-rs/cargo-geiger) | Rust `unsafe` usage census |
+| ASan / UBSan / MSan / TSan | compiler sanitizers for native builds |
+
+### Deep analysis (opt-in)
+
+| Tool | What it does |
+|---|---|
+| [CodeQL](https://github.com/github/codeql) | interprocedural taint via a queryable database |
 
 ## What ships
 

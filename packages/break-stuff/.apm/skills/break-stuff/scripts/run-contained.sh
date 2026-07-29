@@ -27,6 +27,34 @@ set -euo pipefail
 #                    [--net none|loopback] [--mem 2g] [--pids 512] [--cpus 2]
 #                    [--timeout 300] -- <command to run inside>
 
+# --assert-tools <image> <tool[,tool...]>: prove each tool runs INSIDE the image
+# before any campaign trusts a clean fuzz result. Containerization guarantees a
+# tool is PRESENT (baked into the image); this guarantees it SURVIVED the build.
+# A missing coverage-guided fuzzer here is the silent-clean the campaign must
+# refuse, not footnote. Exits 0 only if every tool answers; non-zero names the
+# missing ones so the caller refuses the fuzz phase.
+if [ "${1:-}" = "--assert-tools" ]; then
+  AT_IMAGE="${2:?--assert-tools needs <image> <tool,tool>}"
+  AT_TOOLS="${3:?--assert-tools needs <image> <tool,tool>}"
+  DK="$(command -v docker || command -v finch)"
+  [ -n "$DK" ] || { echo "assert-tools: no container runtime" >&2; exit 3; }
+  "$DK" image inspect "$AT_IMAGE" >/dev/null 2>&1 || { echo "assert-tools: image absent: $AT_IMAGE" >&2; exit 3; }
+  missing=""
+  IFS=','; for t in $AT_TOOLS; do
+    # try `<tool> --version` then the cargo-subcommand form `cargo <sub> --version`
+    if ! "$DK" run --rm --network none "$AT_IMAGE" sh -c "command -v $t >/dev/null 2>&1 && $t --version >/dev/null 2>&1 || ${t#cargo-} --version >/dev/null 2>&1 || cargo ${t#cargo-} --version >/dev/null 2>&1" 2>/dev/null; then
+      missing="$missing $t"
+    fi
+  done
+  unset IFS
+  if [ -n "$missing" ]; then
+    echo "assert-tools: MISSING in $AT_IMAGE:$missing  (rebuild the image, or refuse the fuzz phase)" >&2
+    exit 1
+  fi
+  echo "assert-tools: all present in $AT_IMAGE:$AT_TOOLS"
+  exit 0
+fi
+
 TARGET=""; ARTIFACTS=""; IMAGE=""; NET="none"; MEM="2g"; PIDS="512"; CPUS="2"; TMO="300"
 CMD=()
 while [ "$#" -gt 0 ]; do

@@ -46,6 +46,36 @@ MUST Enforce the run's memory, pid, and cpu budget as container flags, since a f
 MUST Run as a non-root user with `--cap-drop ALL` and `--security-opt no-new-privileges`, so a container escape has nothing to escalate to.
 MUST Write findings only to the `/artifacts` bind mount, the single writable path that survives the container.
 
+## Assert the tools survived the build
+
+Containerization guarantees a coverage-guided fuzzer is PRESENT (baked into the
+image); it does not guarantee the build produced it. A stale or half-built image
+that silently lacks `cargo fuzz` or `atheris` produces the exact false-clean the
+package exists to catch. So before the fuzz phase trusts a clean result, assert the
+surface's critical tool runs inside the image:
+
+```
+scripts/run-contained.sh --assert-tools break-stuff/<surface>:1 <tool[,tool...]>
+```
+
+Assert EVERY tool the surface's campaign will invoke, not only the fuzzer — a
+missing scanner is the same silent-clean as a missing fuzzer. Pass the full
+comma-list the surface doc's Tools table names:
+
+| Surface image | Assert (all campaign tools for the surface) |
+|---|---|
+| `break-stuff/rust:1` | `cargo-fuzz,cargo-audit,clippy` |
+| `break-stuff/python:1` | `atheris,hypothesis,bandit,ruff,semgrep` |
+| `break-stuff/node:1` | `jazzer,fast-check,retire` |
+| `break-stuff/base:1` | `semgrep,shellcheck,ripgrep` |
+
+Exit 0 means every named tool answered `--version` inside the image; non-zero names
+the missing ones. Assert the complete set once, up front, so a campaign never
+discovers a missing scanner mid-run and reports its dimension as clean.
+
+MUST Assert EVERY tool the surface's campaign will invoke inside the image up front, not only the coverage-guided fuzzer. A campaign that runs a scanner or fuzzer without confirming it is present reports a clean result it did not earn, and a missing scanner is as silent as a missing fuzzer.
+MUST Refuse the fuzz phase and report the surface as uncovered when the assertion fails, rather than falling through to hand-written vectors and calling it fuzzed. Rebuild the image from `references/containers/` and retry, or record the gap in the report headline.
+
 ## Degrade loudly, never silently
 
 A container runtime may be absent (`docker`, `podman`, `finch`, `nerdctl`). Since

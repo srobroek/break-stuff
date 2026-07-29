@@ -58,6 +58,13 @@ caps, target mounted read-only, findings to the `/artifacts` mount, non-root. If
 container runtime is present, do NOT run the execution phases on the host: report
 them as an isolation coverage gap and run only the static/reading passes.
 
+## Assert the fuzzer before the fuzz phase
+Before running any coverage-guided fuzz harness, assert its tool is in the image:
+`run-contained.sh --assert-tools break-stuff/<surface>:1 <fuzzer>`. Exit non-zero
+means the tool is missing: REFUSE the fuzz phase and report the surface as an
+uncovered gap in the report headline, do NOT fall through to hand-written vectors
+and call it fuzzed. See `references/isolation.md`.
+
 ## Budget (hard cap, approved by the user)
 - Per-harness wall-clock: <wall_s>s   Jobs: <jobs>   Memory: <mem_mb>MB
 - Stop at the cap. When a harness hits it with coverage still climbing, stamp
