@@ -1,7 +1,7 @@
 {
-  "name": "jackhammer",
+  "name": "break-stuff",
   "interface": {
-    "displayName": "jackhammer"
+    "displayName": "break-stuff"
   },
   "plugins": [
     {
