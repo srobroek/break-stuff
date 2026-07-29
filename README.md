@@ -32,6 +32,7 @@ apm install break-stuff@break-stuff --target codex
 Pin a release by appending `@<tag>` to the marketplace-add, e.g.
 `srobroek/break-stuff@break-stuff--v0.1.0`.
 
+
 > ⚠️ **A full-repo scan is slow and token-hungry.** Running break-stuff against an
 > entire repository can take an hour or more and consume a significant number of
 > tokens. It is a deliberately thorough, multi-agent process. **Scope tightly:**
