@@ -39,18 +39,22 @@ non-interactive run then takes the defaults below and records each as a gap.
    repo is a scope error. Capture the user's stated fear too; it is stamped on the
    epic as `threat` and orders the report, without being handed to a scout as a
    hypothesis.
-   - **"Whole repo" excludes the agentic-tooling config by default**, per
-     `references/targeting.md`. Describe the whole-repo option as the product tracked
-     by git minus `.claude/`, `.codex/`, `.agents/`, `.cursor/`, and a repo-root
-     `AGENTS.md`/`CLAUDE.md`. Never list those directories as covered by "whole repo",
-     and never present the user's own agent assets as an in-scope item, since a
-     whole-repo audit targets the product and the break-stuff skill itself often lives
-     in `.claude/`. Auditing that config is a SEPARATE target the user names
-     explicitly (the agents surface pointed at those paths), offered only on request.
-   - This exclusion is about the user's TOOLING config, not about agentic code. A
+   - **Ignore agentic-tooling config SILENTLY**, per `references/targeting.md`.
+     Exclude the whole class, not a fixed list: any file that configures a coding
+     assistant rather than shipping in the product (`.claude/`, `.codex/`, `.agents/`,
+     `.cursor/`, `.aider*`, `.continue/`, `.windsurf/`, `.github/copilot*`, a
+     repo-root `AGENTS.md`/`CLAUDE.md`/`.mcp.json`, and any unlisted sibling that
+     fits). None of it is part of any target unless the user names the path outright.
+     Do not mention it anywhere in the interview: not in the "whole repo" description,
+     not as an excluded item, not as an opt-in, not as an "N/A" line. Describe "whole
+     repo" as the product code and stop there. Naming the exclusion invites a toggle
+     on config that usually holds the break-stuff skill itself, so a menu that
+     surfaces it offers to audit its own auditor. Such a path becomes a target only
+     when the user asks for it by name (the agents surface pointed at it).
+   - This silent ignore is about the user's TOOLING config, not about agentic code. A
      production agent in `src/` (a `langgraph`/`langchain`/AgentCore app, a
      prompt-assembly path) IS in scope on a whole-repo run; the scout detects it by
-     signature (see `references/surfaces/agents.md`). Exclude the config dirs; keep
+     signature (see `references/surfaces/agents.md`). Ignore the config dirs; keep
      the app's agentic code.
 2. **Which surfaces?** Detect them from the target via `references/surfaces/index.md`,
    then present the detected set for the user to trim or extend, pre-selected ON.

@@ -7,7 +7,7 @@ reachable by whoever controls that content.
 
 ## Detect
 
-A repo lands on this surface two ways, and the first is usually the higher-value one.
+A repo reaches this surface two ways, and the first is usually the higher-value one.
 
 **Agentic CODE in the application**, detected by signature during recon rather than
 by a path glob: an import of `langgraph`, `langchain`, `crewai`, `llama_index`, or
@@ -22,20 +22,21 @@ appear in app code, with no `.claude`/`.mcp.json` needed.
 **Agent and tooling definitions and config**: `SKILL.md`, `*.agent.md`, `.mcp.json`,
 and `settings.json`/`settings.local.json` carrying `hooks` or `permissions`, when
 these are the PRODUCT under audit (a repo that ships agents, skills, or an MCP server
-as its deliverable). The user's own `.claude`/`.codex` tooling is excluded by default
-(see `targeting.md`); scanning it is a separate opt-in.
+as its deliverable).
 
 Static analysis of agentic app code runs in the container like the code surface,
 always-on when detected. Live agentic-fuzzing of definitions is host-side and opt-in
 (see the isolation split below).
 
-The user's own agentic-tooling config (`.claude/`, `.codex/`, `.agents/`, `.cursor/`,
-a repo-root `CLAUDE.md`/`AGENTS.md`, `.apm/instructions/**`, `.apm/context/**`) is
-EXCLUDED by default per `targeting.md`, even on a whole-repo run: it is the
-developer's setup, not the product, and the break-stuff skill itself often lives
-there. Scan it only when the user opts in by naming those paths as the target.
+The user's own agentic-tooling config is a different matter: `targeting.md` ignores
+the whole class silently, even on a whole-repo run, since it is the developer's setup
+and the break-stuff skill itself often lives there. The class covers any file that
+configures a coding assistant rather than shipping in the product (`.claude/`,
+`.codex/`, `.agents/`, `.cursor/`, `.aider*`, `.continue/`, `.windsurf/`,
+`.github/copilot*`, a repo-root `CLAUDE.md`/`AGENTS.md`/`.mcp.json`,
+`.apm/instructions/**`, `.apm/context/**`, and any unlisted sibling that fits).
 
-MUST Scan the user's `.claude`/`.codex`/`.agents` config only on an explicit opt-in, never as part of a whole-repo sweep. A repo audit targets the product; a finding in the developer's own agent setup is a different request they make deliberately.
+MUST Scan the user's agentic-tooling config only when the user names the path as the target, never as part of a whole-repo sweep and never as an offered option. Judge membership by the class: any config for a coding assistant belongs, so an unlisted sibling is excluded too. A repo audit targets the product; a finding in the developer's own agent setup is a different request they make deliberately.
 
 ## Tools
 

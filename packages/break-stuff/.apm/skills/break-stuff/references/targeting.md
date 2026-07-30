@@ -32,7 +32,7 @@ names one explicitly:
 | Exclude | Why |
 |---|---|
 | anything `.gitignore` ignores | not part of the repo; build output and local scratch, owned by the toolchain |
-| agentic-tooling config: `.claude/`, `.codex/`, `.agents/`, `.cursor/`, and a repo-root `AGENTS.md`/`CLAUDE.md` | the user's own agent setup, not the product under audit; scanning it is a separate opt-in (see below) |
+| anything that reads as agentic-tooling config, the class not just the list: `.claude/`, `.codex/`, `.agents/`, `.cursor/`, `.aider*`, `.continue/`, `.windsurf/`, `.github/copilot*`, a repo-root `AGENTS.md`/`CLAUDE.md`/`.mcp.json`, `.apm/instructions/**`, `.apm/context/**`, and any sibling that configures a coding assistant rather than shipping in the product | the user's own agent setup, not the product under audit; ignored silently and never offered, a target only when the user names the path |
 | generated output | regenerated on build, so a finding there belongs to the generator |
 | vendored dependencies | owned upstream, and covered by the dependency scanners instead |
 | lockfiles, for surfaces other than infra | scanned as a manifest rather than read as code |
@@ -40,8 +40,8 @@ names one explicitly:
 | `.git`, build caches, `node_modules`, `target`, `.venv` | not source |
 
 MUST Resolve a whole-repo target from `git ls-files` and honor `.gitignore`, since a whole-repo scan of the working tree otherwise pulls in build output, caches, and untracked local files that are not the repo.
-MUST Exclude the agentic-tooling directories (`.claude/`, `.codex/`, `.agents/`, `.cursor/`) by default, even when the user asks for "everything". A repo audit targets the product, not the user's agent configuration, and the break-stuff skill itself is often installed there. Scanning them is a separate opt-in the user names explicitly (the agents surface, pointed at those paths).
-MUST Report an exclude that removed a large share of the target, since a user asking for a whole-repo audit needs to know what was skipped.
+MUST Ignore anything that reads as agentic-tooling config silently by default, even when the user asks for "everything", and never present it as an option or an opt-in. The list (`.claude/`, `.codex/`, `.agents/`, `.cursor/`, `.aider*`, `.continue/`, `.windsurf/`, `.github/copilot*`, a repo-root `AGENTS.md`/`CLAUDE.md`/`.mcp.json`) is a set of examples, not the boundary: judge by whether the file configures a coding assistant rather than shipping in the product, and exclude any sibling that fits even when it is not named here. A repo audit targets the product, not the user's agent configuration, and the break-stuff skill itself is often installed there. Such a path becomes a target only when the user names it outright (the agents surface, pointed at it).
+MUST Report a volume-based exclude that removed a large share of the target (a vendored tree, a generated dir), since a user asking for a whole-repo audit needs to know what was skipped. This does NOT apply to the agentic-tooling config, which is ignored silently and never named in the interview or the confirmation.
 NOT Never exclude the repo's own tests wholesale. A test that shells out unsafely or holds a live credential is a real finding.
 
 ## Checkout decision
@@ -111,3 +111,10 @@ MUST Note a multi-language target explicitly, since it needs an image carrying e
 Restate the resolution to the user in one block: the kind, the file count, the
 surfaces detected, the base ref, the checkout decision, and the excludes applied.
 A resolution the user did not intend wastes the whole campaign.
+
+Report the volume-based excludes (a vendored tree or a generated dir that removed a
+large share of the file count), since the user needs to know what a whole-repo audit
+skipped. Do NOT restate the agentic-tooling config exclusion (`.claude/`, `.codex/`,
+`.agents/`, `.cursor/`): it is ignored silently and never appears in the interview or
+the confirmation, since naming it invites a toggle on a directory that holds the
+auditor's own skill. It becomes a target only when the user names those paths first.

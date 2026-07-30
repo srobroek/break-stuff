@@ -7,7 +7,7 @@
       "customType": "regex",
       "managerFilePatterns": ["/Dockerfile\\.[a-z]+$/", "/layers/[a-z]+\\.sh$/"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+RUN .*?(?:--version|==|@)\\s*(?<currentValue>[0-9][^\\s\"']*)",
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+RUN .*?(?:-{2}version|==|@)\\s*(?<currentValue>[0-9][^\\s\"']*)",
         "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+(?:ARG\\s+)?[A-Za-z_][A-Za-z0-9_]*=(?<currentValue>[0-9][^\\s\"']*)"
       ],
       "versioningTemplate": "semver"

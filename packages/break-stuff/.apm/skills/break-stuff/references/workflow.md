@@ -63,8 +63,9 @@ MUST Record the entry points before step 4. A fuzzer given no entry points inven
    `scripts/build-ext-image.sh --target <dir> --base break-stuff/<surface>:1 --tag break-stuff/<surface>-ext:1`
    (it runs `detect-stacks.py`, writes a thin Dockerfile copying only the
    manifests+lockfiles, and builds the layer keyed on the lock), then `--assert-tools`
-   each ext image. It returns a thin pointer only: the resolved ext-image tags, the
-   stack map, and the per-image assert result. Tools run in the image, not on the host.
+   each ext image. It returns a thin pointer only: the resolved ext-image tags plus
+   the stack map, with each per-image assert result written to the artifacts dir.
+   Tools run in the image, not on the host.
 
 MUST Delegate the image build, dev-dep bake, and `--assert-tools` to a spawned provisioner that returns only the ext-image tags, the stack map, and the assert result. Building inline pours every `docker build` and `cargo fetch` line into the orchestrator's context, which is the fat-payload-in-orchestrator anti-pattern step 9 forbids; the orchestrator manages the run, it does not build it.
 MUST Build and extend the surface image autonomously here, without a separate confirmation gate. The interview already authorized the toolset; provisioning the image to hold it executes that approved plan rather than deciding anything new. The blast-radius opt-ins (live-spawn, DAST) stay gated; the image build does not.
@@ -95,12 +96,17 @@ MUST Record a suppression that carries no reason as its own HARDENING finding, s
 Several facts are the same for every surface, so computing them per surface runs the
 same work N times in parallel. Run them once here, before the fan-out, and stamp the
 results on the epic for every agent to read. DELEGATE the run to a spawned pre-pass
-agent, together with the step-3.5 config read: it executes the whole-tree scanners in
-the provisioned image, runs the baseline suite, reads the repo self-doc and the
-project security config, writes each output to the artifacts dir, and returns only
-the stamp values (`global_scan_refs`, `baseline_test_ref`, `self_read_ref`, the
-suppression list) as paths and counts. The orchestrator stamps those on the epic; it
-never holds the scanner or test output itself.
+agent, together with the step-3.5 config read. That agent does the following work,
+writing every output to the artifacts dir and returning only the stamp values
+(`global_scan_refs`, `baseline_test_ref`, `self_read_ref`, and the suppression list)
+as paths and counts:
+
+- executes the whole-tree scanners in the provisioned image,
+- runs the baseline test suite,
+- reads the repo self-doc and the project security config.
+
+The orchestrator stamps those on the epic; it never holds the scanner or test output
+itself.
 
 | Pre-pass work | Run once | Stamp on epic |
 |---|---|---|
