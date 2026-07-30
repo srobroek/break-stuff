@@ -2,8 +2,10 @@
 #
 # Language-free floor: a non-root user that OWNS /artifacts (so a named volume is
 # writable without --user gymnastics and without running root), the shell/config
-# tooling, and the cross-surface scanners that apply to any target (gitleaks,
-# opengrep, ast-grep). A language surface adds its toolchain on top via a fragment
+# tooling, the cross-surface scanners that apply to any target (gitleaks, opengrep,
+# ast-grep), and the CI/supply-chain scanners every target's .github/workflows and
+# dependency manifests need (zizmor, actionlint, pinact, trivy, osv-scanner). A
+# language surface adds its toolchain on top via a fragment
 # under layers/ (see Dockerfile.rust); the agent may add a thin extension layer at
 # recon time when a target needs a tool the base lacks (references/isolation.md,
 # "Extending an image").
@@ -28,11 +30,28 @@ ARG ASTGREP_VERSION=0.45.0
 ARG OPENGREP_VERSION=1.26.0
 # renovate: datasource=github-releases depName=mvdan/sh
 ARG SHFMT_VERSION=3.13.1
+# CI / supply-chain scanners. zizmor + actionlint are the only tools that do
+# workflow dataflow; osv-scanner + trivy cover dependency and config CVEs; pinact
+# checks that actions are pinned to a SHA. These read .github/workflows and the
+# dependency manifests, which exist on any target regardless of language, so they
+# live in the base rather than a language surface.
+# renovate: datasource=github-releases depName=zizmorcore/zizmor
+ARG ZIZMOR_VERSION=1.28.0
+# renovate: datasource=github-releases depName=rhysd/actionlint
+ARG ACTIONLINT_VERSION=1.7.12
+# renovate: datasource=github-releases depName=suzuki-shunsuke/pinact
+ARG PINACT_VERSION=4.1.1
+# renovate: datasource=github-releases depName=aquasecurity/trivy
+ARG TRIVY_VERSION=0.72.0
+# renovate: datasource=github-releases depName=google/osv-scanner
+ARG OSVSCANNER_VERSION=2.4.0
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-      arm64) gl=linux_arm64; ag=aarch64-unknown-linux-gnu; og=aarch64; sf=arm64 ;; \
-      amd64) gl=linux_x64;   ag=x86_64-unknown-linux-gnu;  og=x86;     sf=amd64 ;; \
+      arm64) gl=linux_arm64; ag=aarch64-unknown-linux-gnu; og=aarch64; sf=arm64; \
+             zz=aarch64-unknown-linux-gnu; al=arm64; pn=arm64; tv=ARM64; ov=arm64 ;; \
+      amd64) gl=linux_x64;   ag=x86_64-unknown-linux-gnu;  og=x86;     sf=amd64; \
+             zz=x86_64-unknown-linux-gnu; al=amd64; pn=amd64; tv=64bit; ov=amd64 ;; \
       *) echo "break-stuff base: unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
     curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${gl}.tar.gz" \
@@ -41,8 +60,19 @@ RUN set -eux; \
     unzip -o /tmp/ast-grep.zip -d /usr/local/bin; rm /tmp/ast-grep.zip; \
     curl -fsSL -o /usr/local/bin/opengrep "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_${og}"; \
     curl -fsSL -o /usr/local/bin/shfmt "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_${sf}"; \
-    chmod +x /usr/local/bin/gitleaks /usr/local/bin/ast-grep /usr/local/bin/opengrep /usr/local/bin/shfmt; \
-    gitleaks version; ast-grep --version; opengrep --version; shfmt --version
+    curl -fsSL "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-${zz}.tar.gz" \
+      | tar -xz -C /usr/local/bin zizmor; \
+    curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${al}.tar.gz" \
+      | tar -xz -C /usr/local/bin actionlint; \
+    curl -fsSL "https://github.com/suzuki-shunsuke/pinact/releases/download/v${PINACT_VERSION}/pinact_linux_${pn}.tar.gz" \
+      | tar -xz -C /usr/local/bin pinact; \
+    curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${tv}.tar.gz" \
+      | tar -xz -C /usr/local/bin trivy; \
+    curl -fsSL -o /usr/local/bin/osv-scanner "https://github.com/google/osv-scanner/releases/download/v${OSVSCANNER_VERSION}/osv-scanner_linux_${ov}"; \
+    chmod +x /usr/local/bin/gitleaks /usr/local/bin/ast-grep /usr/local/bin/opengrep /usr/local/bin/shfmt \
+             /usr/local/bin/zizmor /usr/local/bin/actionlint /usr/local/bin/pinact /usr/local/bin/trivy /usr/local/bin/osv-scanner; \
+    gitleaks version; ast-grep --version; opengrep --version; shfmt --version; \
+    zizmor --version; actionlint --version; pinact --version; trivy --version; osv-scanner --version
 
 # A non-root user that owns the artifacts mount. The named volume inherits this
 # ownership on first mount, so the campaign writes findings without running root

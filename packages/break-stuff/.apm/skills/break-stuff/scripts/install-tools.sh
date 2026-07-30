@@ -28,7 +28,7 @@ RUN_CONTAINED="$SKILL_DIR/scripts/run-contained.sh"
 
 # image  :  comma-separated tools that MUST answer inside it.
 # Kept in sync with isolation.md's assert table and each surface's Tools table.
-IMAGE_TOOLS_base="semgrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner"
+IMAGE_TOOLS_base="opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner"
 IMAGE_TOOLS_rust="cargo-fuzz,cargo-audit,clippy,cargo-geiger"
 IMAGE_TOOLS_python="atheris,hypothesis,bandit,ruff,semgrep"
 IMAGE_TOOLS_node="jazzer,fast-check,retire"

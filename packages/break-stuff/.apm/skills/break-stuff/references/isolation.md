@@ -85,7 +85,7 @@ comma-list the surface doc's Tools table names:
 | `break-stuff/rust:1` | `cargo-fuzz,cargo-audit,clippy,cargo-geiger` |
 | `break-stuff/python:1` | `atheris,hypothesis,bandit,ruff,semgrep` |
 | `break-stuff/node:1` | `jazzer,fast-check,retire` |
-| `break-stuff/base:1` | `semgrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner` |
+| `break-stuff/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner` |
 
 This table is the same manifest `scripts/install-tools.sh --probe` asserts. The base
 image carries the cross-surface and CI/supply-chain scanners (`gitleaks`,

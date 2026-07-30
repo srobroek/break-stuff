@@ -35,7 +35,7 @@ worse off than one who knows its limits.
 
 | Surface | Scanners run | Scanners skipped | Harnesses run / written | Gaps |
 |---|---|---|---|---|
-| shell | shellcheck, semgrep | checkov (not installed) | 4 / 4 | none |
+| shell | shellcheck, opengrep | checkov (not installed) | 4 / 4 | none |
 | code | bandit, ruff | CodeQL (opt-in, declined) | 3 / 5 | 2 entry points unfuzzed: `parse_v2`, `decode_frame` |
 
 Gap reasons, stated precisely:
