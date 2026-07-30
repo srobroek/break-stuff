@@ -1,14 +1,14 @@
 {
-  "name": "break-stuff",
+  "name": "sabot",
   "interface": {
-    "displayName": "break-stuff"
+    "displayName": "sabot"
   },
   "plugins": [
     {
-      "name": "break-stuff",
+      "name": "sabot",
       "source": {
         "source": "local",
-        "path": "./packages/break-stuff"
+        "path": "./packages/sabot"
       },
       "policy": {
         "installation": "AVAILABLE",

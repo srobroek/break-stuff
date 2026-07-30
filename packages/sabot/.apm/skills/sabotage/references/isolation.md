@@ -1,0 +1,248 @@
+# Isolation and guardrails
+
+Execution runs in a container, never on the host. A Worktrunk lease is a
+filesystem boundary only: it shares the host kernel and network, and runs under the host's own credentials. A campaign
+that fuzzes a parser, runs a `build.rs`, or drives a dev server is running code
+whose behaviour is the unknown under test, so it runs where a destructive effect
+has nowhere to land.
+
+Three layers, strongest first. The container is the wall; the authoring ban keeps
+the fuzzer from arming a payload; the host tripwire is the honest backstop that
+lives outside the sandbox and cannot be fooled from inside it.
+
+## What runs where
+
+One question decides where a step runs: **does it compile, expand, or run the
+target's own code?** If it does, it runs in the container, because that code, not
+just the input, is the unknown. The old "static stays on the host" split was wrong: a compiling
+linter builds the crate, which runs its `build.rs` and proc-macros, so running
+`clippy` or `gosec` "statically" on the host executes the target's build-time code on
+the host, the exact thing the container exists to prevent.
+
+| Step | Where | Why |
+|---|---|---|
+| The recon and tiering AGENTS (the LLM reasoning) | host | a model cannot be containerized; only its tool calls can |
+| Pure text reads: `rg`, `ast-grep` search, `semgrep`/`opengrep`, `shellcheck`, `gitleaks`, `zizmor`, reading source | **container** | they execute nothing, but running them in the same image keeps tool versions pinned and the host clean; a text scanner is cheap to containerize and there is no reason to split the toolset across two places |
+| Compiling scanners: `clippy`, `gosec`, `cargo audit`, anything that builds the crate | **container** | building the target runs its `build.rs`/proc-macros; on the host that is untrusted code executing on the host |
+| Fuzz campaigns, harness execution, `fuzz-cli.py` against a real target | **container** | the target's behaviour on hostile input is the unknown |
+| `build.rs`, proc-macro expansion, install scripts | **container** | build-time code runs before any test could catch it |
+| Dev-server DAST | **container** | the server is started and driven with payloads |
+
+Every target-touching tool runs in the container. The only thing on the host is the
+agent doing the reasoning and the orchestration primitives it needs there (`bd`,
+`git`, the container runtime); it shells every scanner, linter, and fuzzer into the
+image via `run-contained.sh`.
+
+MUST Run every target-touching tool in the container, not only the fuzzers. A compiling scanner (`clippy`, `gosec`) builds the crate and so runs the target's build code; a text scanner has no host-side reason to exist separately. The host holds the agent and `bd`/`git`/the runtime, nothing that touches target code.
+MUST Never run a compiling linter on the host as a "static" pass. It executes the target's `build.rs` and proc-macros on the host, which is the unconfined build-time execution the container exists to prevent.
+
+## Container contract
+
+```
+docker run --rm \
+  --network none \                 # no outbound anything; loopback DAST maps a port instead
+  --memory 2g --memory-swap 2g \   # the budget's mem cap, kernel-enforced
+  --pids-limit 512 \               # fork-bomb ceiling
+  --cpus 2 \
+  --read-only \                    # image fs is read-only
+  --tmpfs /scratch:size=512m \     # the only writable place inside
+  --workdir /scratch \             # cwd is writable; the target is read at /target
+  --env HOME=/scratch --env TMPDIR=/scratch \
+  --env CARGO_TARGET_DIR=/scratch/target --env GOCACHE=/scratch/go-build \
+  --env GOPATH=/scratch/go --env npm_config_cache=/scratch/npm \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --user 1000:1000 \               # never root
+  -v <target>:/target:ro \         # target mounted READ-ONLY
+  -v <artifacts>:/artifacts \      # the one writable host mount, for findings
+  <image> <campaign command reading /target, e.g. cargo test --manifest-path /target/Cargo.toml>
+```
+
+MUST Mount the target read-only. The campaign reads and attacks it; it never needs to write the target, and a read-only mount makes an accidental mutation impossible.
+MUST Pass `--network none` for a fuzz or build run. A harness that needs loopback (dev-server DAST) gets a published port mapping instead, never full network.
+MUST Enforce the run's memory, pid, and cpu budget as container flags, since a flag the kernel enforces holds where a `NOT` rule in prose does not.
+MUST Run as a non-root user with `--cap-drop ALL` and `--security-opt no-new-privileges`, so a container escape has nothing to escalate to.
+MUST Write findings only to the `/artifacts` bind mount, the single writable path that survives the container.
+MUST Direct every build and test toolchain to write under `/scratch`, never the read-only target: `run-contained.sh` sets `--workdir /scratch` and `CARGO_TARGET_DIR`/`GOCACHE`/`TMPDIR`/`HOME` there, and the command after `--` reads the target at `/target` (e.g. `cargo test --manifest-path /target/Cargo.toml`). A `cargo test` left to write `target/` in the read-only mount fails, which reads as a broken harness rather than the isolation working.
+
+## Assert the tools survived the build
+
+Containerization guarantees a coverage-guided fuzzer is PRESENT (baked into the
+image); it does not guarantee the build produced it. A stale or half-built image
+that silently lacks `cargo fuzz` or `atheris` produces the exact false-clean the
+package exists to catch. So before the fuzz phase trusts a clean result, assert the
+surface's critical tool runs inside the image:
+
+```
+scripts/run-contained.sh --assert-tools sabot/<surface>:1 <tool[,tool...]>
+```
+
+Assert EVERY tool the surface's campaign will invoke, not only the fuzzer. A
+missing scanner is the same silent-clean as a missing fuzzer. Pass the full
+comma-list the surface doc's Tools table names:
+
+| Surface image | Assert (all campaign tools for the surface) |
+|---|---|
+| `sabot/rust:1` | `cargo-fuzz,cargo-audit,clippy,cargo-geiger` |
+| `sabot/python:1` | `atheris,hypothesis,bandit,ruff,semgrep` |
+| `sabot/node:1` | `jazzer,fast-check,retire` |
+| `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner` |
+
+This table is the same manifest `scripts/install-tools.sh --probe` asserts. The base
+image carries the cross-surface and CI/supply-chain scanners (`gitleaks`,
+`osv-scanner`, `trivy`, and the workflow-dataflow pair `zizmor`+`actionlint`, plus
+`pinact`), since a repo's `.github/workflows` and dependency manifests are read on
+every run regardless of language. A tool named here but absent from a built image
+FAILS the preflight; the campaign does not start until the image ships the full set.
+
+Exit 0 means every tool answered `--version` inside the image; non-zero names
+the missing ones. Assert the complete set once, up front, so a campaign never
+discovers a missing scanner mid-run and reports its dimension as clean.
+
+MUST Assert EVERY tool the surface's campaign will invoke inside the image up front, not only the coverage-guided fuzzer. An unconfirmed scanner or fuzzer yields a clean result the campaign did not earn; a missing scanner is as silent as a missing fuzzer.
+MUST Refuse the fuzz phase and report the surface as uncovered when the assertion fails. Do not use hand-written vectors instead and call it fuzzed. Rebuild the image from `references/containers/` and retry, or record the gap in the report headline.
+
+## Provisioning and extending the image
+
+Every target-touching tool runs in the container, so the image must already hold
+what the campaign needs: the surface scanners AND the target's own dev-dependencies
+(a `cargo test` harness that pulls `proptest` cannot fetch it under `--network none`,
+so the dep must be baked in at build time). Provisioning happens once, at step 3,
+before the fan-out, while the network is available and no target code runs.
+
+**Detecting the dev-deps.** Do this deterministically with
+`scripts/detect-stacks.py`, not by hand: it lists the target's tracked files
+(`git ls-files`, so `.gitignore` is honored), finds every manifest, collapses Cargo
+workspace members into the root fetch, and emits both the stack map (`--json`) and
+the exact bake commands (`--bake`). It handles the cases a single-manifest guess
+misses, a workspace, a monorepo, and a multi-language target (a Tauri app is Rust
+under `src-tauri/` plus a JS frontend). The manifests and their fetch commands:
+
+- **Workspace / monorepo:** glob for every `Cargo.toml`, `package.json`,
+  `pyproject.toml`, `go.mod` under the target file set, not just the repo root. A
+  Cargo workspace root plus its member crates, or N packages under `packages/`, each
+  declare their own dev-deps. Fetch at the workspace root where the toolchain is
+  workspace-aware (`cargo fetch` from the workspace root resolves all members;
+  `go mod download` per module); otherwise once per package.
+- **Multi-language (e.g. Tauri = Rust + a JS frontend):** a single target legitimately
+  has both a `Cargo.toml` (often under `src-tauri/`) and a `package.json`. It needs an
+  image with BOTH toolchains, so the surface-to-image map is not 1:1 here: extend the
+  base with each detected stack's toolchain and bake each manifest's deps. Record
+  every stack found so the report states which were provisioned.
+
+Record the manifest map in recon (step 2, alongside entry-point enumeration, since
+recon already walks the file set), and let the provisioning step at step 3 consume
+it. Per stack, the toolchain's own resolver fetches exactly what its manifest names:
+
+| Stack | Declares dev-deps in | Bake with |
+|---|---|---|
+| Rust | `Cargo.toml [dev-dependencies]` + `Cargo.lock` | `cargo fetch` (whole lock), or `cargo fetch` then a throwaway `cargo build --tests` to warm the registry |
+| Node | `package.json devDependencies` + lockfile | `npm ci` / `pnpm install --frozen-lockfile` |
+| Python | `pyproject.toml` dev group / `requirements-dev.txt` | `uv sync` / `pip install -r` |
+| Go | `go.mod` (test deps not separated) | `go mod download` |
+
+**Layered so a source change never rebuilds the world.** `scripts/build-ext-image.sh`
+copies ONLY the manifest and lockfile into a temp build context, runs the fetch, and
+copies nothing else. The deps become their own cache layer keyed on the lock, so only
+a lock change re-fetches. The generated Dockerfile:
+
+```
+FROM sabot/rust:1
+COPY Cargo.toml Cargo.lock ./          # only the manifest+lock, so the next layer caches on the lock
+RUN cargo fetch                         # dev-deps into the image's cargo cache; own layer
+# no COPY of the source: the target is mounted read-only at /target at run time
+```
+
+Build the ext image at step 3 with the script, which runs `detect-stacks.py`, writes
+the thin Dockerfile, and builds it:
+
+```
+scripts/build-ext-image.sh --target <dir> --base sabot/<surface>:1 \
+                           --tag sabot/<surface>-ext:1
+```
+
+The script bakes the dep caches into a persistent `/deps` prefix (it sets
+`CARGO_HOME`, `GOMODCACHE`, `npm_config_cache`, `PIP_CACHE_DIR`, `UV_CACHE_DIR` there),
+NOT under `/scratch`: `run-contained.sh` mounts `/scratch` as a fresh tmpfs per run,
+so a cache baked there is masked at run time. Then `--assert-tools` against the ext
+image, then run the campaign against it under the unchanged network-none contract. The
+extension NEVER copies the target source into the image (the target is mounted
+read-only at run time); it copies only the manifest+lock to drive the fetch, so
+nothing about the audited code enters a persisted layer.
+
+MUST Provision at step 3, network-available, before the fan-out. A dep fetched mid-campaign is a fetch the `--network none` gremlin cannot do, so the harness reports a false coverage gap instead of running.
+MUST Detect dev-deps from the target's manifest and lockfile, never a hardcoded list. The manifest is the exact declaration; a guessed set bakes the wrong tools and still fails the harness.
+MUST Discover every manifest in the resolved target scope, not just a repo-root one. A workspace, monorepo, or multi-language target (a Tauri app is Rust plus a JS frontend) has several, and baking only the root manifest leaves a member crate or the frontend unprovisioned.
+MUST Extend the image with a toolchain per detected stack for a multi-language target, and state every stack provisioned in the report. The surface-to-image map is not 1:1 when one target needs both cargo and npm.
+MUST Bake the deps as their own layer keyed on the lockfile (copy manifest+lock, fetch, stop), so a source change reuses the cached deps rather than re-fetching every run.
+NOT Never COPY the target source into the image. The target is mounted read-only at run time; copying it into a build layer both defeats the read-only guarantee and persists the audited code in the image.
+
+## No container runtime: fail the whole run, loudly
+
+A container runtime (`docker`, `podman`, `finch`, `nerdctl`) is not optional. Since
+every target-touching tool runs in the container (What runs where), no runtime means
+the campaign cannot scan or execute anything safely, so it does not run a degraded
+subset: it aborts at step 3 with a clear message and a non-zero exit, before opening
+the run graph or spawning any agent. A partial "static-only" run is not offered,
+because it would present an incomplete audit as a completed one and, for a compiling
+scanner, would run the target's build code on the host.
+
+MUST Probe for a container runtime at step 3 (part of the `install-tools.sh --probe` preflight) and, when none is present, ABORT the whole campaign with a loud message naming the missing runtime and a non-zero exit. Do not open the run graph, do not spawn a scout, do not run a host-side scan.
+MUST Abort the run when `bd` is absent too, per `beads-store.md`: no run graph means no durable state, so there is no campaign to run. Both the runtime and `bd` are hard preconditions, not degradable ones.
+MUST Never fall back to host execution or a static-only subset when no container is available. A host-only run is the exact unbounded risk the container exists to prevent, and a partial run presents an incomplete audit as a completed campaign.
+NOT Never weaken the container contract (add network, drop the mem cap, run root) to make a harness pass. A harness that only runs unconfined is a harness that does not run.
+
+## The authoring ban
+
+The container contains a blast; this stops the fuzzer from arming one. Even inside
+isolation, an input whose *purpose* is an irreversible effect is never generated.
+
+MUST Fuzz the code path that RECEIVES a destructive input, never author a harness that EXECUTES the destructive branch. A parser that mishandles `rm -rf /` is the target; running `rm -rf /` is not the test.
+NOT Never generate an input class whose effect is irreversible even in the container: a real `rm`/`mkfs`/`dd` to a device; a `DROP`/`TRUNCATE` against a live database; a fork bomb; a disk-filling loop. The finding is that the target accepts the input, not that the effect happened.
+MUST Seed a destructive-looking payload as data the target parses, not as a command the harness runs. `{"command":"rm -rf /"}` fed to a guard is a vector; `os.system("rm -rf /")` in a harness is an attack on the machine.
+
+## The host tripwire
+
+The backstop that lives outside the sandbox. A monitor inside the container can be
+subverted by what it monitors; a host-side hook watching the filesystem cannot.
+
+This package ships no tripwire hook. It is an optional control the operator wires
+into the running session, so a campaign that has not wired one has NO backstop and
+its report says exactly that (see the report line below). The container contract and
+the authoring ban are the controls that always apply; the tripwire is the extra net
+for the operator who wants it, not a guarantee the skill provides on its own.
+
+When wired, it is a `PostToolUse` (or `FileChanged`, where the harness supports it)
+hook, scoped to the campaign, that halts on any observable the container should have
+prevented:
+
+| Tripwire | Halt because |
+|---|---|
+| A write anywhere outside `<artifacts>` and the container | the container boundary leaked, or an execution phase ran on the host |
+| A canary file (seeded outside the artifacts dir) changed or read | a payload reached beyond its sandbox |
+| An outbound connection beyond loopback from a campaign process | `--network none` was bypassed or a phase ran unconfined |
+| Disk or inode growth past the budget, a pid/fd runaway | a resource attack the container caps should have bounded |
+
+MUST Seed canaries OUTSIDE the container mounts before an execution phase, and read them after, since a canary reachable by the campaign is a canary that proves reach.
+MUST Halt the campaign, preserve the artifacts, and report on any tripwire rather than continuing. A campaign that trips a guardrail and keeps running has already lost the property the guardrail asserts.
+MUST Treat a tripwire hit as a finding about the ISOLATION, reported alongside the target findings, since the campaign reaching the host is worse news than anything it found in the target.
+NOT Never disable the tripwire to let a campaign finish. The tripwire firing is the campaign telling you it escaped.
+
+## Report line
+
+Every campaign states its isolation posture, so a reader knows what the findings
+were produced under. The tripwire line reports its ACTUAL state, and reads
+`none wired` when the operator ran no tripwire:
+
+```
+Isolation: docker, --network none, mem 2g, pids 512, target ro, non-root (--user 1000:1000).
+           host tripwire: none wired (container contract + authoring ban only).
+```
+
+or, when the operator wired one:
+
+```
+           host tripwire active (artifacts-dir + 3 canaries). No trip.
+```
+
+MUST State the isolation posture in the report. A finding produced under an unknown or degraded posture is a finding whose blast radius the reader cannot judge.
+MUST Report the tripwire's real state, `none wired` when none ran. Claiming a tripwire that was never wired invents a backstop the campaign did not have, which is worse than admitting there was none.
