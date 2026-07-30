@@ -33,11 +33,15 @@ docker run --rm \
   --cpus 2 \
   --read-only \                    # image fs is read-only
   --tmpfs /scratch:size=512m \     # the only writable place inside
+  --workdir /scratch \             # cwd is writable; the target is read at /target
+  --env HOME=/scratch --env TMPDIR=/scratch \
+  --env CARGO_TARGET_DIR=/scratch/target --env GOCACHE=/scratch/go-build \
+  --env GOPATH=/scratch/go --env npm_config_cache=/scratch/npm \
   --cap-drop ALL --security-opt no-new-privileges \
   --user 1000:1000 \               # never root
   -v <target>:/target:ro \         # target mounted READ-ONLY
   -v <artifacts>:/artifacts \      # the one writable host mount, for findings
-  <image> <campaign command>
+  <image> <campaign command reading /target, e.g. cargo test --manifest-path /target/Cargo.toml>
 ```
 
 MUST Mount the target read-only. The campaign reads and attacks it; it never needs to write the target, and a read-only mount makes an accidental mutation impossible.
@@ -45,6 +49,7 @@ MUST Pass `--network none` for a fuzz or build run. A harness that needs loopbac
 MUST Enforce the run's memory, pid, and cpu budget as container flags, since a flag the kernel enforces holds where a `NOT` rule in prose does not.
 MUST Run as a non-root user with `--cap-drop ALL` and `--security-opt no-new-privileges`, so a container escape has nothing to escalate to.
 MUST Write findings only to the `/artifacts` bind mount, the single writable path that survives the container.
+MUST Direct every build and test toolchain to write under `/scratch`, never the read-only target: `run-contained.sh` sets `--workdir /scratch` and `CARGO_TARGET_DIR`/`GOCACHE`/`TMPDIR`/`HOME` there, and the command after `--` reads the target at `/target` (e.g. `cargo test --manifest-path /target/Cargo.toml`). A `cargo test` left to write `target/` in the read-only mount fails, which reads as a broken harness rather than the isolation working.
 
 ## Assert the tools survived the build
 
