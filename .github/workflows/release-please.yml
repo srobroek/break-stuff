@@ -1,0 +1,79 @@
+name: Release Please
+
+# Maintains a release PR from Conventional Commits (feat/fix/...), updates
+# CHANGELOG.md and the version in apm.yml, and tags a release on merge.
+#
+# Artifact freshness: release-please updates the authoritative version state
+# (apm.yml $.version + .release-please-manifest.json) but does NOT regenerate the
+# version-derived artifacts -- the `version` in .claude-plugin/plugin.json and the
+# per-plugin versions in the .claude-plugin / .agents marketplace.json files. Those
+# go stale the moment a version bumps, so the "Sync generated artifacts" step below
+# regenerates them and amends them onto the release branch whenever a release PR is
+# open.
+#
+# TOKEN: this repo has no branch protection and no required status checks, so the
+# default GITHUB_TOKEN is sufficient -- the App-token dance (needed elsewhere so
+# release-PR commits trigger required checks) is unnecessary here. release-please
+# needs `contents: write` + `pull-requests: write`, declared below, AND the repo
+# setting "Allow GitHub Actions to create and approve pull requests" enabled.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          fetch-depth: 0
+
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Set up Python
+        if: ${{ steps.release.outputs.pr }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.14"
+
+      # When a release PR is open, its apm.yml/manifest version bumps make the
+      # generated plugin.json + marketplace.json versions stale. Regenerate them and
+      # amend onto the release branch. No-op (no diff -> no commit) when already in
+      # sync. GITHUB_TOKEN persisted by checkout above pushes the amend.
+      - name: Sync generated artifacts on the release PR
+        if: ${{ steps.release.outputs.pr }}
+        env:
+          RELEASE_BRANCH: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$RELEASE_BRANCH"
+          git checkout "$RELEASE_BRANCH"
+
+          python3 -m pip install --quiet -r .github/requirements-ci.txt
+          python3 .apm/scripts/build-native-plugins.py
+          python3 .apm/scripts/render-docs.py all
+          apm run build-marketplace
+
+          if git diff --quiet; then
+            echo "Generated artifacts already in sync; nothing to amend."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: sync generated artifacts to released versions"
+          git push origin "HEAD:$RELEASE_BRANCH"

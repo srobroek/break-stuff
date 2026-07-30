@@ -1,0 +1,7 @@
+# CI Python dependencies for the release artifact-sync job.
+# Referenced by actions/setup-python cache-dependency-path; the pip install step
+# in release-please.yml installs from this file to regenerate the version-derived
+# artifacts (plugin.json + marketplace.json) on the release PR.
+apm-cli==0.26.0
+jinja2==3.1.6
+pytest==9.1.1
