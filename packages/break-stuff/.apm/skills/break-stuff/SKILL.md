@@ -46,8 +46,10 @@ non-interactive run then takes the defaults below and records each as a gap.
    here; a detected surface the user does not want scanned can be dropped. This is
    one message with question 3, not a separate prompt.
 3. **Which tools, what fuzz budget, and any blast-radius opt-in?** Run
-   `<skill-dir>/scripts/install-tools.sh --probe`. In one message, propose the
-   full thorough tool set per detected surface as a tiered table (default-on
+   `<skill-dir>/scripts/install-tools.sh --probe` (a host preflight: confirms the
+   container runtime, `bd`, and `git`, and which surface images exist; it does not
+   install scanners on the host, which now run in the image). In one message, propose
+   the full thorough tool set per detected surface as a tiered table (default-on
    pre-selected ON, opt-in shown OFF with a reason) together with a fuzz budget
    table covering wall-clock per harness, parallel jobs, and memory cap. Live-spawn
    agentic fuzzing and dev-server DAST run real payloads through real grants, so they

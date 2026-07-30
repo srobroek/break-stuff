@@ -12,16 +12,29 @@ lives outside the sandbox and cannot be fooled from inside it.
 
 ## What runs where
 
-| Phase | Host or container | Why |
+One question decides where a step runs: **does it compile, expand, or run the
+target's own code?** If it does, it runs in the container, because that code, not
+just the input, is the unknown. The old "static stays on the host" split was wrong: a compiling
+linter builds the crate, which runs its `build.rs` and proc-macros, so running
+`clippy` or `gosec` "statically" on the host executes the target's build-time code on
+the host, the exact thing the container exists to prevent.
+
+| Step | Where | Why |
 |---|---|---|
-| Reading, static scanners (semgrep, clippy, shellcheck, ruff), recon | host | reads bytes, executes nothing untrusted |
-| Rule validation, `--vectors-help`, `cargo metadata` | host | no target code runs |
+| The recon and tiering AGENTS (the LLM reasoning) | host | a model cannot be containerized; only its tool calls can |
+| Pure text reads: `rg`, `ast-grep` search, `semgrep`/`opengrep`, `shellcheck`, `gitleaks`, `zizmor`, reading source | **container** | they execute nothing, but running them in the same image keeps tool versions pinned and the host clean; a text scanner is cheap to containerize and there is no reason to split the toolset across two places |
+| Compiling scanners: `clippy`, `gosec`, `cargo audit`, anything that builds the crate | **container** | building the target runs its `build.rs`/proc-macros; on the host that is untrusted code executing on the host |
 | Fuzz campaigns, harness execution, `fuzz-cli.py` against a real target | **container** | the target's behaviour on hostile input is the unknown |
 | `build.rs`, proc-macro expansion, install scripts | **container** | build-time code runs before any test could catch it |
 | Dev-server DAST | **container** | the server is started and driven with payloads |
 
-MUST Run every execution phase in a container. A phase that executes target code on the host has no guarantee the target cannot reach the host's files, network, or credentials.
-MUST Keep reading and static scanning on the host; a container there is cost with no safety gain.
+Every target-touching tool runs in the container. The only thing on the host is the
+agent doing the reasoning and the orchestration primitives it needs there (`bd`,
+`git`, the container runtime); it shells every scanner, linter, and fuzzer into the
+image via `run-contained.sh`.
+
+MUST Run every target-touching tool in the container, not only the fuzzers. A compiling scanner (`clippy`, `gosec`) builds the crate and so runs the target's build code; a text scanner has no host-side reason to exist separately. The host holds the agent and `bd`/`git`/the runtime, nothing that touches target code.
+MUST Never run a compiling linter on the host as a "static" pass. It executes the target's `build.rs` and proc-macros on the host, which is the unconfined build-time execution the container exists to prevent.
 
 ## Container contract
 
@@ -80,6 +93,69 @@ discovers a missing scanner mid-run and reports its dimension as clean.
 
 MUST Assert EVERY tool the surface's campaign will invoke inside the image up front, not only the coverage-guided fuzzer. An unconfirmed scanner or fuzzer yields a clean result the campaign did not earn; a missing scanner is as silent as a missing fuzzer.
 MUST Refuse the fuzz phase and report the surface as uncovered when the assertion fails. Do not use hand-written vectors instead and call it fuzzed. Rebuild the image from `references/containers/` and retry, or record the gap in the report headline.
+
+## Provisioning and extending the image
+
+Every target-touching tool runs in the container, so the image must already hold
+what the campaign needs: the surface scanners AND the target's own dev-dependencies
+(a `cargo test` harness that pulls `proptest` cannot fetch it under `--network none`,
+so the dep must be baked in at build time). Provisioning happens once, at step 3,
+before the fan-out, while the network is available and no target code runs.
+
+**Detecting the dev-deps.** Do this deterministically with
+`scripts/detect-stacks.py`, not by hand: it lists the target's tracked files
+(`git ls-files`, so `.gitignore` is honored), finds every manifest, collapses Cargo
+workspace members into the root fetch, and emits both the stack map (`--json`) and
+the exact bake commands (`--bake`). It handles the cases a single-manifest guess
+misses, a workspace, a monorepo, and a multi-language target (a Tauri app is Rust
+under `src-tauri/` plus a JS frontend). The manifests and their fetch commands:
+
+- **Workspace / monorepo:** glob for every `Cargo.toml`, `package.json`,
+  `pyproject.toml`, `go.mod` under the target file set, not just the repo root. A
+  Cargo workspace root plus its member crates, or N packages under `packages/`, each
+  declare their own dev-deps. Fetch at the workspace root where the toolchain is
+  workspace-aware (`cargo fetch` from the workspace root resolves all members;
+  `go mod download` per module); otherwise once per package.
+- **Multi-language (e.g. Tauri = Rust + a JS frontend):** a single target legitimately
+  has both a `Cargo.toml` (often under `src-tauri/`) and a `package.json`. It needs an
+  image with BOTH toolchains, so the surface-to-image map is not 1:1 here: extend the
+  base with each detected stack's toolchain and bake each manifest's deps. Record
+  every stack found so the report states which were provisioned.
+
+Record the manifest map in recon (step 2, alongside entry-point enumeration, since
+recon already walks the file set), and let the provisioning step at step 3 consume
+it. Per stack, the toolchain's own resolver fetches exactly what its manifest names:
+
+| Stack | Declares dev-deps in | Bake with |
+|---|---|---|
+| Rust | `Cargo.toml [dev-dependencies]` + `Cargo.lock` | `cargo fetch` (whole lock), or `cargo fetch` then a throwaway `cargo build --tests` to warm the registry |
+| Node | `package.json devDependencies` + lockfile | `npm ci` / `pnpm install --frozen-lockfile` |
+| Python | `pyproject.toml` dev group / `requirements-dev.txt` | `uv sync` / `pip install -r` |
+| Go | `go.mod` (test deps not separated) | `go mod download` |
+
+**Layered so a source change never rebuilds the world.** Copy ONLY the manifest and
+lockfile into the build context first, run the fetch, THEN nothing else. The deps
+become their own cache layer keyed on the lock, so only a lock change re-fetches:
+
+```
+FROM break-stuff/rust:1
+COPY Cargo.toml Cargo.lock ./          # only the manifest+lock, so the next layer caches on the lock
+RUN cargo fetch                         # dev-deps into the image's cargo cache; own layer
+# no COPY of the source: the target is mounted read-only at /target at run time
+```
+
+Build this ext image at step 3 (`break-stuff/<surface>-ext:1`), then `--assert-tools`
+against it, then run the campaign against it under the unchanged network-none
+contract. The extension NEVER copies the target source into the image (the target is
+mounted read-only at run time); it copies only the manifest+lock to drive the fetch,
+so nothing about the audited code enters a persisted layer.
+
+MUST Provision at step 3, network-available, before the fan-out. A dep fetched mid-campaign is a fetch the `--network none` gremlin cannot do, so the harness reports a false coverage gap instead of running.
+MUST Detect dev-deps from the target's manifest and lockfile, never a hardcoded list. The manifest is the exact declaration; a guessed set bakes the wrong tools and still fails the harness.
+MUST Discover every manifest in the resolved target scope, not just a repo-root one. A workspace, monorepo, or multi-language target (a Tauri app is Rust plus a JS frontend) has several, and baking only the root manifest leaves a member crate or the frontend unprovisioned.
+MUST Extend the image with a toolchain per detected stack for a multi-language target, and state every stack provisioned in the report. The surface-to-image map is not 1:1 when one target needs both cargo and npm.
+MUST Bake the deps as their own layer keyed on the lockfile (copy manifest+lock, fetch, stop), so a source change reuses the cached deps rather than re-fetching every run.
+NOT Never COPY the target source into the image. The target is mounted read-only at run time; copying it into a build layer both defeats the read-only guarantee and persists the audited code in the image.
 
 ## Degrade loudly, never silently
 

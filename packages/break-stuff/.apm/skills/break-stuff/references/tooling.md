@@ -5,15 +5,24 @@ their Tier, Class, and Run recipe columns. This file holds what cuts across
 surfaces: the universal run rules, plus the overlap map and analysis classes that
 scope each tool.
 
-Install through `scripts/install-tools.sh`; probe first with `--probe`.
+The tools live in the surface image, not on the host; see `references/isolation.md`
+(Provisioning) for how the image is built and dev-deps baked.
 
 ## Universal run rules
 
 Every recipe in a surface doc assumes these, so they are not repeated there:
 
-1. **cwd is the target repo root**, never a subdirectory, and never the worktree
-   root for a ref target unless that is the target. Pass the resolved file set as
-   explicit paths.
+1. **Every recipe runs in the container.** A surface doc's recipe is the tool
+   invocation; `run-contained.sh` wraps it, so the tool runs against the target
+   mounted read-only at `/target`, never on the host. This holds for text scanners
+   (`opengrep`, `shellcheck`, `ast-grep`) as well as compiling ones (`clippy`,
+   `gosec`) and fuzzers: a compiling scanner builds the crate and so runs the
+   target's own build code, which must be confined. The host runs only the agent and
+   `bd`/`git`/the runtime.
+2. **cwd is `/scratch`, the target is read at `/target`.** The container's writable
+   cwd is `/scratch`; pass the resolved file set as paths under `/target` (e.g.
+   `opengrep --config p/python /target/src`), and let builds write to `/scratch`
+   (`CARGO_TARGET_DIR` etc. are set for you).
 2. **Shipped assets are absolute.** Reference `corpora/` and any recon-synthesized
    rule by absolute path, since cwd is the target and a skill-relative path silently
    matches nothing.

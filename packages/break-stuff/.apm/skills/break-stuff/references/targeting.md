@@ -87,6 +87,25 @@ fuzzer's work list:
 MUST Record each entry point with a `file:line`. An entry point named without a locus cannot be handed to a fuzzer.
 MUST Report an entry point with no harness as a coverage gap, since an unfuzzed entry point is untested rather than clean.
 
+## Manifest map (for image provisioning)
+
+Alongside the entry points, enumerate every dependency manifest in the resolved
+scope, since the image is provisioned from them (see `isolation.md`, Provisioning).
+Run `scripts/detect-stacks.py` for this rather than globbing by hand: it reads
+`git ls-files` (honoring `.gitignore`), finds every manifest, collapses Cargo
+workspace members, and emits the stack map and bake commands. It covers the cases a
+repo-root lookup misses, a workspace, a monorepo, or a multi-language target:
+
+| Look for | Stack | Feeds |
+|---|---|---|
+| every `Cargo.toml` + `Cargo.lock` (workspace root and members) | Rust | `cargo fetch` at the workspace root |
+| every `package.json` + lockfile | Node/JS | `npm ci` per package |
+| `pyproject.toml` dev group / `requirements-dev.txt` | Python | `uv sync` / `pip install` |
+| `go.mod` per module | Go | `go mod download` |
+
+MUST Record every manifest in scope, not only a repo-root one. A Tauri app (Rust under `src-tauri/` plus a JS frontend) or a monorepo has several, and a missed manifest leaves a member crate or the frontend unprovisioned, so its harness cannot run under `--network none`.
+MUST Note a multi-language target explicitly, since it needs an image carrying every detected toolchain rather than one surface image.
+
 ## Confirm before proceeding
 
 Restate the resolution to the user in one block: the kind, the file count, the
