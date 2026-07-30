@@ -1,7 +1,8 @@
 # Surface Template
 
 Copy this to add a surface. Fill every section, add a row to `index.md`, and add
-any new tool to `tooling.md` plus `install-tools.sh`. Nothing else in the package
+any new tool to `tooling.md` plus the surface `Dockerfile` (bake it into the image,
+with a pinned version). Nothing else in the package
 needs to change.
 
 Target length: under 200 lines. A surface doc is a checklist a `gremlin` works

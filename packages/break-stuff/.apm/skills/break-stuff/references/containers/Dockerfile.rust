@@ -1,10 +1,16 @@
 # Rust surface. Base + the rust code/robustness toolchain.
 # Build: docker build -f Dockerfile.rust -t break-stuff/rust:1 --build-arg BASE=break-stuff/base:1 .
+# Pins are bot-tracked: the FROM tag natively, the cargo installs via renovate.json's
+# custom manager keyed on the `# renovate:` comments below.
 ARG BASE=break-stuff/base:1
-FROM rust:1-slim AS toolchain
+# renovate: datasource=docker depName=rust
+FROM rust:1.83-slim AS toolchain
 USER root
-RUN apt-get update -q && apt-get install -y --no-install-recommends git pkg-config libssl-dev >/dev/null \
- && cargo install cargo-fuzz cargo-audit --locked 2>&1 | tail -1 || true
+RUN apt-get update -q && apt-get install -y --no-install-recommends git pkg-config libssl-dev >/dev/null
+# renovate: datasource=crate depName=cargo-fuzz
+RUN cargo install cargo-fuzz --locked --version 0.13.2
+# renovate: datasource=crate depName=cargo-audit
+RUN cargo install cargo-audit --locked --version 0.21.2
 RUN useradd --create-home --uid 1000 breaker && mkdir -p /artifacts /scratch && chown breaker /artifacts /scratch
 USER breaker
 WORKDIR /scratch

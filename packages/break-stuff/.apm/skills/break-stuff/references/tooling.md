@@ -113,35 +113,29 @@ The agents surface stays covered statically: the reading pass against
 `corpora/prompt-injection.md`, the tool-grant analysis, `snyk-agent-scan` for MCP
 configs, and the shipped `prompt-build.yml` rules for prompts assembled in code.
 
-## Run routes: prefer ephemeral over installed
+## Where tools come from
 
-Most tools here need no install. `install-tools.sh --routes` prints the ephemeral
-invocation per tool, and the run recipes use it, so a campaign on a fresh machine
-starts without provisioning anything.
+A surface recipe is the bare invocation of a tool that is already in the image
+(`opengrep --config ...`, `cargo clippy`, `gosec`). `run-contained.sh` runs it against
+the target at `/target`; nothing is fetched at run time, since the campaign runs under
+`--network none`. Provisioning happens once, at image build, from
+`references/containers/Dockerfile.<surface>` plus the dev-dep bake
+(`isolation.md`, Provisioning).
 
-| Route | Used for | Example |
-|---|---|---|
-| `uvx <tool>` | Python-packaged scanners and generators | `mise x ubi:opengrep/opengrep -- opengrep`, `uvx zizmor`, `uvx schemathesis` |
-| `uvx --with <lib> <cmd>` | Python libraries a runner imports | `uvx --with hypothesis pytest` |
-| `npx --yes -p <pkg> <bin>` | JS-packaged tools with no project config | `npx --yes -p @ast-grep/cli ast-grep` |
-| `npx <tool>` | project-local JS tools, so the repo's config and plugin versions apply | `npx eslint` |
-| `go run <path>@latest` | Go tools | `go run github.com/securego/gosec/v2/cmd/gosec@latest` |
-| `cargo <sub>` | cargo subcommands, once the subcommand is resident | `cargo clippy`, `cargo audit`, `cargo fuzz` |
-| `mise x <spec> -- <tool>` | prebuilt binaries from the aqua and ubi registries | `mise x aqua:aquasecurity/trivy -- trivy` |
-| `mise use <spec>` | a pinned repo-local install, written to `./mise.toml` | `mise use aqua:koalaman/shellcheck` |
+The install forms below are how a Dockerfile PUTS a tool in the image, not how the
+campaign calls it. They are here so a new surface image, or an extend layer, installs
+the right way:
 
-A tool with no ephemeral route is resident by necessity rather than by preference:
-
-| Tool | Why resident |
+| Install form (in the Dockerfile) | Used for |
 |---|---|
-| radamsa, zzuf | source-only upstreams with no release binaries, so brew builds them from source |
-| honggfuzz, creduce | compiled, and honggfuzz is Linux-first |
-| AFL++, llvm | the campaign needs an instrumented build, which requires the compiler on PATH |
-| casr | ships as several binaries the triager invokes directly |
-| fast-check | a library a test file imports rather than a command |
+| `apt-get install` | the base OS scanners: ripgrep, shellcheck, jq |
+| `pipx install` / `pip install` | Python-packaged scanners and generators: opengrep, zizmor, schemathesis, bandit |
+| `npm i -g` / project `npm ci` | JS tools: ast-grep, jazzer.js, fast-check, eslint (project-local via the baked deps) |
+| `go install <path>@<version>` | Go tools: gosec |
+| `cargo install --locked <tool>` | cargo subcommands: cargo-fuzz, cargo-audit (clippy ships with the toolchain) |
+| the base language image | the compiler/toolchain itself: `FROM rust:1-slim`, `FROM python:3-slim`, `FROM node:20-slim` |
 
-MUST Name the binary explicitly with `npx -p <pkg> <bin>` when they differ, since `npx @ast-grep/cli` fails and a bare `npx ast-grep` resolves to an unrelated 0.1.0 stub package.
-MUST Verify a route by running it once before the campaign depends on it, because a route that resolves in a registry can still fail to execute.
-MUST Prefer the ephemeral route, since a pinned `uvx` or `mise x` call cannot drift and leaves the user's environment untouched.
-MUST Report a resident tool that is absent as a coverage gap with its install hint, rather than substituting a different tool silently.
-NOT `install-tools.sh` never uses sudo, and never reinstalls a tool already on PATH.
+MUST Pin every tool the Dockerfile installs to an explicit version (`cargo install --locked <tool> --version x`, `go install ...@vX`, `pip install tool==x`), so the image is reproducible and a scan result does not shift when an upstream releases.
+MUST Make the pins of OUR security tooling bot-upgradable, so a scanner or fuzzer we bake does not silently rot. This is the tooling in the committed `Dockerfile.<surface>` (opengrep, cargo-fuzz, gosec, ...), not the target's own dev-deps, which are the target repo's concern. `FROM` tags are read by Dependabot and Renovate natively; a version pinned inside a `RUN` line is NOT (Dependabot ignores it, Renovate needs a `# renovate:` comment), so annotate each `RUN`-line pin with a `# renovate: datasource=... depName=...` line and ship `containers/renovate.json` with the custom manager. On-demand extend layers are transient and inherit their freshness from the committed base, so they pin inline without a bot.
+MUST Report a tool absent from the image as a coverage gap (via `--assert-tools`), never substitute a different tool silently.
+NOT Never fetch a tool at run time. The campaign is `--network none`; a tool not in the image is a gap the report states, not something the gremlin installs.

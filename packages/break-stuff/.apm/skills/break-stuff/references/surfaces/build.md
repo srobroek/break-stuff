@@ -19,7 +19,7 @@ build invokes.
 | Tool | Tier | Class | Run recipe | Catches | Overlap |
 |------|------|-------|-----------|---------|---------|
 | read | default-on | local | read every file in the Detect list | what the build actually executes, and where its inputs come from | no scanner enumerates build-time execution; reading is the detection |
-| semgrep | opt-in | local | `mise x ubi:opengrep/opengrep -- opengrep --config p/command-injection --json build.rs setup.py` | a build script shelling out on a value it fetched or read | registry pack, code side only |
+| semgrep | opt-in | local | `opengrep --config p/command-injection --json build.rs setup.py` | a build script shelling out on a value it fetched or read | registry pack, code side only |
 | `cargo metadata` | default-on | local | `cargo metadata --format-version 1` | every build-dependency and proc-macro crate that runs at compile time | enumerates the compile-time code surface |
 | npm dry-run | default-on | local | `npm install --ignore-scripts --dry-run` then diff against a normal install | which packages want to run install scripts | shows the install-time execution set |
 | pinact | default-on | local | `pinact run --check` | a pre-commit repo or action pinned to a mutable ref | shared with `infra.md` |
