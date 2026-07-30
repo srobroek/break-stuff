@@ -12,7 +12,7 @@ set -euo pipefail
 # Isolation, all enforced as flags the kernel honours, proven on this host:
 #   -v <target>:/target:ro       target READ-ONLY   (a write to the target is impossible)
 #   named volume at /artifacts    the only writable path; copied out after, then removed
-#   --network none (default)      no exfil; --net loopback maps a host-loopback port for DAST
+#   --network none (both modes)   no outbound egress; DAST uses the container's own lo
 #   --memory / --pids-limit       cgroup-enforced resource caps
 #   --cap-drop ALL --security-opt no-new-privileges   no caps to escalate
 #   image default user is non-root (uid 1000, owns /artifacts) so no root, no uid match
@@ -41,6 +41,12 @@ if [ "${1:-}" = "--assert-tools" ]; then
   "$DK" image inspect "$AT_IMAGE" >/dev/null 2>&1 || { echo "assert-tools: image absent: $AT_IMAGE" >&2; exit 3; }
   missing=""
   IFS=','; for t in $AT_TOOLS; do
+    # A tool name interpolates into the in-container `sh -c`, so reject anything
+    # outside the safe set for an executable name. Without this a crafted name
+    # (`x;id`) would execute in the container.
+    case "$t" in
+      *[!A-Za-z0-9._-]*|"") echo "assert-tools: illegal tool name: '$t'" >&2; exit 2 ;;
+    esac
     # try `<tool> --version` then the cargo-subcommand form `cargo <sub> --version`
     if ! "$DK" run --rm --network none "$AT_IMAGE" sh -c "command -v $t >/dev/null 2>&1 && $t --version >/dev/null 2>&1 || ${t#cargo-} --version >/dev/null 2>&1 || cargo ${t#cargo-} --version >/dev/null 2>&1" 2>/dev/null; then
       missing="$missing $t"
@@ -92,15 +98,15 @@ CTX="$($DK context show 2>/dev/null || echo default)"
 $DK image inspect "$IMAGE" >/dev/null 2>&1 || {
   echo "run-contained: image not found: $IMAGE  (build it from references/containers/)" >&2; exit 3; }
 
-# loopback maps a random host port to the container. Because `docker run` below
-# blocks until the command finishes, the assigned host port cannot be read back and
-# handed to a caller mid-run: a DAST driver must therefore run INSIDE the command
-# after `--` (start the dev server, scan it over the container's own loopback, tear
-# it down), which is exactly the web.md model. The -p mapping only matters for a
-# host-side driver, which this synchronous structure does not support.
+# Both modes deny outbound egress. A DAST run starts its dev server and scans it
+# INSIDE the command after `--`, over the container's own loopback interface, which
+# `--network none` already provides (`lo` is always up). `--net loopback` is kept as
+# an explicit name for that intent; it does NOT add a bridge, because a bridge grants
+# full outbound internet and the in-container loopback needs none. There is no
+# host-side port map: `docker run` blocks to completion, so a host port could never
+# be read back mid-run anyway, and mapping one would only open an egress path.
 case "$NET" in
-  none)     NETFLAG=(--network none) ;;
-  loopback) NETFLAG=(--network bridge -p 127.0.0.1::0) ;;
+  none|loopback) NETFLAG=(--network none) ;;
   *) echo "run-contained: --net must be none|loopback" >&2; exit 2 ;;
 esac
 
@@ -125,6 +131,7 @@ timeout "$TMO" "$DK" run --rm \
   --memory "$MEM" --memory-swap "$MEM" --pids-limit "$PIDS" --cpus "$CPUS" \
   --read-only --tmpfs /scratch:size=512m \
   --cap-drop ALL --security-opt no-new-privileges \
+  --user 1000:1000 \
   -v "$MOUNT_SRC:/target:ro" \
   -v "$VOL:/artifacts" \
   "$IMAGE" \
@@ -132,16 +139,21 @@ timeout "$TMO" "$DK" run --rm \
 RC=$?
 set -e
 
-# Copy findings out of the disposable volume, then the trap removes it. A silent
-# copy-out failure would strand every finding in the volume and read as a clean
-# run, so warn loudly on any step that fails rather than swallowing it.
+# Copy findings out of the disposable volume, then the trap removes it. A copy-out
+# failure strands every finding in the volume, so it must not read as a clean run:
+# exit 4 (distinct from the campaign's own RC) so a caller keying on the exit code
+# treats the run as INVALID rather than trusting an empty artifacts dir.
+COPY_OK=1
 cid="$($DK create -v "$VOL:/artifacts" "$IMAGE" true 2>/dev/null)"
 if [ -z "$cid" ]; then
-  echo "run-contained: WARN could not open the artifacts volume to copy findings out; any output is stranded in $VOL" >&2
+  echo "run-contained: ERROR could not open the artifacts volume to copy findings out; output is stranded in $VOL (treat this run as INVALID)" >&2
+  COPY_OK=0
 else
   if ! $DK cp "$cid:/artifacts/." "$ARTIFACTS/" 2>/dev/null; then
-    echo "run-contained: WARN findings copy-out failed; output may be stranded in $VOL (treat this run as INVALID, not clean)" >&2
+    echo "run-contained: ERROR findings copy-out failed; output may be stranded in $VOL (treat this run as INVALID, not clean)" >&2
+    COPY_OK=0
   fi
   $DK rm "$cid" >/dev/null 2>&1 || true
 fi
+[ "$COPY_OK" -eq 1 ] || exit 4
 exit "$RC"

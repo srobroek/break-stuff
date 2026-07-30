@@ -121,7 +121,7 @@ FINDING=$(bd create "finding: <one-line claim>" --parent <surface> --labels brk-
 | Field | Values |
 |---|---|
 | `tier` | `PROVEN` (repro or traced exploit path) · `REACHABLE` (path traced, no repro) · `HARDENING` (no path, or tool-only) · `REFUTED` (challenger disproved it) |
-| `by` | who set the tier: `challenger` (an independent pass) or `self` (the finder tiered inline, no independent pass). The report headlines a `self` tier as unchallenged. |
+| `by` | who set the tier: `challenger` (an independent pass) or `self` (the finder tiered its own finding inline). The report headlines a `self` tier as unchallenged. |
 | `source` | what produced the finding: `synthesized-rule` · `stock-pack` · `harness` · `read`. The report's provenance table groups on it, so a stock-only sweep is visible rather than presented as an audit. |
 | `impact` | `CRITICAL` · `HIGH` · `MEDIUM` · `LOW`, calibrated per surface doc |
 | `locus` | `file:line`, always |

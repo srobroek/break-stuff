@@ -100,8 +100,15 @@ MUST Seed a destructive-looking payload as data the target parses, not as a comm
 The backstop that lives outside the sandbox. A monitor inside the container can be
 subverted by what it monitors; a host-side hook watching the filesystem cannot.
 
-Wire a `PostToolUse` (or `FileChanged`, where the harness supports it) hook, scoped
-to the campaign, that halts on any observable the container should have prevented:
+This package ships no tripwire hook. It is an optional control the operator wires
+into the running session, so a campaign that has not wired one has NO backstop and
+its report says exactly that (see the report line below). The container contract and
+the authoring ban are the controls that always apply; the tripwire is the extra net
+for the operator who wants it, not a guarantee the skill provides on its own.
+
+When wired, it is a `PostToolUse` (or `FileChanged`, where the harness supports it)
+hook, scoped to the campaign, that halts on any observable the container should have
+prevented:
 
 | Tripwire | Halt because |
 |---|---|
@@ -118,11 +125,19 @@ NOT Never disable the tripwire to let a campaign finish. The tripwire firing is 
 ## Report line
 
 Every campaign states its isolation posture, so a reader knows what the findings
-were produced under:
+were produced under. The tripwire line reports its ACTUAL state, and reads
+`none wired` when the operator ran no tripwire:
 
 ```
-Isolation: docker, --network none, mem 2g, pids 512, target ro, non-root.
+Isolation: docker, --network none, mem 2g, pids 512, target ro, non-root (--user 1000:1000).
+           host tripwire: none wired (container contract + authoring ban only).
+```
+
+or, when the operator wired one:
+
+```
            host tripwire active (artifacts-dir + 3 canaries). No trip.
 ```
 
 MUST State the isolation posture in the report. A finding produced under an unknown or degraded posture is a finding whose blast radius the reader cannot judge.
+MUST Report the tripwire's real state, `none wired` when none ran. Claiming a tripwire that was never wired invents a backstop the campaign did not have, which is worse than admitting there was none.
