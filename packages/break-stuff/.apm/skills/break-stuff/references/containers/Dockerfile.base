@@ -1,19 +1,48 @@
 # break-stuff base image. Every surface image extends this.
 #
-# Two jobs: a non-root user that OWNS /artifacts (so a named volume is writable
-# without --user gymnastics and without running root), and the cross-surface
-# floor tools. Per-surface images add their toolchain on top; the agent may add a
-# thin extension layer at recon time when a target needs a tool the base lacks
-# (see references/isolation.md, "Extending an image").
+# Language-free floor: a non-root user that OWNS /artifacts (so a named volume is
+# writable without --user gymnastics and without running root), the shell/config
+# tooling, and the cross-surface scanners that apply to any target (gitleaks,
+# opengrep, ast-grep). A language surface adds its toolchain on top via a fragment
+# under layers/ (see Dockerfile.rust); the agent may add a thin extension layer at
+# recon time when a target needs a tool the base lacks (references/isolation.md,
+# "Extending an image").
 #
 # Build: docker build -f Dockerfile.base -t break-stuff/base:1 .
 FROM debian:stable-slim
 
-# Cross-surface floor: shell + config scanners that apply to any target.
+# Cross-surface floor: shell tools + config scanners that apply to any target.
 RUN apt-get update -q \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl git ripgrep shellcheck jq python3 python3-pip \
+      ca-certificates curl git ripgrep shellcheck jq python3 python3-pip unzip \
  && rm -rf /var/lib/apt/lists/*
+
+# Binary scanners, pinned and arch-aware. dpkg --print-architecture gives the
+# Debian arch (arm64|amd64); each release names its arm64 asset differently, so
+# map once. Renovate tracks each version via the '# renovate:' comment on the ARG.
+# renovate: datasource=github-releases depName=gitleaks/gitleaks
+ARG GITLEAKS_VERSION=8.30.1
+# renovate: datasource=github-releases depName=ast-grep/ast-grep
+ARG ASTGREP_VERSION=0.45.0
+# renovate: datasource=github-releases depName=opengrep/opengrep
+ARG OPENGREP_VERSION=1.26.0
+# renovate: datasource=github-releases depName=mvdan/sh
+ARG SHFMT_VERSION=3.13.1
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      arm64) gl=linux_arm64; ag=aarch64-unknown-linux-gnu; og=aarch64; sf=arm64 ;; \
+      amd64) gl=linux_x64;   ag=x86_64-unknown-linux-gnu;  og=x86;     sf=amd64 ;; \
+      *) echo "break-stuff base: unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${gl}.tar.gz" \
+      | tar -xz -C /usr/local/bin gitleaks; \
+    curl -fsSL -o /tmp/ast-grep.zip "https://github.com/ast-grep/ast-grep/releases/download/${ASTGREP_VERSION}/app-${ag}.zip"; \
+    unzip -o /tmp/ast-grep.zip -d /usr/local/bin; rm /tmp/ast-grep.zip; \
+    curl -fsSL -o /usr/local/bin/opengrep "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_${og}"; \
+    curl -fsSL -o /usr/local/bin/shfmt "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_${sf}"; \
+    chmod +x /usr/local/bin/gitleaks /usr/local/bin/ast-grep /usr/local/bin/opengrep /usr/local/bin/shfmt; \
+    gitleaks version; ast-grep --version; opengrep --version; shfmt --version
 
 # A non-root user that owns the artifacts mount. The named volume inherits this
 # ownership on first mount, so the campaign writes findings without running root
