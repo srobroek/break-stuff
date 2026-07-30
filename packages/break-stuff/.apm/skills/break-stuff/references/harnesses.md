@@ -17,7 +17,7 @@ cannot find is a harness nobody runs again:
 | no fuzz convention at all | `tests/fuzz/` for a new dir, and state the choice in the report |
 
 MUST Leave every harness uncommitted and list its path in the report, since committing is the user's call.
-MUST Match the repo's existing test idiom: its runner, its naming, its fixture location. A harness in a foreign style gets deleted rather than maintained.
+MUST Match the repo's existing test idiom for its runner and naming, and place fixtures where the repo already keeps them. A harness in a foreign style gets deleted rather than maintained.
 NOT Never overwrite an existing harness. Add a new one beside it, because the existing corpus and regression history live with the old file.
 
 ## Choosing the generator
@@ -74,7 +74,7 @@ Each vector is one JSON object with four fields:
 ```
 
 Verdict semantics that trip authors: a decision the target never emits counts as
-`allow` (silence is not a block, so a guard that stays quiet on a catastrophic
+`allow` (silence is not a block, so a guard that emits nothing on a catastrophic
 command is a BYPASS); an `ask` verdict is flagged STALL because it blocks an
 autonomous agent. Cover every wrapper form from `surfaces/shell.md`, plus one
 benign vector per guarded pattern to catch over-blocking.

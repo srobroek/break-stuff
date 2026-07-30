@@ -1,7 +1,7 @@
 # Isolation and guardrails
 
 Execution runs in a container, never on the host. A Worktrunk lease is a
-filesystem boundary only: same kernel, same network, same credentials. A campaign
+filesystem boundary only: it shares the host kernel and network, and runs under the host's own credentials. A campaign
 that fuzzes a parser, runs a `build.rs`, or drives a dev server is running code
 whose behaviour is the unknown under test, so it runs where a destructive effect
 has nowhere to land.
@@ -58,7 +58,7 @@ surface's critical tool runs inside the image:
 scripts/run-contained.sh --assert-tools break-stuff/<surface>:1 <tool[,tool...]>
 ```
 
-Assert EVERY tool the surface's campaign will invoke, not only the fuzzer — a
+Assert EVERY tool the surface's campaign will invoke, not only the fuzzer. A
 missing scanner is the same silent-clean as a missing fuzzer. Pass the full
 comma-list the surface doc's Tools table names:
 
@@ -69,12 +69,12 @@ comma-list the surface doc's Tools table names:
 | `break-stuff/node:1` | `jazzer,fast-check,retire` |
 | `break-stuff/base:1` | `semgrep,shellcheck,ripgrep` |
 
-Exit 0 means every named tool answered `--version` inside the image; non-zero names
+Exit 0 means every tool answered `--version` inside the image; non-zero names
 the missing ones. Assert the complete set once, up front, so a campaign never
 discovers a missing scanner mid-run and reports its dimension as clean.
 
-MUST Assert EVERY tool the surface's campaign will invoke inside the image up front, not only the coverage-guided fuzzer. A campaign that runs a scanner or fuzzer without confirming it is present reports a clean result it did not earn, and a missing scanner is as silent as a missing fuzzer.
-MUST Refuse the fuzz phase and report the surface as uncovered when the assertion fails, rather than falling through to hand-written vectors and calling it fuzzed. Rebuild the image from `references/containers/` and retry, or record the gap in the report headline.
+MUST Assert EVERY tool the surface's campaign will invoke inside the image up front, not only the coverage-guided fuzzer. An unconfirmed scanner or fuzzer yields a clean result the campaign did not earn; a missing scanner is as silent as a missing fuzzer.
+MUST Refuse the fuzz phase and report the surface as uncovered when the assertion fails. Do not use hand-written vectors instead and call it fuzzed. Rebuild the image from `references/containers/` and retry, or record the gap in the report headline.
 
 ## Degrade loudly, never silently
 
@@ -82,7 +82,7 @@ A container runtime may be absent (`docker`, `podman`, `finch`, `nerdctl`). Sinc
 execution is container-mandatory, the run cannot proceed to an execution phase
 without one.
 
-MUST Probe for a runtime at step 3 and, when none is present, refuse the execution phases and say so in the report: static scanning and recon ran, fuzzing and DAST and build-execution did not, and the coverage gap is the whole execution surface.
+MUST Probe for a runtime at step 3 and, when none is present, refuse the execution phases and say so in the report. Static scanning and recon ran; fuzzing and DAST and build-execution did not; and the coverage gap is the whole execution surface.
 MUST Never fall back to host execution when no container is available. A host-only fuzz run is the exact unbounded risk the container exists to prevent, and a silent fallback presents it as a completed campaign.
 NOT Never weaken the container contract (add network, drop the mem cap, run root) to make a harness pass. A harness that only runs unconfined is a harness that does not run.
 
@@ -92,7 +92,7 @@ The container contains a blast; this stops the fuzzer from arming one. Even insi
 isolation, an input whose *purpose* is an irreversible effect is never generated.
 
 MUST Fuzz the code path that RECEIVES a destructive input, never author a harness that EXECUTES the destructive branch. A parser that mishandles `rm -rf /` is the target; running `rm -rf /` is not the test.
-NOT Never generate an input class whose effect is irreversible even in the container: a real `rm`/`mkfs`/`dd` to a device, a `DROP`/`TRUNCATE` against a live database, a fork bomb, a disk-filling loop. The finding is that the target accepts the input, not that the effect happened.
+NOT Never generate an input class whose effect is irreversible even in the container: a real `rm`/`mkfs`/`dd` to a device; a `DROP`/`TRUNCATE` against a live database; a fork bomb; a disk-filling loop. The finding is that the target accepts the input, not that the effect happened.
 MUST Seed a destructive-looking payload as data the target parses, not as a command the harness runs. `{"command":"rm -rf /"}` fed to a guard is a vector; `os.system("rm -rf /")` in a harness is an attack on the machine.
 
 ## The host tripwire
@@ -100,8 +100,15 @@ MUST Seed a destructive-looking payload as data the target parses, not as a comm
 The backstop that lives outside the sandbox. A monitor inside the container can be
 subverted by what it monitors; a host-side hook watching the filesystem cannot.
 
-Wire a `PostToolUse` (or `FileChanged`, where the harness supports it) hook, scoped
-to the campaign, that halts on any observable the container should have prevented:
+This package ships no tripwire hook. It is an optional control the operator wires
+into the running session, so a campaign that has not wired one has NO backstop and
+its report says exactly that (see the report line below). The container contract and
+the authoring ban are the controls that always apply; the tripwire is the extra net
+for the operator who wants it, not a guarantee the skill provides on its own.
+
+When wired, it is a `PostToolUse` (or `FileChanged`, where the harness supports it)
+hook, scoped to the campaign, that halts on any observable the container should have
+prevented:
 
 | Tripwire | Halt because |
 |---|---|
@@ -110,7 +117,7 @@ to the campaign, that halts on any observable the container should have prevente
 | An outbound connection beyond loopback from a campaign process | `--network none` was bypassed or a phase ran unconfined |
 | Disk or inode growth past the budget, a pid/fd runaway | a resource attack the container caps should have bounded |
 
-MUST Seed canaries OUTSIDE the container mounts before an execution phase, and read them after, since a canary the campaign can reach is a canary that proves reach.
+MUST Seed canaries OUTSIDE the container mounts before an execution phase, and read them after, since a canary reachable by the campaign is a canary that proves reach.
 MUST Halt the campaign, preserve the artifacts, and report on any tripwire rather than continuing. A campaign that trips a guardrail and keeps running has already lost the property the guardrail asserts.
 MUST Treat a tripwire hit as a finding about the ISOLATION, reported alongside the target findings, since the campaign reaching the host is worse news than anything it found in the target.
 NOT Never disable the tripwire to let a campaign finish. The tripwire firing is the campaign telling you it escaped.
@@ -118,11 +125,19 @@ NOT Never disable the tripwire to let a campaign finish. The tripwire firing is 
 ## Report line
 
 Every campaign states its isolation posture, so a reader knows what the findings
-were produced under:
+were produced under. The tripwire line reports its ACTUAL state, and reads
+`none wired` when the operator ran no tripwire:
 
 ```
-Isolation: docker, --network none, mem 2g, pids 512, target ro, non-root.
+Isolation: docker, --network none, mem 2g, pids 512, target ro, non-root (--user 1000:1000).
+           host tripwire: none wired (container contract + authoring ban only).
+```
+
+or, when the operator wired one:
+
+```
            host tripwire active (artifacts-dir + 3 canaries). No trip.
 ```
 
 MUST State the isolation posture in the report. A finding produced under an unknown or degraded posture is a finding whose blast radius the reader cannot judge.
+MUST Report the tripwire's real state, `none wired` when none ran. Claiming a tripwire that was never wired invents a backstop the campaign did not have, which is worse than admitting there was none.

@@ -33,7 +33,7 @@ the whole budget failing at the parser.
 
 MUST Record the input shape on the harness wisp during recon, since the shape picks the tool and a wrong pick wastes the whole budget at the parser.
 MUST Prefer a structure-aware generator whenever a schema, grammar, or `.proto` exists in the repo, because the repo already told you the shape.
-NOT Never hand-write a corpus a listed tool would generate. A hand-written corpus is smaller, less varied, and unmaintained.
+NOT Never hand-write a corpus a listed tool would generate. A hand-written corpus is smaller and less varied, and it goes unmaintained.
 
 ## Generators and mutators
 
@@ -71,7 +71,7 @@ DEFAULT Prefer the language's native coverage-guided fuzzer when one exists, and
 
 | Tool | Role | Invocation |
 |---|---|---|
-| CASR | crash triage: dedup by stack, severity classification, report generation | `casr-san -o <out>.casrep -- <bin> <input>` then `casr-cluster -d <indir> -o <outdir>` (resident: `mise use cargo:casr`) |
+| CASR | crash triage: dedup by stack; severity classification; report generation | `casr-san -o <out>.casrep -- <bin> <input>` then `casr-cluster -d <indir> -o <outdir>` (resident: `mise use cargo:casr`) |
 | afl-tmin | input minimization for AFL++ targets | `afl-tmin -i <crash> -o <min> -- <bin> @@` |
 | afl-cmin | corpus minimization before a campaign | `afl-cmin -i <in> -o <out> -- <bin> @@` |
 | shrinkray | generic test-case reducer, any input shape | `uvx shrinkray <interestingness-test> <input>` |
@@ -81,7 +81,7 @@ DEFAULT Prefer the language's native coverage-guided fuzzer when one exists, and
 | `-merge=1` (libFuzzer) | corpus minimization | `<harness> -merge=1 <dest> <src>` |
 
 MUST Use CASR or the runner's own dedup rather than eyeballing stacks, since a fuzzer finds one bug many times and a hand count inflates the finding total.
-MUST Use afl-tmin, shrinkray, or the property runner's shrinker rather than manual reduction, because a tool-minimized input is reproducible and a hand-trimmed one is an assertion.
+MUST Use afl-tmin, shrinkray, or the property runner's shrinker; a tool-minimized input is reproducible, where a hand-trimmed one is an unverified assertion.
 MUST Verify a minimized input still crashes, since a minimizer that shrank past the bug yields a finding nobody can reproduce.
 
 ## Coverage measurement

@@ -1,6 +1,6 @@
 # Targeting
 
-Resolve the user's target into an explicit file list, a base ref, and a checkout
+Resolve the user's target into an explicit file list, a base ref, then a checkout
 decision. Every later step consumes this resolution rather than re-deriving it.
 
 ## Target kinds
@@ -50,7 +50,7 @@ MUST Record the checkout path on the run epic, so every agent works in the same 
 
 ## Scoping by analysis class
 
-A bounded target changes what a scanner can honestly conclude:
+A bounded target changes what a scanner can conclude:
 
 | Class | Behaviour on a bounded target |
 |---|---|
@@ -59,8 +59,8 @@ A bounded target changes what a scanner can honestly conclude:
 | global | skip it and say so, since file-scoping a whole-program analysis produces false positives |
 | baseline | native to a ref target: run against the base and headline what the change introduced |
 
-MUST Skip global-class scanners on a bounded target and record the skip as "SKIPPED (scoped)" rather than as a missing tool, because the two demand different remediation.
-MUST On a ref target, headline what the diff introduced. A regression review answers "what did this change make worse", which is a different question from "what is wrong with this repo".
+MUST Skip global-class scanners on a bounded target and record the skip as "SKIPPED (scoped)". The label marks the tool as out of scope; a missing-tool label points the reader at an install instead.
+MUST On a ref target, headline what the diff introduced. A regression review asks whether this change made anything worse, a different question from what is wrong with the repo overall.
 
 ## Entry-point enumeration
 

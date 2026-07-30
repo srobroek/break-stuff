@@ -48,7 +48,7 @@ docs. A rule the project disabled with a stated reason caps at HARDENING.>
 
 ## Harnesses to execute
 <list the harness wisps for this surface. Discover them yourself with:
-  bd list --parent <surface-bead> --labels brk-harness --status open --json
+  bd list --parent <surface-bead> --label brk-harness --status open --json
 Claim each with `bd update <wisp> --claim` before running it.>
 
 ## Isolation (mandatory for execution)
@@ -90,7 +90,16 @@ catalogue.
    filing it.
 5. File a crash wisp per distinct crash and a finding wisp per non-crash finding,
    per `references/beads-store.md`. Persist every crashing input and record the
-   exact reproduce command.
+   exact reproduce command. Draw the correlation edge as you file
+   (`bd dep add <finding> <harness> --type discovered-from`, `bd dep add <crash>
+   <harness> --type caused-by`), and stamp `source` and, when traced, the
+   reachability `path` on every finding.
+6. File one `brk-coverage` wisp on the surface node with `scanners_run`,
+   `scanners_skipped`, `harnesses_run`, `harnesses_total` metadata before returning,
+   even on a clean surface. The close-out gate requires it, so a surface without one
+   reads as untested. Record a scanner that matched no files as
+   `SKIPPED (matched no files)`, not run, since a scan over zero files tested
+   nothing and would otherwise read as clean.
 
 ## What you MUST NOT do
 - Edit, patch, or fix anything, including a harness that looks wrong. Report a

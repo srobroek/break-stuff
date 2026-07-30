@@ -1,8 +1,8 @@
 # Fuzzer Brief Template
 
 Construct one Brief per surface for step 4. `fuzzer` writes harnesses, corpora, and
-attack scenarios, and executes nothing. Pass facts only: the surface, the entry
-points, the repo's conventions, and the wisp to file against.
+attack scenarios, and executes nothing. Pass facts only: the surface with its entry
+points and conventions, and the wisp to file against.
 
 Spawn the fuzzers in parallel, one message with several Agent calls, one per
 surface in the step-4 plan.
@@ -39,6 +39,19 @@ is a candidate for a repo-specific rule or a targeted harness.>
 <the reachable entry points found in step 2: parse functions, CLI commands, hook
 scripts, HTTP handlers, config readers, agent definitions. One line each with a
 file:line. This is your work list.>
+
+## Attack-vector baseline recon ranked (write these first)
+<the boundary-anchored vectors from `escalation.md`, ranked by the blast radius of
+the assumption each breaks. Each names a boundary file:line and the vector class its
+shape invites. Author the highest-ranked first, since the budget is finite and the
+top boundary is where a proven finding pays for the run.>
+
+## Input shape per entry point (from recon, do not re-infer)
+<the input protocol recon recorded for each entry point: raw bytes, single JSON,
+JSONL, msgpack, protobuf, argv, env, or a schema/grammar the repo ships. This picks
+the generator in `fuzz-tools.md`, and recon already determined it, so read it here
+rather than re-deriving it. A wrong pick spends the whole budget failing at the
+parser. Stamp it on the harness wisp as `input_shape`.>
 
 ## Repo conventions (mirror these)
 - Fuzz target location: <fuzz/fuzz_targets/ | *_test.go | tests/fuzz/ | none found>

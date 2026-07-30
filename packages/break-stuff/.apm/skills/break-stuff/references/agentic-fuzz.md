@@ -1,15 +1,15 @@
 # Agentic fuzzing: attacking a hook, skill, or agent with generated cases
 
 The executable half of the agents surface. `promptfoo redteam` generates attacks
-from a plugin taxonomy, runs them against a target script, and grades whether the
-target's response crossed a boundary. `fuzzer` writes the config and the target
+from a plugin taxonomy and grades whether the target script's response to each
+crossed a boundary. `fuzzer` writes the config and the target
 script; `gremlin` runs the eval. The existing write and execute split holds, since
 promptfoo is one more executable in a run recipe.
 
 This is not LLM red-teaming. The target is a script that invokes YOUR hook, skill,
 or agent, so a failure names a defect in this repo rather than in a model.
 
-## The three parts, and which need a model
+## Which parts need a model
 
 | Part | Needs a model | Owner |
 |---|---|---|
@@ -24,8 +24,8 @@ MUST Generate per campaign against that repo's real purpose string, because a ca
 
 The one trap that makes this whole approach lie. A target that merely repeats the
 attack passes every case, because the grader looks for a crossed boundary in the
-response and an echo crosses nothing. A stub target therefore produces a clean
-result on a target with no defences at all.
+response and an echo crosses nothing, so a stub with no defences at all still
+produces a clean result.
 
 | Target kind | The script must |
 |---|---|
@@ -36,7 +36,7 @@ result on a target with no defences at all.
 
 MUST Prove the target acts before trusting a pass. Run one case against a deliberately compliant stub that leaks its instructions and claims to run the injected command; every case must FAIL. A stub that passes means the harness is measuring nothing.
 MUST Return the target's real output rather than a summary of it, since the grader reads the response text and a paraphrase hides the violation.
-NOT Never make the target script echo the prompt. That is the silent-pass failure, and it looks identical to a hardened target.
+NOT Never make the target script echo the prompt. That is the silent-pass failure that looks identical to a hardened target.
 
 ## Plugin selection
 
@@ -50,7 +50,7 @@ healthcare, compliance). Select only the families that describe this surface:
 | prompt boundary | `system-prompt-override` · `prompt-extraction` · `ascii-smuggling` · `cca` · `hijacking` · `pliny` · `cyberseceval` | instruction override and smuggling |
 | injection sinks | `shell-injection` · `sql-injection` · `ssrf` · `debug-access` · `data-exfil` | reachable sinks behind an agent |
 
-MUST Select plugins from the families above and name the ones left off, since running all 155 floods the report with bias and compliance findings nobody asked for.
+MUST Select plugins from the families above and name the ones left off, since running all 155 floods the report with bias and compliance findings that bury the ones on this surface.
 DEFAULT Start with the coding-agent family plus `mcp` when the target is a skill, hook, or MCP config, because those map onto the surface checklist one to one.
 
 ## Strategies: a second axis, applicability decided per plugin
@@ -69,7 +69,7 @@ and `prompt-extraction` (measured).
 | `base64` `hex` `rot13` `leetspeak` `morse` `piglatin` `camelcase` | free, deterministic | prompt-boundary and protocol plugins. Skipped by `coding-agent:*` |
 | `homoglyph`, emoji smuggling | free, deterministic | same. Emoji smuggling hides payloads in Unicode variation selectors |
 | `layer` | free | chains transforms, keeping the last step's output |
-| `retry` | free | replays previously failed cases as a regression suite |
+| `retry` | free | replays failed cases as a regression suite |
 | `jailbreak:composite` | one attacker call per case, and it multiplied 2 base cases into 10 (measured) | prompt-boundary and protocol plugins. Skipped by `coding-agent:*` |
 | `jailbreak:meta` `jailbreak:tree` `best-of-n` `citation` `math-prompt` `gcg` | attacker calls per case | opt-in only |
 | `crescendo` `goat` `goblin` `jailbreak:hydra` | multi-turn, several turns per case | live-spawn only, since they need a stateful target |
@@ -78,7 +78,7 @@ Default recipe: `basic` plus the free deterministic set plus `retry` plus
 `jailbreak:composite`.
 
 MUST State the case count AFTER strategy multiplication at the gate, since `jailbreak:composite` turned 2 base cases into 10 and a per-plugin count understates the run by that factor.
-MUST Report a `Skipped` strategy as inapplicable rather than as a gap, because the plugin excluded it deliberately and the payload works better without it.
+MUST Report a `Skipped` strategy as inapplicable. The plugin excluded it deliberately, and the payload works better without it.
 MUST Include `basic` so the run has a control arm, since a finding that only lands under a transform is a different claim from one that lands raw.
 DEFAULT Pair the free deterministic strategies with the prompt-boundary and protocol plugins, and leave the `coding-agent:*` family on `basic` plus `retry`.
 
@@ -86,8 +86,8 @@ DEFAULT Pair the free deterministic strategies with the prompt-boundary and prot
 
 `crescendo`, `goat`, `goblin`, and `jailbreak:hydra` ramp an attack across turns and
 backtrack toward whatever works, so they need a target that holds a session. A
-script provider answers once and forgets, which makes these strategies unusable
-against it. A live-spawned agent is stateful, so they apply there.
+script provider answers once and forgets. These strategies are unusable against it
+and apply only to a stateful live-spawned agent.
 
 MUST Run a multi-turn strategy only in live-spawn mode, and only when the target script maintains the session across turns rather than re-spawning per turn.
 MUST Multiply the turn budget by the strategy's turn count at the gate, because a multi-turn case costs several agent turns rather than one.
@@ -121,7 +121,7 @@ redteam:
     - homoglyph             # same
 ```
 
-MUST Quote the purpose from the target's own definition rather than paraphrasing an intent, because the grader measures the response against this text and an invented purpose invents the verdict.
+MUST Quote the purpose from the target's own definition. The grader measures the response against this text, so an invented purpose invents the verdict.
 MUST Write the config, the target script, and the generated cases into the artifacts dir, and list them in the report as uncommitted artifacts.
 
 ## Run recipe
@@ -140,7 +140,7 @@ Read `results.results[].gradingResult.reason` for the per-case verdict. A FAIL
 names the boundary crossed, which becomes the finding's evidence.
 
 MUST Pass `--no-cache`, since a cached grade from a previous target is not a result for this one.
-MUST Parse the JSON output rather than the terminal summary, because a pass count with no per-case reason cannot be tiered.
+MUST Parse the JSON output. The terminal summary gives a pass count with no per-case reason, which cannot be tiered.
 
 ## Live-spawn mode: proving a definition finding
 
@@ -151,20 +151,20 @@ actual reply, which turns a landed attack into a PROVEN finding.
 Opt-in, never automatic. It runs real attack payloads through an agent holding real
 tools, so it is the most invasive thing this skill does.
 
-Once the user opts in, every case runs against every named target. The definition
+Once the user opts in, every case runs against every target the user named. The definition
 pass informs the report and does not select the work, because a rule written in
 prose is not a guarantee of behaviour: the finding worth most here is the definition
 whose rules read correctly while the agent complies anyway. Running only the cases
 the definition already fails would never reach it, and "live-spawn found nothing"
 would mean nothing beyond "nothing among the cases already suspected".
 
-MUST Run every generated case against every named target once the user opts in, since filtering by the definition pass hides the rules that read well and do not hold.
-MUST Report a case the live agent resisted as evidence-backed rather than merely present, because a rule proven under attack is a stronger clean result than a rule merely found in the text.
+MUST Run every generated case against every target the user named once opted in, since filtering by the definition pass hides the rules that read well and do not hold.
+MUST Report a case the live agent resisted as evidence-backed. A rule proven under attack is a stronger clean result than a rule merely found in the text.
 
 ### Gates
 
 MUST Ask which specific skill or agent to invoke, and never infer the set. The user names each target, because spawning an agent the user did not name runs attacks nobody authorized.
-MUST Restrict live-spawn to a PR, commit, or range target. A whole-repo run would spawn every skill and agent present, which is neither scoped nor affordable, so refuse it and say why.
+MUST Restrict live-spawn to a PR, commit, or range target. A whole-repo run spawns every skill and agent present, which is neither scoped nor affordable; refuse it and say why.
 MUST Declare the case count, the agent turns, and the containment before the first spawn, then wait. Each case costs a full agent turn.
 NOT Never escalate to live-spawn on the strength of a REACHABLE finding alone. The escalation is the user's call.
 

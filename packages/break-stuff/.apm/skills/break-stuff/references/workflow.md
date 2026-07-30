@@ -11,7 +11,7 @@ blocking gates apply:
 | Condition | Mode |
 |---|---|
 | A user is present to answer | interactive: both gates block |
-| CI, a cron run, or a sub-agent invocation | non-interactive: skip the gates, use defaults, record every gap |
+| CI, a cron run, or a sub-agent invocation | non-interactive: skip the gates and use defaults; record every gap |
 
 Check `bd` availability per `beads-store.md`. No `bd` stops the run.
 
@@ -64,26 +64,48 @@ Before running any scanner, find and read every config that governs it:
 |---|---|
 | `.semgrepignore`, `.banditrc`, `#[allow(...)]`, `# nosec`, `//nolint` | a rule the project disabled with a stated reason caps at HARDENING |
 | A scanner baseline file | anything in the baseline is pre-existing, so a diff run reports only what is new |
-| `SECURITY.md`, an accepted-risk doc, an ADR | a documented accepted risk is cited rather than re-reported |
+| `SECURITY.md`, an accepted-risk doc | a documented accepted risk is cited rather than re-reported |
 | `.gitleaksignore`, a secrets allowlist | an allowlisted value is not a finding |
 
 MUST Honor the project's config. Reporting a deliberately disabled rule as a new finding destroys the report's credibility, and the user stops reading it.
 MUST Record a suppression that carries no reason as its own HARDENING finding, since an unexplained suppression is a gap rather than a decision.
 
+### Step 3.6: repo-global pre-pass (compute once, share on the epic)
+
+Several facts are the same for every surface, so computing them per surface runs the
+same work N times in parallel. The orchestrator runs them once here, before the
+fan-out, and stamps the results on the epic for every agent to read:
+
+| Pre-pass work | Run once | Stamp on epic |
+|---|---|---|
+| Repo-global scanners: `dep-audit`/`secrets-scan` (or osv-scanner, gitleaks, cargo-audit), each whole-tree | one invocation, JSON to the artifacts dir | `global_scan_refs` (paths) |
+| The union of cross-surface scanner invocations: one `(tool, config, file-set)` run each, routed to owning surfaces via `surfaces/index.md` | one invocation per distinct tuple | `global_scan_refs` |
+| Baseline test suite (what already fails, per `surfaces/robustness.md`) | one run | `baseline_test_ref` |
+| Repo self-read: the falsifiable guarantees, documented limits, `SECURITY.md` scope, and git-incident notes | one read | `self_read_ref` |
+
+Each scout then reads `self_read_ref` instead of re-parsing the docs, and each
+gremlin cites `global_scan_refs` instead of re-running a whole-tree scanner. A
+surface gremlin runs only its own surface-specific scanners.
+
+MUST Run every repo-global scanner and the repo self-read once here, not per surface. A whole-tree dependency or secret scan run once per surface is the same scan N times, and the self-read re-parses the README and git history N times.
+MUST Record a pre-pass scanner in each surface's coverage as "covered by pre-pass" rather than "not run", so the coverage table credits work the surface did not repeat.
+MUST Route a pre-pass finding to its owning surface per `surfaces/index.md`, so a secret in a workflow file is attributed to infra and a shared finding is not double-counted across surfaces.
+
 ## Step 4: recon
 
 LOAD `recon.md` and follow it. Produce the trust map, invariant list, idiom census,
 and synthesized rules, then record each on the run epic and carry them into every
-Brief.
+Brief. Then LOAD `escalation.md` and build the attack-vector baseline from those
+artifacts: the ranked, boundary-anchored vectors that become the fuzzer's work list.
 
 MUST Recon before authoring, since a fuzzer with no invariants writes never-panics harnesses and nothing else.
-MUST Aim the standard packs here rather than running them unaimed, because an unaimed pack floods the report and the reader stops separating signal from volume.
+MUST Aim the standard packs here. An unaimed pack floods the report and the reader stops separating signal from volume.
 
 ## Step 5: author the attack plan
 
 Spawn one `fuzzer` per surface, in parallel, Briefed from `fuzzer-brief.md`. Each
 writes harnesses, corpora, vectors, and repo-specific rules from recon's
-invariants, files a wisp per artifact, and runs nothing.
+invariants. It files a wisp per artifact and runs nothing.
 
 `harness-only` mode stops here and reports what was written.
 
@@ -103,7 +125,7 @@ MUST Verify each harness reached its target using the runner's coverage output, 
 
 ### Step 6.5: live-spawn agentic fuzzing (opt-in)
 
-Only when the user opts in, only on a PR, commit, or range target, and only against
+Requires the user to opt in on a PR, commit, or range target, against the specific
 skills or agents the user names. Every generated case runs against every named
 target, inside a Worktrunk lease with canaries seeded outside it. See
 `references/agentic-fuzz.md` for the gates, containment, and tiering.
@@ -113,20 +135,23 @@ MUST Read the canaries and collect the artifacts before discarding the lease.
 
 ## Step 7: triage crashes
 
-`triager` claims each crash batch, dedups by stack, minimizes every input, and
+`triager` claims each crash batch. It dedups by stack, minimizes every input, then
 classifies memory-safety against robustness. Each minimized crash becomes a
 finding wisp, and its crash wisp closes.
 
 ## Step 8: prove or refute
 
 `challenger` claims every untiered finding wisp and stamps a tier plus an impact,
-Briefed from `challenger-brief.md`. Nothing is deleted.
+Briefed from `challenger-brief.md`. Nothing is deleted. Where several findings share
+a primitive, the challenger tests whether they chain per `escalation.md` and tiers
+the chain at its endpoint impact, since two MEDIUM primitives that reach code
+execution together are a CRITICAL that separate rows hide.
 
 `quick` mode skips this step, and its report states that every finding is untiered.
 
 **Solo / non-interactive runs.** A single agent that ran the finding step cannot
 also be the independent `challenger` without breaking "neither judges its own
-output". Two honest options, and the report must say which was taken:
+output". The report must say which honest path was taken:
 - **Spawn `challenger` anyway** when the run can spawn an agent (the default, even
   non-interactively): it is a fresh context that did not produce the findings, so
   the independence holds.
@@ -140,9 +165,11 @@ MUST Mark an inline tier `by=self` and headline the missing independent pass whe
 
 ## Step 9: report
 
-Emit per `report-template.md`, reading the finding set from beads rather than from
-the agents' replies. Cite bead IDs, list every written artifact by path, and state
-every coverage gap.
+Generate the structured JSON with `scripts/report-json.py --run-id run-<id> -o
+<artifacts>/run-<id>.json`, then emit the markdown per `report-template.md` from that
+JSON rather than from the agents' replies. The script reads the finding set from the
+beads export, so the report matches the durable graph. Cite bead IDs, list every
+written artifact by path, and state every coverage gap.
 
 MUST Manage the run by reading the graph, not by holding agent returns. Every agent returns a thin pointer (counts, bead ids, artifact paths) and writes its findings to wisps and artifacts, so the orchestrator's context stays flat across any number of surfaces and never compacts. Read the fat payloads from the wisps the returns point at, only when the report needs them.
 
@@ -151,10 +178,10 @@ MUST Manage the run by reading the graph, not by holding agent returns. Every ag
 Only on explicit approval. Spawn `hardener` per approved finding, then re-run the
 relevant scanners from step 6 and the relevant harnesses from step 7 to verify.
 
-`audit-only` refuses this step even when approval is offered: it means "do not FIX
+`audit-only` refuses this step even when approval is offered. It means "do not FIX
 the findings", not "write nothing". A regression test that reproduces a PROVEN
-finding is a description of the bug, not a fix, so it is written even in audit-only
-(the fix that makes it pass is what audit-only withholds). See the write policy below.
+finding documents the bug, so it is written even in audit-only (the fix that makes
+it pass is what audit-only withholds). See the write policy below.
 
 ## Failure handling
 

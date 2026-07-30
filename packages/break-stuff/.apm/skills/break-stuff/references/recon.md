@@ -28,7 +28,7 @@ with the severity already argued for you:
 
 | Source | What to extract |
 |---|---|
-| README, docs | promised guarantees, supported input ranges, and stated limits |
+| README, docs | promised guarantees; supported input ranges; stated limits |
 | `SECURITY.md`, threat model docs | what the project says is in and out of scope |
 | Design records and specs | invariants a decision depends on |
 | Project self-rules or a contributing guide | rules the project holds itself to, since a violated self-rule is a finding |
@@ -132,7 +132,7 @@ commit from then on.
 |---|---|
 | Produced a PROVEN or REACHABLE finding | graduate it: write it into the repo's own lint config so CI enforces it |
 | Produced only HARDENING findings | keep it in the artifacts dir, and offer it as an opt-in in the report |
-| Matched nothing on a repo where the invariant holds | keep it in the artifacts dir as a guard against the invariant being broken later |
+| Matched nothing on a repo where the invariant is true | keep it in the artifacts dir as a guard against the invariant being broken later |
 | Failed its own known-positive test | INVALID, so record it and never report its zero matches as clean |
 
 Graduating a rule means placing it where the project's existing tooling picks it

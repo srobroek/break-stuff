@@ -1,8 +1,8 @@
 # Surface: Shell scripts and hooks
 
 Shell is the highest-yield surface in an agentic repo. A PreToolUse guard is
-security-critical code that runs on every tool call, parses attacker-influenced
-JSON, and decides whether a command executes. Every bypass found in this repo's
+security-critical code: it runs on every tool call, parsing attacker-influenced
+JSON to decide whether a command executes. Every bypass found in this repo's
 own guards came from command-position anchoring, quoting, or fail-open inversion.
 
 ## Detect
@@ -49,14 +49,14 @@ NOT A hook that shellcheck passes is not safe. Shellcheck reads syntax; a fail-o
 ## Attacking a live guard without fighting it
 
 A PreToolUse guard under test is often the guard running on your own session, so a
-Bash tool call that carries an attack payload (a heredoc of `rm -rf /` vectors, a
+Bash tool call containing an attack payload (a heredoc of `rm -rf /` vectors, a
 probe command line) is inspected and denied by the deployed copy before it reaches
 the target. That is the guard working, not a test failure, but it blocks authoring.
 
 | Route | How | When |
 |---|---|---|
-| File, not command line | write vectors and probes to a file with the Write tool, never a heredoc or inline Bash; `fuzz-cli.py` reads the file | the default; the payload is data in a file, not a command |
-| Subprocess, not tool call | `fuzz-cli.py` invokes the guard as a subprocess with the payload on stdin, so the payload never becomes a Bash TOOL CALL and no PreToolUse hook sees it | always true of the harness itself |
+| File over command line | write vectors and probes to a file with the Write tool, never a heredoc or inline Bash; `fuzz-cli.py` reads the file | the default; the payload stays data in a file |
+| Subprocess over tool call | `fuzz-cli.py` invokes the guard as a subprocess with the payload on stdin, so the payload never becomes a Bash TOOL CALL and no PreToolUse hook sees it | always true of the harness itself |
 | Hook-free session | run the campaign under `claude --bare` (skips hooks) or a `--settings` file with no hooks, in a scratch dir outside the guarded repo | when even authoring trips the live guard |
 
 MUST Write attack payloads to a file rather than into a Bash command line, since the live guard inspects the command line and a catastrophic-looking payload is denied before the target sees it.

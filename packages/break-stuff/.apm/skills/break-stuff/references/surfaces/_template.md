@@ -35,9 +35,9 @@ observable that confirms it. Order by hit rate, highest first.
 
 ## Harness patterns
 
-How to fuzz this surface: the runner, the entry point shape, what an input looks
-like, and the invariant a crash violates. Point at `harnesses.md` for the generic
-form and state only what is specific here.
+How to fuzz this surface: the runner and the entry point shape, an example input,
+and the invariant a crash violates. Point at `harnesses.md` for the generic form
+and state only what is specific here.
 
 ## Impact calibration
 
