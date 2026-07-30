@@ -1,4 +1,4 @@
-# Break stuff
+# Sabot
 
 Let your agents attack your own repos: they drive security and fuzzing tools to find holes in your code, application, and prompts. It combines deterministic scanners with agent-driven exploration, hammers your own codebase until something breaks, then reports each finding with a reproducing input or a traced path.
 
@@ -8,8 +8,8 @@ Let your agents attack your own repos: they drive security and fuzzing tools to 
 Claude Code
 
 ```
-claude plugin marketplace add srobroek/break-stuff
-claude plugin install break-stuff@break-stuff
+claude plugin marketplace add srobroek/sabot
+claude plugin install sabot@sabot
 
 ```
 
@@ -17,20 +17,20 @@ Codex
 
 Note: Codex has not been fully tested yet, run at your own risk. 
 ```
-codex plugin marketplace add srobroek/break-stuff
-codex plugin add break-stuff@break-stuff
+codex plugin marketplace add srobroek/sabot
+codex plugin add sabot@sabot
 ```
 
 APM (Codex, and other APM runtimes)
 
 ```
-apm marketplace add srobroek/break-stuff --name break-stuff
-apm install break-stuff@break-stuff --target claude
-apm install break-stuff@break-stuff --target codex
+apm marketplace add srobroek/sabot --name sabot
+apm install sabot@sabot --target claude
+apm install sabot@sabot --target codex
 ```
 
 Pin a release by appending `@<tag>` to the marketplace-add, e.g.
-`srobroek/break-stuff@break-stuff--v0.1.0`.
+`srobroek/sabot@sabot--v0.1.0`.
 
 
 
@@ -71,12 +71,12 @@ reachable / hardening / refuted) and an impact, and are demoted rather than
 dropped. It is advisory: it writes harnesses, rules, and regression tests, and
 patches product code only on explicit approval.
 
-## Why "break-stuff"?
+## Why "sabot"?
 
-The package is named for what you type to invoke it: "break this hook",
-"red-team this agent", "fuzz this parser". The repo is `break-stuff` (the tool); the
-skill is `break-stuff` (the verb). You trigger it by asking to harden, red-team,
-fuzz, or break something.
+A sabot is the shoe a saboteur jams into the machine. The package is `sabot` (the
+tool and repo); the skill you invoke is `sabotage` (the verb). You trigger it by
+asking to harden, red-team, fuzz, attack, or break something, or by naming the
+`/sabotage` skill directly.
 
 
 
@@ -86,12 +86,12 @@ fuzz, or break something.
 Invoke the skill and name a target:
 
 ```
-break-stuff: red-team the PreToolUse guards in packages/hooks-bash-safety
-break-stuff: fuzz the FITS header parser in this crate
-break-stuff: audit this PR for security and robustness issues
+sabotage: red-team the PreToolUse guards in packages/hooks-bash-safety
+sabotage: fuzz the FITS header parser in this crate
+sabotage: audit this PR for security and robustness issues
 ```
 
-> ⚠️ **A full-repo scan is slow and token-hungry.** Running break-stuff against an
+> ⚠️ **A full-repo scan is slow and token-hungry.** Running sabot against an
 > entire repository can take an hour or more and consume a significant number of
 > tokens. It is a deliberately thorough, multi-agent process. **Scope tightly:**
 > point it at a single directory, a diff, a PR, or one surface. A whole-repo,
@@ -124,7 +124,7 @@ say so.
 
 ## Tools
 
-break-stuff drives mature, widely-used tools rather than reinventing them. Recon
+sabot drives mature, widely-used tools rather than reinventing them. Recon
 picks which apply to a target and builds the harness that aims them. Note that these tools are installed in the container on-demand depending on the agent's needs, and that these tools are driven by the agent based on its findings. 
 
 ### Static analysis & SAST
@@ -218,11 +218,11 @@ picks which apply to a target and builds the harness that aims them. Note that t
 
 | Path | What |
 |---|---|
-| `packages/break-stuff/.apm/skills/break-stuff/` | the skill router + reference docs |
+| `packages/sabot/.apm/skills/sabotage/` | the skill router + reference docs |
 | `.../scripts/fuzz-cli.py` | a JSON-stdin/CLI adversarial harness for any hook or guard |
 | `.../scripts/run-contained.sh` | the container wrapper every execution phase runs through |
 | `.../references/containers/` | per-surface Dockerfiles (rust, python, node), extensible |
-| `packages/break-stuff/.apm/agents/` | scout, fuzzer, gremlin, triager, challenger, hardener |
+| `packages/sabot/.apm/agents/` | scout, fuzzer, gremlin, triager, challenger, hardener |
 
 
 

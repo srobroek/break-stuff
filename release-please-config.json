@@ -43,7 +43,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "component": "srobroek-agentic",
+      "component": "sabot",
       "changelog-path": "CHANGELOG.md",
       "exclude-paths": [
         "packages"
@@ -56,9 +56,9 @@
         }
       ]
     },
-    "packages/break-stuff": {
+    "packages/sabot": {
       "release-type": "simple",
-      "component": "break-stuff",
+      "component": "sabot",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {

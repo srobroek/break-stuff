@@ -1,6 +1,6 @@
-name: break-stuff
+name: sabot
 version: 0.1.0
-description: Offensive and robustness auditing for code, scripts, hooks, and agents. Marketplace for the break-stuff package.
+description: Offensive and robustness auditing for code, scripts, hooks, and agents. Marketplace for the sabot package.
 author: Sjors Robroek
 license: Apache-2.0
 type: hybrid
@@ -40,8 +40,8 @@ marketplace:
   build:
     tagPattern: '{name}--v{version}'
   packages:
-    - name: break-stuff
-      source: ./packages/break-stuff
+    - name: sabot
+      source: ./packages/sabot
       category: security
       tags:
         - skill

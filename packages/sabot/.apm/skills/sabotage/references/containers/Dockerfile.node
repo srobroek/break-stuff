@@ -1,0 +1,10 @@
+# Node/web surface. Base + node, jazzer, fast-check, retire.
+ARG BASE=sabot/base:1
+FROM node:22-slim
+USER root
+RUN apt-get update -q && apt-get install -y --no-install-recommends ripgrep git >/dev/null \
+ && npm i -g @jazzer.js/core fast-check retire 2>&1 | tail -1 || true
+RUN useradd --create-home --uid 1000 breaker && mkdir -p /artifacts /scratch && chown breaker /artifacts /scratch
+USER breaker
+WORKDIR /scratch
+VOLUME /artifacts

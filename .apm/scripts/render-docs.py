@@ -349,10 +349,16 @@ CHANGELOG_SECTIONS = [
 
 
 def _build_release_config(pkgs: list[str]) -> dict:
+    # Root component is the repo's own apm.yml name, not a hardcoded monorepo id,
+    # so a renamed repo (or a fork of this template) tags its root release
+    # correctly instead of inheriting the original project's component.
+    root_name = (yaml.safe_load(APM_YML.read_text(encoding="utf-8")) or {}).get(
+        "name", "root"
+    )
     packages = {}
     packages["."] = {
         "release-type": "simple",
-        "component": "srobroek-agentic",
+        "component": root_name,
         "changelog-path": "CHANGELOG.md",
         "exclude-paths": ["packages"],
         "extra-files": [{"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}],
