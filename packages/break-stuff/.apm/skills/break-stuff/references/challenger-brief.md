@@ -40,38 +40,11 @@ a NEW finding wisp citing the constituent ids, tiered at its endpoint impact; th
 constituents stay unchanged (the no-delete rule holds). Trace every hop against the
 recorded `path` metadata before filing; an unverified hop makes it a HARDENING note.
 
-## Tiers (assign exactly one per finding)
-| Tier | Requires |
-|---|---|
-| PROVEN | a reproducing input you ran yourself, or a source-to-sink path you traced end to end with no control in between |
-| REACHABLE | a traced path from an entry point, with no reproduction available |
-| HARDENING | no traced path from any entry point, or the evidence is a scanner's word alone |
-| REFUTED | you established the finding is wrong: a false positive, an unreachable path, or a control the reporter missed |
-
-## Investigation protocol (per finding)
-1. Read the cited code. Is the pattern actually present as described?
-2. When a repro exists, run it. A repro that does not reproduce drops the finding
-   to REACHABLE at best, and to REFUTED when the claim depended on it.
-3. Trace reachability from a real entry point. Name the entry point, or record
-   that none exists.
-4. Look for the control the reporter missed: an upstream validation, a framework
-   default, a caller-side check, a project suppression with a stated reason, a
-   type that makes the case impossible.
-5. Attack the common overclaims:
-   - "attacker-controlled" -- who is the attacker, and how does their input arrive?
-   - "the scanner flagged it" -- is the flagged construct security-bearing here?
-   - "it crashes" -- on input a real caller can produce, or only under the harness?
-   - "unbounded" -- does an upstream cap exist, in a proxy, framework, or caller?
-   - "reachable" -- is the function called at all, from anywhere?
-6. Assign the impact level using the surface doc's calibration table, so severity
-   stays comparable across surfaces.
-
-## What you MUST NOT do
-- Edit, patch, or fix anything.
-- Delete or close a finding. A wrong finding becomes REFUTED with the refutation
-  recorded, since a deleted finding cannot be re-examined when the code changes.
-- Manufacture disagreement. Confirm a sound finding plainly.
-- Judge from the claim alone without reading the cited code.
+## Tiers and investigation protocol
+Follow the Tiers table, the per-finding investigation protocol (including the
+`path`-verify step and the overclaim attacks), and the MUST-NOT list in your agent
+definition. This Brief supplies the per-run facts; the standing method lives in the
+agent def, so it is stated once and cannot drift from it.
 
 ## What you write
 For each finding, stamp the wisp with a single merging `--metadata` blob (never

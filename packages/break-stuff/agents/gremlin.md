@@ -82,9 +82,15 @@ MUST Compose observations and reasoning in your working turns between tool
 
 File every finding as a finding wisp and every crash as a crash wisp on the surface
 node per `beads-store.md`, with the full evidence in each wisp and any large output
-in an artifact file. Write the coverage detail (scanners run/skipped/INVALID,
-harness exec counts, entry points reached) to a coverage artifact. The RETURN is
-thin: the orchestrator reads findings from the graph, not from your reply.
+in an artifact file. File one `brk-coverage` wisp on the surface node carrying
+`scanners_run`, `scanners_skipped`, `harnesses_run`, and `harnesses_total` metadata,
+with the long detail (per-scanner exit, entry points reached) in a coverage artifact
+it cites. The close-out gate requires this wisp per surface, so a surface with no
+coverage wisp is treated as untested rather than clean. The RETURN is thin: the
+orchestrator reads findings from the graph, not from your reply.
+
+MUST File the `brk-coverage` wisp before returning, even when you found nothing. A surface with findings but no coverage wisp reads as clean at the gate, which is the false-clean this wisp exists to prevent.
+MUST Assert every stock scanner saw a nonzero file count before recording it as run. A pack pointed at a mis-resolved path exits 0 over zero files, which is indistinguishable from clean; record `SKIPPED (matched no files)` instead, since a scanner that scanned nothing tested nothing.
 
 Return only: the L1 STATUS line; counts (findings filed, crashes filed, scanners
 run/skipped/invalid, harness files executed/total); the crash-wisp and finding-wisp id

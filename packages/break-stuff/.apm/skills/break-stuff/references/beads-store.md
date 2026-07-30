@@ -201,29 +201,49 @@ MUST Count a `blocked` (INVALID) harness as unfinished at the gate, not only an 
 
 ## Raw export: the graph IS the persistence
 
-The run graph is the campaign's single store, so no agent writes a parallel
-findings file. One command emits the whole run as parseable JSON for a machine
-reader, a diff against a later run, or an archive:
+The run graph is the campaign's single store, so no agent writes a parallel findings
+file. A wisp IS a bead (a `task` bead with a `brk-*` label and, for coordination
+wisps, `non-work`), so `bd export` emits every one with its metadata, labels,
+correlation edges, and comment bodies. `scripts/report-json.py` wraps that export.
+It filters to one run and reshapes each kept bead into the schema below, dropping the
+fields a report never uses.
 
 ```
-bd list --metadata-field run_id=<id> --all --json > <artifacts>/run-<id>.json
+report-json.py --run-id run-<id> -o <artifacts>/run-<id>.json
 ```
 
-That object holds every surface node, harness, crash, finding, and coverage record
-with its metadata, which is what lets the report generator read structure rather
-than prose and what carries work between agents: each of `scout`, `fuzzer`,
-`gremlin`, `triager`, and `challenger` reads its inputs from the wisps a prior agent
-filed (see Handoff chain) rather than from a parent's reply. Correlation is by
-`run_id` and by parent, so a finding traces to its surface, its harness, and its
-crash input without a join table.
+The script's output is what the report generator consumes; it reconstructs the whole
+run from that file rather than re-querying. The same graph carries work between
+agents, since each of `scout`, `fuzzer`, `gremlin`, `triager`, and `challenger`
+reads its inputs from the wisps a prior agent filed (see Handoff chain). Correlation
+needs no join table: `run_id` scopes the run, the parent edge places each wisp on its
+surface, and the typed edges (`discovered-from`, `caused-by`, `relates-to`) link a
+finding to the harness, crash, or chain it came from.
+
+### Report schema
+
+`report-json.py` emits one object: `run_id`, `epic`, and the arrays `surfaces`,
+`harnesses`, `crashes`, `findings`, `coverage`, plus a `summary` (`by_tier`,
+`by_impact`, `coverage_gaps`). Each record keeps only the report-relevant fields:
+
+| Record (by label) | Fields the script keeps |
+|---|---|
+| epic (`issue_type=epic`) | `run_id`, `target`, `base_sha`, `budget`, `artifacts` |
+| `brk-surface` | `surface`, `scope`, `parent` |
+| `brk-harness` | `entry_point`, `runner`, `harness_path`, `input_shape` |
+| `brk-crash` | `input_path`, `stack_hash` |
+| `brk-finding` | `tier`, `by`, `source`, `impact`, `locus`, `path`, `cwe`, `repro`, plus `edges` to its harness/crash/constituents |
+| `brk-coverage` | `scanners_run`, `scanners_skipped`, `harnesses_run`, `harnesses_total` |
+
+MUST Generate the report JSON with `report-json.py`, not a hand-written `bd export` filter. The script owns the schema, so a report never drifts from the shape a machine reader expects.
 
 Only the oversized payloads stay outside the graph, cited by absolute path in a bead
 comment. A bead holds the structure and the pointer; the file holds the bytes, so
-every `bd list` query stays small while the blobs remain one `cat` away. Those
-payloads are the recon document, the scanner JSON, the harness source, and the
-crash-input binaries.
+every query stays small while the blobs remain one `cat` away. Those payloads are the
+recon document, the scanner JSON, the harness source, and the crash-input binaries.
 
-MUST Emit the raw `run-<id>.json` alongside the report, since it is the parseable form of everything the markdown summarizes and the only export a later campaign can diff against.
+MUST Emit the raw `run-<id>.jsonl` from `bd export` alongside the report, since it is the parseable form of everything the markdown summarizes and the only export a later campaign can diff against.
+MUST Read the report from the export against the schema above, not from the agents' replies, so the report matches the durable graph and every finding carries its edges.
 NOT Never write a finding, tier, or coverage fact to a side file the graph does not also hold. A fact that lives only in a file breaks correlation and dies outside the run, which is the failure the graph exists to prevent.
 
 ## Resume

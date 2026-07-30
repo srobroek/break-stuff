@@ -46,6 +46,13 @@ the assumption each breaks. Each names a boundary file:line and the vector class
 shape invites. Author the highest-ranked first, since the budget is finite and the
 top boundary is where a proven finding pays for the run.>
 
+## Input shape per entry point (from recon, do not re-infer)
+<the input protocol recon recorded for each entry point: raw bytes, single JSON,
+JSONL, msgpack, protobuf, argv, env, or a schema/grammar the repo ships. This picks
+the generator in `fuzz-tools.md`, and recon already determined it, so read it here
+rather than re-deriving it. A wrong pick spends the whole budget failing at the
+parser. Stamp it on the harness wisp as `input_shape`.>
+
 ## Repo conventions (mirror these)
 - Fuzz target location: <fuzz/fuzz_targets/ | *_test.go | tests/fuzz/ | none found>
 - Test runner: <cargo test | go test | pytest | vitest>

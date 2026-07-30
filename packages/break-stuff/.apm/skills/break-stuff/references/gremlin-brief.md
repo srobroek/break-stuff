@@ -94,6 +94,12 @@ catalogue.
    (`bd dep add <finding> <harness> --type discovered-from`, `bd dep add <crash>
    <harness> --type caused-by`), and stamp `source` and, when traced, the
    reachability `path` on every finding.
+6. File one `brk-coverage` wisp on the surface node with `scanners_run`,
+   `scanners_skipped`, `harnesses_run`, `harnesses_total` metadata before returning,
+   even on a clean surface. The close-out gate requires it, so a surface without one
+   reads as untested. Record a scanner that matched no files as
+   `SKIPPED (matched no files)`, not run, since a scan over zero files tested
+   nothing and would otherwise read as clean.
 
 ## What you MUST NOT do
 - Edit, patch, or fix anything, including a harness that looks wrong. Report a

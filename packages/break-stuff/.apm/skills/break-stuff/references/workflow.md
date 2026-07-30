@@ -70,6 +70,27 @@ Before running any scanner, find and read every config that governs it:
 MUST Honor the project's config. Reporting a deliberately disabled rule as a new finding destroys the report's credibility, and the user stops reading it.
 MUST Record a suppression that carries no reason as its own HARDENING finding, since an unexplained suppression is a gap rather than a decision.
 
+### Step 3.6: repo-global pre-pass (compute once, share on the epic)
+
+Several facts are the same for every surface, so computing them per surface runs the
+same work N times in parallel. The orchestrator runs them once here, before the
+fan-out, and stamps the results on the epic for every agent to read:
+
+| Pre-pass work | Run once | Stamp on epic |
+|---|---|---|
+| Repo-global scanners: `dep-audit`/`secrets-scan` (or osv-scanner, gitleaks, cargo-audit), each whole-tree | one invocation, JSON to the artifacts dir | `global_scan_refs` (paths) |
+| The union of cross-surface scanner invocations: one `(tool, config, file-set)` run each, routed to owning surfaces via `surfaces/index.md` | one invocation per distinct tuple | `global_scan_refs` |
+| Baseline test suite (what already fails, per `surfaces/robustness.md`) | one run | `baseline_test_ref` |
+| Repo self-read: the falsifiable guarantees, documented limits, `SECURITY.md` scope, and git-incident notes | one read | `self_read_ref` |
+
+Each scout then reads `self_read_ref` instead of re-parsing the docs, and each
+gremlin cites `global_scan_refs` instead of re-running a whole-tree scanner. A
+surface gremlin runs only its own surface-specific scanners.
+
+MUST Run every repo-global scanner and the repo self-read once here, not per surface. A whole-tree dependency or secret scan run once per surface is the same scan N times, and the self-read re-parses the README and git history N times.
+MUST Record a pre-pass scanner in each surface's coverage as "covered by pre-pass" rather than "not run", so the coverage table credits work the surface did not repeat.
+MUST Route a pre-pass finding to its owning surface per `surfaces/index.md`, so a secret in a workflow file is attributed to infra and a shared finding is not double-counted across surfaces.
+
 ## Step 4: recon
 
 LOAD `recon.md` and follow it. Produce the trust map, invariant list, idiom census,
@@ -144,9 +165,11 @@ MUST Mark an inline tier `by=self` and headline the missing independent pass whe
 
 ## Step 9: report
 
-Emit per `report-template.md`, reading the finding set from beads rather than from
-the agents' replies. Cite bead IDs, list every written artifact by path, and state
-every coverage gap.
+Generate the structured JSON with `scripts/report-json.py --run-id run-<id> -o
+<artifacts>/run-<id>.json`, then emit the markdown per `report-template.md` from that
+JSON rather than from the agents' replies. The script reads the finding set from the
+beads export, so the report matches the durable graph. Cite bead IDs, list every
+written artifact by path, and state every coverage gap.
 
 MUST Manage the run by reading the graph, not by holding agent returns. Every agent returns a thin pointer (counts, bead ids, artifact paths) and writes its findings to wisps and artifacts, so the orchestrator's context stays flat across any number of surfaces and never compacts. Read the fat payloads from the wisps the returns point at, only when the report needs them.
 

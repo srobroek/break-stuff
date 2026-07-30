@@ -90,6 +90,10 @@ Run in order. The full procedure lives in `references/workflow.md`; LOAD it firs
      Baselines, suppressions, `# nosec` / `#[allow]` / `.semgrepignore`, and
      accepted-risk docs all govern. A rule the project disabled with a stated
      reason caps at HARDENING.
+   - **3.6. Repo-global pre-pass.** Run every whole-tree scanner (deps, secrets),
+     the union of cross-surface scanner invocations, the baseline test suite, and the
+     repo self-read ONCE, and stamp the results on the epic. Surfaces cite them
+     rather than recomputing per surface. See `references/workflow.md`.
 4. **Recon.** Spawn one `scout` per surface, in parallel, to derive this repo's own
    threat model: what it claims about itself, where its trust boundaries sit, how it
    does things and which places deviate, plus validated semgrep or ast-grep rules
