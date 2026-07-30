@@ -45,17 +45,23 @@ non-interactive run then takes the defaults below and records each as a gap.
    (a frontend with no framework marker, live web DAST the user wants) can be added
    here; a detected surface the user does not want scanned can be dropped. This is
    one message with question 3, not a separate prompt.
-3. **Which tools, what fuzz budget, and any blast-radius opt-in?** Run
+3. **Which tools, and what fuzz budget?** Run
    `<skill-dir>/scripts/install-tools.sh --probe` (a host preflight: confirms the
    container runtime, `bd`, and `git`, and which surface images exist; it does not
    install scanners on the host, which now run in the image). In one message, propose
    the full thorough tool set per detected surface as a tiered table (default-on
    pre-selected ON, opt-in shown OFF with a reason) together with a fuzz budget
-   table covering wall-clock per harness, parallel jobs, and memory cap. Live-spawn
-   agentic fuzzing and dev-server DAST run real payloads through real grants, so they
-   are OFF until the user names the target and opts in here. Then wait for the reply.
-   "go" means: install every missing default-on tool, accept the proposed budget, run
-   everything except the blast-radius opt-ins.
+   table covering wall-clock per harness, parallel jobs, and memory cap. Then wait
+   for the reply; "go" installs every missing default-on tool, accepts the budget,
+   and runs the default-on set. Do NOT list an action the hard rules forbid (a
+   network-host or third-party probe) here, even as unavailable.
+
+The blast-radius opt-ins (live-spawn agentic fuzzing, dev-server DAST) are NOT part
+of these three questions. They run real payloads through real grants, so each is a
+SEPARATE opt-in asked after the core, and only when its triggering surface is in
+scope: live-spawn when agent/skill/MCP definitions are present, DAST when a runnable
+web server is. When the trigger is absent, do not offer it at all. See
+`references/interview.md`.
 
 A **non-interactive** run (an invocation that says CI/cron/non-interactive, or a
 sub-agent with no channel to a human) takes the defaults rather than asking: the
@@ -100,10 +106,13 @@ Run in order. The full procedure lives in `references/workflow.md`; LOAD it firs
      Baselines, suppressions, `# nosec` / `#[allow]` / `.semgrepignore`, and
      accepted-risk docs all govern. A rule the project disabled with a stated
      reason caps at HARDENING.
-   - **3.6. Repo-global pre-pass.** Run every whole-tree scanner (deps, secrets),
-     the union of cross-surface scanner invocations, the baseline test suite, and the
-     repo self-read ONCE, and stamp the results on the epic. Surfaces cite them
-     rather than recomputing per surface. See `references/workflow.md`.
+   - **3.6. Repo-global pre-pass.** Delegate to a spawned agent: run every whole-tree
+     scanner (deps, secrets), the union of cross-surface scanner invocations, the
+     baseline test suite, and the repo self-read ONCE, write the output to the
+     artifacts dir, and return only the stamp values. Stamp them on the epic;
+     surfaces cite them rather than recomputing per surface. Image provisioning and
+     this pre-pass both run in spawned agents so their tool output never enters the
+     orchestrator's context. See `references/workflow.md`.
 4. **Recon.** Spawn one `scout` per surface, in parallel, to derive this repo's own
    threat model: what it claims about itself, where its trust boundaries sit, how it
    does things and which places deviate, plus validated semgrep or ast-grep rules

@@ -7,10 +7,27 @@ reachable by whoever controls that content.
 
 ## Detect
 
-`SKILL.md`, `*.agent.md`, `.mcp.json`, `settings.json` or `settings.local.json`
-carrying `hooks` or `permissions`, and any prompt template a program builds at
-runtime, when these are the PRODUCT under audit (a repo that ships agents, skills,
-or an MCP server as its deliverable).
+A repo lands on this surface two ways, and the first is usually the higher-value one.
+
+**Agentic CODE in the application**, detected by signature during recon rather than
+by a path glob: an import of `langgraph`, `langchain`, `crewai`, `llama_index`, or
+`semantic-kernel`, an LLM SDK (`openai`, `anthropic`), or a Bedrock-agent / AgentCore
+call; a prompt assembled from a variable and sent to a completion; `exec`, `eval`, or
+`subprocess` on a model response; a tool/function-calling definition; fetched content
+flowing into a prompt. This is a production agent in `src/`, and its injection and
+tool-grant paths are usually the real target. The `scout` finds it as part of recon
+(see the pattern list below), so the surface is present whenever those signatures
+appear in app code, with no `.claude`/`.mcp.json` needed.
+
+**Agent and tooling definitions and config**: `SKILL.md`, `*.agent.md`, `.mcp.json`,
+and `settings.json`/`settings.local.json` carrying `hooks` or `permissions`, when
+these are the PRODUCT under audit (a repo that ships agents, skills, or an MCP server
+as its deliverable). The user's own `.claude`/`.codex` tooling is excluded by default
+(see `targeting.md`); scanning it is a separate opt-in.
+
+Static analysis of agentic app code runs in the container like the code surface,
+always-on when detected. Live agentic-fuzzing of definitions is host-side and opt-in
+(see the isolation split below).
 
 The user's own agentic-tooling config (`.claude/`, `.codex/`, `.agents/`, `.cursor/`,
 a repo-root `CLAUDE.md`/`AGENTS.md`, `.apm/instructions/**`, `.apm/context/**`) is

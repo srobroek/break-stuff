@@ -53,15 +53,20 @@ MUST Record the entry points before step 4. A fuzzer given no entry points inven
 ## Step 3: probe, propose, wait
 
 1. Run `install-tools.sh --probe` (host preflight: runtime + `bd` + `git`, and which
-   surface images exist). Then provision the image per `installer.md` and
-   `isolation.md` Provisioning: build any missing surface image, then extend it with
-   the target's dev-deps by running
+   surface images exist). Then DELEGATE provisioning to a spawned agent rather than
+   running the builds inline: the build layers, `cargo fetch`, `npm ci`, and
+   `--assert-tools` output are exactly the noisy tool payloads that flood the
+   orchestrator's context. Spawn one provisioner (a `general-purpose` agent) Briefed
+   with the target dir, the detected surfaces, and the base image tags, told to run
+   the `isolation.md` Provisioning flow: build any missing surface image, extend each
+   with the target's dev-deps via
    `scripts/build-ext-image.sh --target <dir> --base break-stuff/<surface>:1 --tag break-stuff/<surface>-ext:1`
-   (it runs `detect-stacks.py`, writes a thin Dockerfile that copies only the
-   manifests+lockfiles, and builds the layer keyed on the lock). Then `--assert-tools`
-   the ext image and run the campaign against it. Tools run in the image, not on the
-   host.
+   (it runs `detect-stacks.py`, writes a thin Dockerfile copying only the
+   manifests+lockfiles, and builds the layer keyed on the lock), then `--assert-tools`
+   each ext image. It returns a thin pointer only: the resolved ext-image tags, the
+   stack map, and the per-image assert result. Tools run in the image, not on the host.
 
+MUST Delegate the image build, dev-dep bake, and `--assert-tools` to a spawned provisioner that returns only the ext-image tags, the stack map, and the assert result. Building inline pours every `docker build` and `cargo fetch` line into the orchestrator's context, which is the fat-payload-in-orchestrator anti-pattern step 9 forbids; the orchestrator manages the run, it does not build it.
 MUST Build and extend the surface image autonomously here, without a separate confirmation gate. The interview already authorized the toolset; provisioning the image to hold it executes that approved plan rather than deciding anything new. The blast-radius opt-ins (live-spawn, DAST) stay gated; the image build does not.
 2. Build the proposal per `installer.md`: every viable tool for each detected
    surface, default-on pre-selected ON, opt-in shown OFF with its reason.
@@ -88,8 +93,14 @@ MUST Record a suppression that carries no reason as its own HARDENING finding, s
 ### Step 3.6: repo-global pre-pass (compute once, share on the epic)
 
 Several facts are the same for every surface, so computing them per surface runs the
-same work N times in parallel. The orchestrator runs them once here, before the
-fan-out, and stamps the results on the epic for every agent to read:
+same work N times in parallel. Run them once here, before the fan-out, and stamp the
+results on the epic for every agent to read. DELEGATE the run to a spawned pre-pass
+agent, together with the step-3.5 config read: it executes the whole-tree scanners in
+the provisioned image, runs the baseline suite, reads the repo self-doc and the
+project security config, writes each output to the artifacts dir, and returns only
+the stamp values (`global_scan_refs`, `baseline_test_ref`, `self_read_ref`, the
+suppression list) as paths and counts. The orchestrator stamps those on the epic; it
+never holds the scanner or test output itself.
 
 | Pre-pass work | Run once | Stamp on epic |
 |---|---|---|
@@ -103,6 +114,7 @@ gremlin cites `global_scan_refs` instead of re-running a whole-tree scanner. A
 surface gremlin runs only its own surface-specific scanners.
 
 MUST Run every repo-global scanner and the repo self-read once here, not per surface. A whole-tree dependency or secret scan run once per surface is the same scan N times, and the self-read re-parses the README and git history N times.
+MUST Delegate the pre-pass and the step-3.5 config read to a spawned agent that writes its output to the artifacts dir and returns only the stamp values (paths and counts). Running the whole-tree scanners and the baseline suite inline floods the orchestrator with the output it exists to keep OUT of its context, the same fat-payload rule as step 9.
 MUST Record a pre-pass scanner in each surface's coverage as "covered by pre-pass" rather than "not run", so the coverage table credits work the surface did not repeat.
 MUST Route a pre-pass finding to its owning surface per `surfaces/index.md`, so a secret in a workflow file is attributed to infra and a shared finding is not double-counted across surfaces.
 

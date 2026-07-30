@@ -12,12 +12,13 @@ not for what was already given.
 
 ## What MUST be certain before recon
 
-The three STOP questions in `SKILL.md` are the gate; these five facts are what they
-resolve. Target, surfaces, and tools+budget are questions 1-3 directly; the user's
-threat rides on question 1 (it shapes the target and the report order) and
-blast-radius consent rides on question 3 (live-spawn and DAST are tools the user
-opts into). Until each fact is answered or defaulted-with-a-recorded-gap, the scope
-is not pinned.
+Ask the interview in two separate parts. A **core** every run asks pins what to
+attack and how much; a **blast-radius opt-in**, asked only when a triggering surface
+is in scope, authorizes the few actions that run real payloads through real grants.
+Do not fold the opt-in into the core questions, and never present an action the hard
+rules forbid.
+
+### Core (always asked, the three STOP questions)
 
 | Fact | STOP question | Why it changes the run | Unpins the run when |
 |---|---|---|---|
@@ -25,10 +26,28 @@ is not pinned.
 | User's threat | 1 | what the user fears decides which surface leads and orders the report | absent: the report prioritizes nothing |
 | Surfaces | 2 | each surface is a parallel gremlin and a cost | detected set never shown to the user to trim or extend |
 | Tools + budget | 3 | decides coverage and wall-clock, and bounds the machine | "go" on an unseen tool set, or a budget the user never approved |
-| Blast-radius consent | 3 | live-spawn and DAST run real payloads through real grants | live-spawn or a dev-server scan assumed rather than authorized |
 
-MUST Resolve all five before spawning a scout. A campaign that starts under an unpinned scope produces findings for the wrong target and a coverage claim it cannot support.
+MUST Resolve the core four before spawning a scout. A campaign that starts under an unpinned scope produces findings for the wrong target and a coverage claim it cannot support.
 MUST Record every defaulted fact as a gap in the report. "Whole repo, because none was named" belongs there, since the user may have meant one module.
+
+### Blast-radius opt-in (a SEPARATE question, only when applicable)
+
+Live-spawn agentic fuzzing and dev-server DAST run real payloads through real grants,
+so they are OFF by default and each is a distinct opt-in the user names, asked AFTER
+the core is pinned, and only when its triggering surface was detected. When the
+trigger is absent, the option does not exist for this run: do not list it, not even
+as "N/A" or "unavailable", since a greyed-out option frames a non-choice as a dial.
+
+| Opt-in | Asked only when | If declined or not triggered |
+|---|---|---|
+| Live-spawn agentic fuzzing | agent/skill/MCP definitions are in scope AND the user opts in | omitted from the question entirely; the definition-review pass still runs statically |
+| Dev-server DAST | a runnable web server is in scope AND the user opts in | omitted entirely; the static web pass still runs |
+| LLM access for grading | live-spawn or promptfoo grading was opted into | agentic-fuzz is skipped, recorded as a declined opt-in |
+
+MUST Ask each blast-radius opt-in as its own question after the core, and only when its triggering surface is in scope. An opt-in offered with no trigger is clutter; an opt-in folded into the core question buries the consent that matters.
+MUST Omit entirely any action the hard rules forbid (attacking a network host, a public endpoint, or a third-party service). It is never a menu option, an "N/A" row, or an "unavailable" line. A referenced-but-forbidden target (a CI file that probes a live host) is read statically and not mentioned in the interview at all.
+MUST Restate what a granted opt-in will run, against what, before the first spawn, and wait. An offhand "sure" is not the authorization a live-spawn or DAST run requires.
+MUST Ask, when the user opts into agentic grading (promptfoo or live-spawn), which LLM to use: an API key with its provider, a local or self-hosted endpoint, or none (which skips agentic-fuzz). Grading runs host-side, since the agents surface is container-free, so the credential stays a plain host env var and is never baked into an image. Keep this question inside the opt-in block, out of the core.
 
 ## How to probe: adapt, do not recite
 
@@ -56,7 +75,7 @@ An answer can pin a fact and hide a landmine. Probe further when:
 | a target with no ref | a clean tree still has a mergeable change to audit | offer commit / range / branch / PR, since a regression review is a different question |
 
 MUST Convert a vague fear into a falsifiable scope. "I want it secure" becomes "attacker-controlled input must never reach the shell in `hooks/`", which names a surface and a boundary recon can then map.
-MUST Escalate the blast-radius questions to their own explicit gate. Live-spawn and DAST are the most invasive things the skill does, so an offhand "sure" is not the approval they require. Restate what will run and against what, then wait.
+MUST Treat an offhand "yes, fuzz it live" as a cue to open the blast-radius opt-in properly, not as the approval itself. Route it to that separate question (above), restate what will run and against what, and wait.
 
 ## When there is no one to ask
 
