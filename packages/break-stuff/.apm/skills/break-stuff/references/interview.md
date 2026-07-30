@@ -84,10 +84,10 @@ re-interviewing. The target kind and base ref flow into `targeting.md`; the surf
 and budget become the surface nodes and the epic's `budget` metadata.
 
 The user's stated threat is stamped on the epic as `threat` metadata, where it
-orders the report and ranks which surface leads. It is NOT injected into a scout
-Brief as a thing to look for: a scout told where the bug is stops censusing, and the
-repo's own threat model is what recon derives independently (see `recon.md` and
-`scout-brief.md`). The user's fear prioritizes attention; the repo's derived threat
-model is the map recon builds without a hypothesis. Keep them separate.
+orders the report and ranks which surface leads. Keep it out of the scout Brief. A
+scout told where the bug is stops censusing, so recon derives the repo's own threat
+model independently (see `recon.md` and `scout-brief.md`). The user's fear
+prioritizes attention; the derived model is the map recon builds without a
+hypothesis.
 
 MUST Stamp the user's threat on the epic for prioritization and reporting, and keep it out of the scout Brief. A scout handed a suspected bug narrows its census to that guess and misses the deviations that census exists to find.

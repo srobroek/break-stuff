@@ -1,11 +1,11 @@
 # Escalation and attack-vector baselines: build them, do not look them up
 
 A checklist finds one bug at a time. The findings that matter chain, where a
-low-severity primitive plus a second primitive reaches an impact neither has alone.
-This file teaches how to construct those chains and how to derive a per-repo
-attack-vector baseline. It ships no list of vectors. A shipped list is one this
-repo's author already defended against, so the vectors worth writing are the ones
-this codebase's own structure creates, which only recon can find.
+low-severity primitive plus a second reaches an impact neither has alone. This
+file teaches how to construct those chains and derive a per-repo attack-vector
+baseline. It ships no vector list, since a shipped list is one the author already
+defended against. The vectors worth writing are the ones this codebase's structure
+creates, which only recon can find.
 
 Read this after `recon.md`, whose trust map, invariant list, and idiom census are
 the raw material every construction below consumes.

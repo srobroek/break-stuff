@@ -104,7 +104,7 @@ bd dep add <finding> <harness> --type discovered-from
 bd dep add <chain> <constituent> --type relates-to
 ```
 
-MUST Draw the correlation edge when you file the wisp, since an edge added later is an edge usually never added, and the report and the raw export both traverse edges to correlate a finding with the harness, crash, or chain it came from.
+MUST Draw the correlation edge when you file the wisp, since an edge added later is an edge usually never added. The report and the raw export traverse these edges to correlate a finding with whatever produced it, so a missing edge is a finding that reads as uncorrelated.
 MUST Keep `bd dep cycles` clean after wiring. A correlation edge is a DAG edge; a cycle means a finding was linked as its own ancestor, which breaks traversal.
 NOT Never use `blocks` for a correlation. `blocks` gates the ready queue, so a correlation drawn as a blocker would stall the wisp it merely annotates.
 
@@ -196,7 +196,7 @@ their own label scoped to the run with `--metadata-field run_id=<id>`.
 | close-out gate | `bd dep cycles` clean AND every detected surface node has a `brk-coverage` record AND no `brk-harness` wisp left `open` or `blocked` AND every `brk-finding` carries a `tier` |
 
 MUST Roll up grandchildren with `--metadata-field run_id=<id>`, never `--parent <epic>`. On bd 1.1.2 `--parent` returns direct children only, so an epic-parent query for findings or harnesses returns an empty set and the close-out gate passes over unrun, untiered work.
-MUST Gate close-out on a `brk-coverage` record existing for every detected surface. A gremlin that died before writing coverage leaves a surface untested, and without this check the report simply omits it and reads as clean.
+MUST Gate close-out on a `brk-coverage` record existing for every detected surface. A gremlin that died before writing coverage leaves a surface untested, and without this check the report omits it and reads as clean.
 MUST Count a `blocked` (INVALID) harness as unfinished at the gate, not only an `open` one, since an INVALID harness is an untested entry point that would otherwise pass a gate keyed on `open` alone.
 
 ## Raw export: the graph IS the persistence
@@ -218,9 +218,10 @@ filed (see Handoff chain) rather than from a parent's reply. Correlation is by
 crash input without a join table.
 
 Only the oversized payloads stay outside the graph, cited by absolute path in a bead
-comment: the recon document, scanner JSON, harness source, and crash-input binaries.
-A bead holds the structure and the pointer; the file holds the bytes. This keeps
-every `bd list` query small while the blobs remain one `cat` away.
+comment. A bead holds the structure and the pointer; the file holds the bytes, so
+every `bd list` query stays small while the blobs remain one `cat` away. Those
+payloads are the recon document, the scanner JSON, the harness source, and the
+crash-input binaries.
 
 MUST Emit the raw `run-<id>.json` alongside the report, since it is the parseable form of everything the markdown summarizes and the only export a later campaign can diff against.
 NOT Never write a finding, tier, or coverage fact to a side file the graph does not also hold. A fact that lives only in a file breaks correlation and dies outside the run, which is the failure the graph exists to prevent.
