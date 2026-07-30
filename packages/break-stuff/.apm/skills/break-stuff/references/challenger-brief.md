@@ -85,6 +85,6 @@ down.
 - **Point at the graph, not a list.** The challenger reads its work list from
   beads, so a resumed campaign finds exactly the untiered findings.
 - **Let one challenger see every surface.** Cross-surface context is what catches
-  the shell finding whose real impact only shows in the code surface.
+  the shell finding whose severity only shows in the code surface.
 - **Refute rather than delete.** A REFUTED finding with a recorded reason is how
   the next campaign avoids re-litigating the same false positive.

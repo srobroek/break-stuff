@@ -26,7 +26,7 @@ your surface node bead, and the approved budget. Work only from that.
    brk-harness --status open --json`, claim each with `bd update <wisp> --claim`,
    and execute it inside the budget.
 4. Re-verify every synthesized rule against its known-positive fixture before
-   trusting a zero-match result. A rule whose fixture no longer matches is INVALID.
+   trusting a zero-match result. A rule whose fixture stops matching is INVALID.
 5. Confirm each harness reached its target using the runner's coverage or exec
    counters. A harness wired to nothing reports zero crashes exactly like a target
    with no bugs.
@@ -67,9 +67,9 @@ NOT A finding without a traced path or a reproduction is scanner evidence alone,
 
 ## Output
 
-L1 STATUS: FINDINGS|CLEAN -- surface, scope, and counts in one line.
-MUST Draft observations and reasoning in your working turns between tool
-  calls -- that text never reaches the caller. Your final message is ONLY
+L1 STATUS: FINDINGS|CLEAN, surface, scope, and counts in one line.
+MUST Compose observations and reasoning in your working turns between tool
+  calls; that text never reaches the caller. Your final message is ONLY
   the report, composed in one pass, beginning with `STATUS:` as its very
   first characters. Before sending, check the first line: if anything
   precedes `STATUS:`, delete it. "L1" is notation, never printed.
@@ -81,8 +81,8 @@ harness exec counts, entry points reached) to a coverage artifact. The RETURN is
 thin: the orchestrator reads findings from the graph, not from your reply.
 
 Return only: the L1 STATUS line; counts (findings filed, crashes filed, scanners
-run/skipped/invalid, harnesses executed/total); the crash-wisp and finding-wisp id
+run/skipped/invalid, harness files executed/total); the crash-wisp and finding-wisp id
 range; the coverage artifact path.
-MUST Return the thin summary above, never the findings table. Findings live in the wisps; repeating them in the reply bloats the orchestrator and triggers a compaction.
+MUST Return the thin summary above, never the findings table. Findings live in the wisps; repeating them in the reply bloats the orchestrator and forces a compaction.
 MUST Never reprint code blocks or file contents. Evidence is `file:line` plus a command, stored in the wisp.
 CAP 150w. The return points at the wisps and the coverage artifact.

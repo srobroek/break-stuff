@@ -17,10 +17,13 @@ campaign survives a crash and resumes from the durable graph. LOAD
 This SKILL is a router. Load the referenced file for each step rather than
 inlining its content.
 
-## STOP: three questions before you touch the target
+## STOP: pin the scope before you touch the target
 
-Answer all three before detecting the stack, running a scanner, or spawning a
-`gremlin`. None is skippable in an interactive run.
+Answer the three questions below before detecting the stack, running a scanner, or
+spawning a `gremlin`. None is skippable in an interactive run. LOAD
+`references/interview.md` for how to probe for what the user left unsaid and what an
+answer should make you distrust. It also gives the defaults a non-interactive run
+records as gaps.
 
 1. **Which target?** Ask in two steps when the user named none. Offer every time:
    `whole repo` · `language/area filter` · `directory/module` · `file(s)` ·
@@ -121,9 +124,9 @@ MUST Fuzz and attack only local code in this repo or worktree. A network host, p
 MUST Attack this codebase rather than a model. An LLM red-team tool measures a model's alignment, which is a different target, so it stays out of scope even on the agents surface.
 MUST Cap every campaign with the wall-clock, job, and memory limits set in step 3, and stop when they are reached.
 MUST Run every execution phase (fuzzing, DAST, build-script execution) in a container per `references/isolation.md`, never on the host, and refuse the execution phases when no container runtime is present rather than falling back to the host.
-MUST Never author an input whose effect is irreversible even inside the container: fuzz the code path that receives `rm -rf`, never run it. See `references/isolation.md`.
+MUST Never author an input whose effect is irreversible even inside the container. Fuzz the code path that receives `rm -rf` while leaving the command itself unexecuted. See `references/isolation.md`.
 MUST Keep every finding. A challenger-refuted finding is reported as REFUTED with its reason, and a finding with no traced path is reported as HARDENING.
-MUST Carry both axes on every finding: evidence tier (PROVEN|REACHABLE|HARDENING|REFUTED), impact (CRITICAL|HIGH|MEDIUM|LOW), and a `file:line`.
+MUST Carry both axes plus a `file:line` on every finding: the evidence tier (PROVEN|REACHABLE|HARDENING|REFUTED) and the impact (CRITICAL|HIGH|MEDIUM|LOW).
 MUST Keep the write and execute roles apart. `fuzzer` never runs a harness it wrote, and `gremlin` never edits one it runs, because an agent that grades its own output hides its own bugs.
 MUST Leave product code untouched in steps 1 to 9. Steps 5 to 7 may only write harness files, corpora, and tests; `hardener` patches in step 10 on explicit approval, behind a verification re-run.
 MUST Leave every written artifact uncommitted and list it in the report, since committing is the user's call.
@@ -134,14 +137,14 @@ MUST Graduate every rule behind a confirmed finding into the repo's own lint con
 MUST Route every handoff through a bead or wisp per `references/beads-store.md`. A finding that exists only in an agent's reply dies with the session.
 DEFAULT Resolve language and area filters by detected-surface glob rather than directory path.
 DEFAULT Write a regression test for every PROVEN finding, beside the repo's existing tests.
-NOT A proof-of-concept that damages state is banned: destructive filesystem writes, fork bombs, and exhausting the developer's machine past the approved cap.
+NOT A proof-of-concept that damages state is banned: destructive filesystem writes; fork bombs; exhausting the developer's machine past the approved cap.
 NOT Raw scanner output is HARDENING until a path or repro is traced, so do not report it as a finding on its own.
 
 ## Scope modes
 
 - **quick**: steps 1 to 6 with a smoke campaign over existing harnesses, skipping new harness authoring and the challenger.
 - **full** (default): every step.
-- **audit-only**: steps 1 to 9, describing findings without fixing them. Regression tests that reproduce a PROVEN finding are still written (a test is a description, not a fix); only the product-code change is withheld.
+- **audit-only**: steps 1 to 9 that describe findings without fixing them. Regression tests that reproduce a PROVEN finding are still written, since a test describes the bug; only the product-code change is withheld.
 - **harness-only**: steps 1 to 5: author harnesses and corpora, execute nothing.
 
 ## References
@@ -149,7 +152,9 @@ NOT Raw scanner output is HARDENING until a path or repro is traced, so do not r
 | File | When to load |
 |------|--------------|
 | `references/workflow.md` | Always, before step 1 |
+| `references/interview.md` | Steps 0, 2, 3: pin target, threat, surfaces, tools, budget, consent |
 | `references/beads-store.md` | Step 1: run graph, wisps, handoff, resume |
+| `references/escalation.md` | Steps 4, 6, 8: build the attack-vector baseline and chain findings |
 | `references/targeting.md` | Step 2: any non-whole-repo target |
 | `references/surfaces/index.md` | Step 2: route target to surface docs |
 | `references/recon.md` | Step 4: derive the trust map, invariants, and repo-specific rules |
@@ -161,7 +166,7 @@ NOT Raw scanner output is HARDENING until a path or repro is traced, so do not r
 | `references/harnesses.md` | Step 5: harness patterns per target kind |
 | `references/gremlin-brief.md` | Step 6: build each `gremlin` Brief |
 | `references/fuzz-tools.md` | Steps 5 to 7: generator, mutator, minimizer, and coverage catalog |
-| `references/isolation.md` | Steps 5 to 7: container contract, authoring ban, host tripwire |
+| `references/isolation.md` | Steps 5 to 7: container contract; authoring ban; host tripwire |
 | `references/fuzzing.md` | Step 6: budgets, runners, crash capture |
 | `references/corpora/prompt-injection.md` | Steps 5 to 6: agent-surface payloads |
 | `references/agentic-fuzz.md` | Steps 5 to 6: generated attacks against a hook, skill, or agent |

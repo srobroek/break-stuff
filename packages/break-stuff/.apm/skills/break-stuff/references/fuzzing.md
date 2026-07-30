@@ -13,7 +13,7 @@ The budget is approved by the user at step 3 and stored in the run epic's
 | `wall_s` | 60 | seconds per harness |
 | `jobs` | 4 | concurrent fuzz processes |
 | `mem_mb` | 2048 | address-space cap per process |
-| `total_s` | 1800 | ceiling on the whole campaign |
+| `total_s` | 1800 | campaign-wide ceiling |
 
 Propose these as a table alongside the tool table, with the count of harnesses and
 the resulting worst-case wall-clock, so the user approves a duration rather than a

@@ -51,20 +51,20 @@ the scanner or harness that must confirm the fix.
 
 ## Rules
 
-MUST Reproduce the finding before changing anything, since a fix you cannot demonstrate was needed cannot be demonstrated to work.
-MUST Re-run the exact scanner or harness from the Brief after the fix, and report the result even when the finding persists.
-MUST Fix the cause rather than the symptom: widening a type to stop an overflow moves the bug, and catching an exception to stop a crash hides it.
+MUST Reproduce the finding before changing anything, since a fix never shown to be needed stays unprovable.
+MUST Re-run the exact scanner or harness from the Brief after the fix and report its result even when the finding persists.
+MUST Fix the cause rather than the symptom. Widening a type to stop an overflow only moves the bug; catching an exception to stop a crash only hides it.
 MUST Write the regression test so it fails against the original code, because a test that passed before the fix proves nothing.
 MUST Graduate the rule that found the finding into the repo's own lint config, since the test guards this instance and only the rule guards the next one.
-MUST Report a fix you could not verify as UNVERIFIED with the reason, rather than as done.
+MUST Report a fix that resisted verification as UNVERIFIED with the reason rather than as done.
 MUST Report a finding whose correct fix exceeds this Brief's scope as ESCALATED with what the real fix requires, rather than applying a partial one.
 DEFAULT Keep the change under roughly 30 lines; a larger fix means the finding needs a design decision the user should make.
 NOT A suppression, a baseline entry, or a widened assertion is never a fix.
 
 ## Output
 
-L1 STATUS: FIXED|UNVERIFIED|ESCALATED -- the finding, the change size, and the verification result in one line.
-MUST Draft reasoning in your working turns between tool calls -- that text
+L1 STATUS: FIXED|UNVERIFIED|ESCALATED, the finding, the change size, and the verification result in one line.
+MUST Compose reasoning in your working turns between tool calls; that text
   never reaches the caller. Your final message is ONLY the report, composed
   in one pass, beginning with `STATUS:` as its very first characters. Before
   sending, check the first line: if anything precedes `STATUS:`, delete it.
@@ -73,9 +73,9 @@ MUST Draft reasoning in your working turns between tool calls -- that text
 - Finding: bead id and locus
 - Cause: one line, distinguished from the symptom
 - Change: files touched with line counts, and what the fix does
-- Verification: reproduction before and after, scanner or harness result, test suite result
+- Verification: the reproduction before and after the fix, then the scanner or harness result alongside the test suite result
 - Regression test: path, and confirmation it fails on the original code
 - Graduated rule: path in the project's lint config, or the reason none applied
-- Residual risk -- omit if none
+- Residual risk, omit if none
 MUST Never reprint code or diffs. Reference `file:line` and line counts.
 CAP 250w

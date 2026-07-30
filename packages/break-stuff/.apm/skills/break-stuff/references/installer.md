@@ -1,7 +1,7 @@
 # Installer flow
 
-How break-stuff handles tool availability. The contract: tools are optional, never
-auto-installed, and never installed with sudo. A missing tool becomes a reported
+How break-stuff handles tool availability. Tools are optional, are never
+auto-installed, and are never installed with sudo. A missing tool becomes a reported
 coverage gap.
 
 `scripts/install-tools.sh` does the mechanical work; this file is the agent's
@@ -85,7 +85,7 @@ through `npx` so the project's config and plugin versions apply.
 | AFL++ | best through the distro package or brew, and it needs an instrumented build of the target |
 | `hypothesis` | belongs in the project's own dev dependencies when the repo already uses pytest |
 
-MUST Probe a fuzzer by running it rather than by checking for the binary, because a fuzzer that cannot build its instrumented target is unavailable in practice.
+MUST Probe a fuzzer by running it; a fuzzer that cannot build its instrumented target is unavailable in practice.
 NOT Never switch the user's default toolchain to satisfy a fuzzer. Report the requirement and let them decide.
 
 ## Environment isolation

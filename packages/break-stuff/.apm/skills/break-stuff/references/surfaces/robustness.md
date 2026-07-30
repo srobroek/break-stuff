@@ -68,7 +68,7 @@ covering the classes a generator reaches slowly. `fuzz-cli.py` ships a base corp
 of empty, malformed, oversized, unicode, and deeply nested payloads that applies
 to any JSON-stdin program.
 
-MUST Author both shapes. A generator finds the input a human would not think of, and a hand-written vector reaches the case a generator would need hours to construct.
+MUST Author both shapes. A generator surfaces the input a human would not think of; a hand-written vector covers the case a generator would need hours to construct.
 DEFAULT Convert every crash the campaign finds into a regression test in the repo's own suite, since a fixed bug with no test returns.
 
 ## Impact calibration

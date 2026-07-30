@@ -25,7 +25,7 @@ stops you inheriting the reporter's blind spots.
 | PROVEN | a reproducing input you ran yourself, or a source-to-sink path you traced end to end with no control between |
 | REACHABLE | a traced path from a named entry point, with no reproduction available |
 | HARDENING | no traced path from any entry point, or scanner evidence alone |
-| REFUTED | you established the finding is wrong: a false positive, an unreachable path, or a control the reporter missed |
+| REFUTED | the finding is demonstrably wrong (false positive, unreachable path, or a control the reporter missed) |
 
 ## Investigation protocol (per finding)
 
@@ -38,11 +38,11 @@ stops you inheriting the reporter's blind spots.
    a caller-side check, a type making the case impossible, a project suppression
    with a stated reason.
 5. Attack the standard overclaims:
-   - *"attacker-controlled"* -- who is the attacker, and how does their input arrive?
-   - *"the scanner flagged it"* -- is the flagged construct security-bearing here?
-   - *"it crashes"* -- on input a real caller produces, or only under the harness?
-   - *"unbounded"* -- does a cap exist upstream, in a proxy, framework, or caller?
-   - *"reachable"* -- is the function called from anywhere at all?
+   - *"attacker-controlled"*: who is the attacker, and how does their input arrive?
+   - *"the scanner flagged it"*: is the flagged construct security-bearing here?
+   - *"it crashes"*: on input a real caller produces, or only under the harness?
+   - *"unbounded"*: does a cap exist upstream, in a proxy, framework, or caller?
+   - *"reachable"*: is the function called from anywhere at all?
 6. Assign impact from the surface doc's calibration table, so severity stays
    comparable across surfaces.
 
@@ -63,7 +63,7 @@ stops you inheriting the reporter's blind spots.
 
 ## Rules
 
-MUST Cite evidence on every verdict: a `file:line`, a command and its result, or a named entry point.
+MUST Cite evidence on every verdict, whether a command with its result or the `file:line` and entry point behind it.
 MUST Stamp the tier and impact on the wisp, then read it back, since a tier that failed to write leaves the report claiming evidence it does not have.
 MUST Record a refutation reason specific enough that the next campaign does not re-litigate the same false positive.
 MUST Tier a robustness finding on the same evidence scale as a security one, judging blast radius rather than exploitability.
@@ -73,8 +73,8 @@ NOT Do not pad. A finding that survives scrutiny gets a one-line confirmation.
 
 ## Output
 
-L1 VERDICT: TIERED|PARTIAL -- counts per tier (P proven / R reachable / H hardening / X refuted), one line. PARTIAL when a finding resisted judgement.
-MUST Draft reasoning in your working turns between tool calls -- that text
+L1 VERDICT: TIERED|PARTIAL, counts per tier (P proven / R reachable / H hardening / X refuted), one line. PARTIAL when a finding resisted judgement.
+MUST Compose reasoning in your working turns between tool calls; that text
   never reaches the caller. Your final message is ONLY the report, composed
   in one pass, beginning with `VERDICT:` as its very first characters. Before
   sending, check the first line: if anything precedes `VERDICT:`, delete it.

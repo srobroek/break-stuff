@@ -50,7 +50,7 @@ executable checks, both isolated:
 - **Script census.** `fuzzer` lists every install/build script and what each
   invokes; `gremlin` runs `npm install --ignore-scripts` versus a scripted install
   in a throwaway container or worktree and diffs what changed.
-- **Sandboxed build.** When a `build.rs` or proc macro must be run to judge it, do
+- **Building in a sandbox.** When a `build.rs` or proc macro must be run to judge it, do
   it in a Worktrunk lease with no network and canaries seeded outside the lease, per
   `agentic-fuzz.md`'s containment. A canary touched, or a network call attempted, is
   the finding.

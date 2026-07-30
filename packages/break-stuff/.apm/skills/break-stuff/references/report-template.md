@@ -3,8 +3,8 @@
 The step-8 output. Read the finding set from beads rather than from the agents'
 replies, so the report matches the durable graph.
 
-Every finding carries both axes and a bead ID. Drop a section that does not apply
-rather than padding it.
+Every finding carries both axes and a bead ID, and a section that does not apply is
+dropped rather than padded.
 
 ---
 
@@ -150,11 +150,11 @@ re-reported.
 
 MUST Put coverage before findings. A report that leads with findings and buries its gaps reads as complete when it is not.
 MUST Cite a bead ID on every finding, since that is what survives the session and what a fix can be tracked against.
-MUST Include the REFUTED section even when it is the only content, because a campaign that found nothing real still tells the reader what was checked.
-MUST State the budget actually used against the budget approved, so the reader can judge whether more time would find more.
-MUST Report a robustness finding at its own impact level rather than discounting it for lacking an attacker.
-MUST List every rule worth keeping with its graduation path, since the rules outlive the report and a rule left in the artifacts dir stops running when the campaign ends.
-MUST Include the finding-provenance table. A campaign whose findings came only from standard packs did no recon, and the report says so plainly rather than presenting a stock sweep as an audit.
+MUST Keep the REFUTED section even when it is the only content. A campaign that found nothing real still tells the reader what was checked.
+MUST Set the budget actually used against the budget approved, so the reader can judge whether more time would find more.
+MUST Report a robustness finding at its own impact level. Discounting it for lacking an attacker understates a real defect.
+MUST List every rule worth keeping with its graduation path. Rules outlive the report; a rule left in the artifacts dir stops running when the campaign ends.
+MUST Include the finding-provenance table. A campaign whose findings came only from standard packs did no recon. The report says so plainly rather than presenting a stock sweep as an audit.
 NOT Never reprint code, diffs, or file contents. Evidence is a `file:line` and a command.
 NOT Never present a scanner count as a finding count. Many flagged lines from one rule with no traced path collapse to one HARDENING row.
 

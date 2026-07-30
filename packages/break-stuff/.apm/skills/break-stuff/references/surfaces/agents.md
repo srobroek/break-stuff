@@ -27,10 +27,10 @@ reachable by whoever controls that content.
 | snyk-agent-scan | default-on | local | `uvx snyk-agent-scan <config-path>` | MCP tool poisoning, cross-origin escalation, rug-pull patterns | static, so no LLM gate; the only executable scanner for MCP configs |
 
 MUST Read the agent or skill definition as a whole before testing a payload against it, since the tool grant determines what an injection can reach.
-MUST Restrict live-spawn agentic fuzzing to a PR, commit, or range target, and ask which skill or agent to invoke. See `references/agentic-fuzz.md`; a whole-repo live-spawn would attack every definition present.
-MUST Run every case against every named target once live-spawn is approved. The definition pass ranks the report rather than selecting the work, since a definition whose rules read correctly while the agent complies anyway is the finding this mode exists to catch.
+MUST Restrict live-spawn agentic fuzzing to a PR, commit, or range target, and ask which skill or agent to invoke. See `references/agentic-fuzz.md`; a whole-repo live-spawn attacks every definition present.
+MUST Run every case against every target the user named once live-spawn is approved. The definition pass ranks the report and does not select the work, since a definition whose rules read correctly while the agent complies anyway is the finding this mode exists to catch.
 NOT No scanner judges prompt-injection resistance, so a clean tool run on this surface is not coverage of the injection classes: the reading pass against the corpus is the detection.
-NOT An LLM red-team tool (garak, promptfoo) measures whether a MODEL can be made to misbehave, which is a different target from whether this repo's definitions and grants are safe. Out of scope.
+NOT An LLM red-team tool (garak, promptfoo) measures whether a MODEL can be made to misbehave. That is a different target from whether this repo's definitions and grants are safe. Out of scope.
 MUST Decline snyk-agent-scan's prompt to launch stdio servers unless the user explicitly approves, since starting a server executes third-party code.
 
 ## Agentic patterns for recon to synthesize (no registry pack covers these)
@@ -53,7 +53,7 @@ MUST Have `scout` synthesize these as validated rules during recon, and treat a 
 
 | # | Attack | Where it hides | Confirm by |
 |---|--------|----------------|-----------|
-| 1 | Untrusted content reaching context | `WebFetch`, `fetch_url`, MCP resources, file reads of vendored or downloaded content, PR bodies, issue text | trace whether the fetched text lands in a prompt without a quarantine boundary |
+| 1 | Untrusted content reaching context | `WebFetch`, `fetch_url`, MCP resources, file reads of vendored or downloaded content, PR bodies, issue text | trace whether the fetched text reaches a prompt without a quarantine boundary |
 | 2 | Tool over-grant | an agent's `tools:` list, `permissions.allow` in settings | compare the granted set against the agent's stated task; a read-only reviewer holding `Write` or `Bash` is over-granted |
 | 3 | Instruction override | a skill or agent body that says to follow instructions found in data | check whether the definition tells the agent to treat file content as authority |
 | 4 | Exfil path | an agent holding both a read tool and a network or write tool | name the specific pair; a reader with `WebFetch` can send what it reads |
@@ -70,7 +70,7 @@ MUST Have `scout` synthesize these as validated rules during recon, and treat a 
 
 ## Harness patterns
 
-Two harnesses cover this surface:
+This surface has a definition-review harness and a hook-and-server-execution harness.
 
 **Definition review.** `fuzzer` builds a scenario table from
 `references/corpora/prompt-injection.md`, one row per payload class crossed with
@@ -82,7 +82,7 @@ it. This is a reading exercise with a fixed checklist rather than an execution.
 structured input, so it goes through `scripts/fuzz-cli.py` in JSON-stdin mode with
 the same invariants as `shell.md`.
 
-MUST Test a payload against the definition rather than against a live agent, because spawning an agent to see whether the injection works costs tokens and yields a non-deterministic answer.
+MUST Test a payload against the definition, holding a live-agent spawn for the opt-in live-spawn mode, because spawning an agent to see whether the injection works costs tokens and yields a non-deterministic answer.
 NOT Never place a live injection payload in a file the running session then reads, since that attacks the auditor rather than the target.
 
 ## Impact calibration
@@ -92,7 +92,7 @@ NOT Never place a live injection payload in a file the running session then read
 | CRITICAL | untrusted content can reach a tool that writes, executes, or transmits, with no boundary in between |
 | HIGH | an agent holds a read plus a send tool with no rule against forwarding what it reads, or an MCP server is unpinned |
 | MEDIUM | over-granted tools with no traced injection path, a hook that acts on unrelated payloads, or an abstract tool name |
-| LOW | a definition missing a defensive rule for a path no untrusted content currently reaches |
+| LOW | a definition missing a defensive rule for a path no untrusted content reaches today |
 
 ## False-positive traps
 

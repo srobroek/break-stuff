@@ -92,6 +92,12 @@ CTX="$($DK context show 2>/dev/null || echo default)"
 $DK image inspect "$IMAGE" >/dev/null 2>&1 || {
   echo "run-contained: image not found: $IMAGE  (build it from references/containers/)" >&2; exit 3; }
 
+# loopback maps a random host port to the container. Because `docker run` below
+# blocks until the command finishes, the assigned host port cannot be read back and
+# handed to a caller mid-run: a DAST driver must therefore run INSIDE the command
+# after `--` (start the dev server, scan it over the container's own loopback, tear
+# it down), which is exactly the web.md model. The -p mapping only matters for a
+# host-side driver, which this synchronous structure does not support.
 case "$NET" in
   none)     NETFLAG=(--network none) ;;
   loopback) NETFLAG=(--network bridge -p 127.0.0.1::0) ;;
@@ -126,10 +132,16 @@ timeout "$TMO" "$DK" run --rm \
 RC=$?
 set -e
 
-# Copy findings out of the disposable volume, then the trap removes it.
+# Copy findings out of the disposable volume, then the trap removes it. A silent
+# copy-out failure would strand every finding in the volume and read as a clean
+# run, so warn loudly on any step that fails rather than swallowing it.
 cid="$($DK create -v "$VOL:/artifacts" "$IMAGE" true 2>/dev/null)"
-if [ -n "$cid" ]; then
-  $DK cp "$cid:/artifacts/." "$ARTIFACTS/" 2>/dev/null || true
+if [ -z "$cid" ]; then
+  echo "run-contained: WARN could not open the artifacts volume to copy findings out; any output is stranded in $VOL" >&2
+else
+  if ! $DK cp "$cid:/artifacts/." "$ARTIFACTS/" 2>/dev/null; then
+    echo "run-contained: WARN findings copy-out failed; output may be stranded in $VOL (treat this run as INVALID, not clean)" >&2
+  fi
   $DK rm "$cid" >/dev/null 2>&1 || true
 fi
 exit "$RC"

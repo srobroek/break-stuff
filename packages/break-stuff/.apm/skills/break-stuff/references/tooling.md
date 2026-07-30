@@ -2,7 +2,8 @@
 
 Per-surface tool tables are authoritative in each `surfaces/<surface>.md`, with
 their Tier, Class, and Run recipe columns. This file holds what cuts across
-surfaces: the universal run rules, the overlap map, and the analysis classes.
+surfaces: the universal run rules, plus the overlap map and analysis classes that
+scope each tool.
 
 Install through `scripts/install-tools.sh`; probe first with `--probe`.
 
