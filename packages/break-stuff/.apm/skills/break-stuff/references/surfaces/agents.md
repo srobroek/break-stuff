@@ -7,18 +7,36 @@ reachable by whoever controls that content.
 
 ## Detect
 
-`SKILL.md`, `*.agent.md`, `.mcp.json`, `settings.json` or `settings.local.json`
-carrying `hooks` or `permissions`, and any prompt template a program builds at
-runtime, when these are the PRODUCT under audit (a repo that ships agents, skills,
-or an MCP server as its deliverable).
+A repo reaches this surface two ways, and the first is usually the higher-value one.
 
-The user's own agentic-tooling config (`.claude/`, `.codex/`, `.agents/`, `.cursor/`,
-a repo-root `CLAUDE.md`/`AGENTS.md`, `.apm/instructions/**`, `.apm/context/**`) is
-EXCLUDED by default per `targeting.md`, even on a whole-repo run: it is the
-developer's setup, not the product, and the break-stuff skill itself often lives
-there. Scan it only when the user opts in by naming those paths as the target.
+**Agentic CODE in the application**, detected by signature during recon rather than
+by a path glob: an import of `langgraph`, `langchain`, `crewai`, `llama_index`, or
+`semantic-kernel`, an LLM SDK (`openai`, `anthropic`), or a Bedrock-agent / AgentCore
+call; a prompt assembled from a variable and sent to a completion; `exec`, `eval`, or
+`subprocess` on a model response; a tool/function-calling definition; fetched content
+flowing into a prompt. This is a production agent in `src/`, and its injection and
+tool-grant paths are usually the real target. The `scout` finds it as part of recon
+(see the pattern list below), so the surface is present whenever those signatures
+appear in app code, with no `.claude`/`.mcp.json` needed.
 
-MUST Scan the user's `.claude`/`.codex`/`.agents` config only on an explicit opt-in, never as part of a whole-repo sweep. A repo audit targets the product; a finding in the developer's own agent setup is a different request they make deliberately.
+**Agent and tooling definitions and config**: `SKILL.md`, `*.agent.md`, `.mcp.json`,
+and `settings.json`/`settings.local.json` carrying `hooks` or `permissions`, when
+these are the PRODUCT under audit (a repo that ships agents, skills, or an MCP server
+as its deliverable).
+
+Static analysis of agentic app code runs in the container like the code surface,
+always-on when detected. Live agentic-fuzzing of definitions is host-side and opt-in
+(see the isolation split below).
+
+The user's own agentic-tooling config is a different matter: `targeting.md` ignores
+the whole class silently, even on a whole-repo run, since it is the developer's setup
+and the break-stuff skill itself often lives there. The class covers any file that
+configures a coding assistant rather than shipping in the product (`.claude/`,
+`.codex/`, `.agents/`, `.cursor/`, `.aider*`, `.continue/`, `.windsurf/`,
+`.github/copilot*`, a repo-root `CLAUDE.md`/`AGENTS.md`/`.mcp.json`,
+`.apm/instructions/**`, `.apm/context/**`, and any unlisted sibling that fits).
+
+MUST Scan the user's agentic-tooling config only when the user names the path as the target, never as part of a whole-repo sweep and never as an offered option. Judge membership by the class: any config for a coding assistant belongs, so an unlisted sibling is excluded too. A repo audit targets the product; a finding in the developer's own agent setup is a different request they make deliberately.
 
 ## Tools
 

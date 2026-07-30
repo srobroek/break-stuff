@@ -1,13 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Keeps the break-stuff surface-image tool pins current. FROM tags are read by the dockerfile manager natively; RUN-line cargo/pip/go pins are read by the customManager below, keyed on the '# renovate:' comment above each pin. Dependabot cannot see RUN-line pins, so Renovate owns these.",
+  "description": "Keeps the break-stuff surface-image tool pins current. FROM tags are read by the dockerfile manager natively. RUN-line cargo/pip/go pins and the ARG or variable version pins (Dockerfile.base ARGs, layers/*.sh variables) are read by the customManager below, keyed on the '# renovate:' comment above each pin. Dependabot cannot see these, so Renovate owns them.",
   "enabledManagers": ["dockerfile", "custom.regex"],
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/Dockerfile\\.[a-z]+$/"],
+      "managerFilePatterns": ["/Dockerfile\\.[a-z]+$/", "/layers/[a-z]+\\.sh$/"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+RUN .*?(?:--version|==|@)\\s*(?<currentValue>[0-9][^\\s\"']*)"
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+RUN .*?(?:-{2}version|==|@)\\s*(?<currentValue>[0-9][^\\s\"']*)",
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+(?:ARG\\s+)?[A-Za-z_][A-Za-z0-9_]*=(?<currentValue>[0-9][^\\s\"']*)"
       ],
       "versioningTemplate": "semver"
     }

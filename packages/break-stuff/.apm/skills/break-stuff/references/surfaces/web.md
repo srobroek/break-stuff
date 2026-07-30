@@ -65,7 +65,7 @@ NOT Never scan a staging, production, or shared URL, even one the user pastes. T
 
 ## Harness patterns
 
-**Static** needs no server: run the eslint/semgrep/retire.js tools and trace DOM
+**Static** needs no server: run the eslint/opengrep/retire.js tools and trace DOM
 sinks by reading, exactly like `code.md`.
 
 **Dynamic** drives the running instance. `fuzzer` writes the scan config and, when

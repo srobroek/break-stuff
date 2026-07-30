@@ -27,7 +27,15 @@ set -euo pipefail
 #
 #   run-contained.sh --target <dir> --artifacts <dir> --image <img>
 #                    [--net none|loopback] [--mem 2g] [--pids 512] [--cpus 2]
-#                    [--timeout 300] -- <command to run inside>
+#                    [--timeout 300] [--workdir /target|/scratch] -- <command inside>
+#
+# cwd defaults to /target (the repo), because a repo-aware scanner (gitleaks,
+# osv-scanner, actionlint, trivy) auto-detects .git and .github/workflows from cwd:
+# run one from /scratch and it fails "not a git repository" / "no project found"
+# (rc 128/3), which is an INVALID run masquerading as zero findings, not a clean
+# result. A build or fuzz step that must WRITE to cwd passes --workdir /scratch and
+# reads the target by absolute path (`--manifest-path /target/Cargo.toml`), since
+# /target is read-only. Writes are already redirected to /scratch via the env below.
 
 # --assert-tools <image> <tool[,tool...]>: prove each tool runs INSIDE the image
 # before any campaign trusts a clean fuzz result. Containerization guarantees a
@@ -64,6 +72,7 @@ if [ "${1:-}" = "--assert-tools" ]; then
 fi
 
 TARGET=""; ARTIFACTS=""; IMAGE=""; NET="none"; MEM="2g"; PIDS="512"; CPUS="2"; TMO="300"
+WORKDIR="/target"
 CMD=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -75,10 +84,16 @@ while [ "$#" -gt 0 ]; do
     --pids)      PIDS="$2"; shift 2 ;;
     --cpus)      CPUS="$2"; shift 2 ;;
     --timeout)   TMO="$2"; shift 2 ;;
+    --workdir)   WORKDIR="$2"; shift 2 ;;
     --)          shift; CMD=("$@"); break ;;
     *) printf 'run-contained: unknown arg: %s\n' "$1" >&2; exit 2 ;;
   esac
 done
+
+case "$WORKDIR" in
+  /target|/scratch) : ;;
+  *) echo "run-contained: --workdir must be /target or /scratch" >&2; exit 2 ;;
+esac
 
 [ -n "$TARGET" ]    || { echo "run-contained: --target required" >&2; exit 2; }
 [ -n "$ARTIFACTS" ] || { echo "run-contained: --artifacts required" >&2; exit 2; }
@@ -128,18 +143,23 @@ printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
   "$DK" "$CTX" "$IMAGE" "$NET" "$MEM" "$PIDS" >&2
 
 set +e
-# The target is read-only, so every build/test toolchain must write its output to
-# the one writable path (/scratch, a tmpfs), not into the target tree. Point the
-# common toolchains there and set cwd to /scratch, so `cargo test`, `go test`, and
-# npm all build without a write to the read-only mount. workdir is /scratch, not
-# /target, so a relative build path lands in the writable place.
+# Two cwd regimes, selected by --workdir:
+#   /target (default): a repo-aware scanner (gitleaks, osv-scanner, actionlint,
+#     trivy) auto-detects .git and .github/workflows relative to cwd, so it MUST
+#     run from the repo root. /target is read-only, but these scanners only read;
+#     any temp write lands in /scratch via HOME/TMPDIR/XDG_CACHE_HOME below.
+#   /scratch: a build or fuzz step that writes to cwd (`cargo test`, `go test`, npm)
+#     runs here (a tmpfs) and reads the target by absolute path
+#     (`--manifest-path /target/Cargo.toml`), never writing the read-only mount.
+# CARGO_TARGET_DIR/GOCACHE/etc. point at /scratch regardless, so a build launched
+# from /target still writes its output to the writable tmpfs, not the target tree.
 timeout "$TMO" "$DK" run --rm \
   "${NETFLAG[@]}" \
   --memory "$MEM" --memory-swap "$MEM" --pids-limit "$PIDS" --cpus "$CPUS" \
   --read-only --tmpfs /scratch:size=512m \
   --cap-drop ALL --security-opt no-new-privileges \
   --user 1000:1000 \
-  --workdir /scratch \
+  --workdir "$WORKDIR" \
   --env HOME=/scratch \
   --env TMPDIR=/scratch \
   --env CARGO_TARGET_DIR=/scratch/target \

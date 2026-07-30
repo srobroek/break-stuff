@@ -1,17 +1,20 @@
-# Rust surface. Base + the rust code/robustness toolchain.
+# Rust surface. Base + the rust toolchain and code/robustness tools.
+#
+# Composes per the base model: FROM the language-free base, then run the rust
+# fragment (layers/rust.sh) which installs rustup + a pinned stable + a pinned
+# nightly (cargo-fuzz's libFuzzer needs nightly -Zsanitizer) + cargo-fuzz +
+# cargo-audit. Pins and their renovate comments live in the fragment.
+#
 # Build: docker build -f Dockerfile.rust -t break-stuff/rust:1 --build-arg BASE=break-stuff/base:1 .
-# Pins are bot-tracked: the FROM tag natively, the cargo installs via renovate.json's
-# custom manager keyed on the `# renovate:` comments below.
 ARG BASE=break-stuff/base:1
-# renovate: datasource=docker depName=rust
-FROM rust:1.83-slim AS toolchain
+FROM ${BASE}
 USER root
-RUN apt-get update -q && apt-get install -y --no-install-recommends git pkg-config libssl-dev >/dev/null
-# renovate: datasource=crate depName=cargo-fuzz
-RUN cargo install cargo-fuzz --locked --version 0.13.2
-# renovate: datasource=crate depName=cargo-audit
-RUN cargo install cargo-audit --locked --version 0.21.2
-RUN useradd --create-home --uid 1000 breaker && mkdir -p /artifacts /scratch && chown breaker /artifacts /scratch
+COPY layers/rust.sh /tmp/rust.sh
+RUN bash /tmp/rust.sh && rm /tmp/rust.sh
+# rustup lives under /usr/local/cargo; put it on PATH for every user and run.
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
 USER breaker
 WORKDIR /scratch
 VOLUME /artifacts

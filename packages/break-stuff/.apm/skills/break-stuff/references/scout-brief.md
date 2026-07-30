@@ -24,8 +24,12 @@ You find no vulnerabilities.
 - Artifacts dir: <absolute path -- recon output and rule files go here>
 
 ## Entry points already enumerated
-<the step-2 entry-point list for this surface, one line each with a file:line.
-Start your trust-boundary walk from these. Add any you find that the list missed.>
+<the step-2 entry-point list for this surface, one line each with a file:line and
+NOTHING else. Start your trust-boundary walk from these. Add any you find that the
+list missed. Each line is a bare locus: no note on which entry "maps onto the
+threat", no "hostile-response parser", no relevance ranking. An annotation like that
+is the orchestrator's hypothesis leaking in, and it narrows the census to the guessed
+spot, which is exactly what recon exists to avoid.>
 
 ## Where the repo documents itself
 <paths to README, docs, SECURITY.md, design records, specs, self-rule files, and
@@ -61,6 +65,14 @@ its checklist as a floor rather than your output.
    lint-config convention when it has one, so a confirmed rule can graduate into CI.
 6. A pack-aiming decision: packs to run with exact invocations, and packs left off
    with reasons.
+7. An agentic-code scan: signature-detect whether the application itself is agentic
+   (an import of `langgraph`/`langchain`/`crewai`/`llama_index`/`semantic-kernel`, an
+   LLM SDK or a Bedrock-agent/AgentCore call; a prompt assembled from a variable and
+   sent to a completion; `exec`/`eval`/`subprocess` on a model response; fetched
+   content flowing into a prompt). When present, the agents surface applies to this
+   app code even with no `.claude`/`.mcp.json` in the repo, and you synthesize rules
+   for the patterns in `surfaces/agents.md`. This is content-based recon, not a path
+   glob.
 
 ## What you MUST NOT do
 - Edit product code, tests, or an existing rule file.
