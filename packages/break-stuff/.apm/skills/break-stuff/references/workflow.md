@@ -49,6 +49,7 @@ MUST Stamp the resolved artifacts dir on the epic before spawning any agent, so 
    agent definitions. Record each with a `file:line`.
 
 MUST Record the entry points before step 4. A fuzzer given no entry points invents its own scope and writes harnesses for code nobody calls.
+MUST Record each entry point as a bare `file:line` with no threat annotation. Do not mark which entries "map onto the stated threat", label a parser "hostile-response", or rank them by suspected relevance. That annotation is the orchestrator's hypothesis, and it reaches the scout through the entry-point list and narrows the census to the guessed spot. The user's threat orders the REPORT (stamped on the epic), never the recon input.
 
 ## Step 3: probe, propose, wait
 

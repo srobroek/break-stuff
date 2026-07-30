@@ -24,8 +24,12 @@ You find no vulnerabilities.
 - Artifacts dir: <absolute path -- recon output and rule files go here>
 
 ## Entry points already enumerated
-<the step-2 entry-point list for this surface, one line each with a file:line.
-Start your trust-boundary walk from these. Add any you find that the list missed.>
+<the step-2 entry-point list for this surface, one line each with a file:line and
+NOTHING else. Start your trust-boundary walk from these. Add any you find that the
+list missed. Each line is a bare locus: no note on which entry "maps onto the
+threat", no "hostile-response parser", no relevance ranking. An annotation like that
+is the orchestrator's hypothesis leaking in, and it narrows the census to the guessed
+spot, which is exactly what recon exists to avoid.>
 
 ## Where the repo documents itself
 <paths to README, docs, SECURITY.md, design records, specs, self-rule files, and

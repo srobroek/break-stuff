@@ -92,6 +92,17 @@ dir. Note the directory holding this `SKILL.md` once as `$BREAK_SKILL_DIR` and
 reference every shipped asset by an absolute path beneath it. A skill-relative
 path silently matches nothing, and a run that matched nothing looks clean.
 
+**When these agent types are unavailable.** The package ships `scout`, `fuzzer`,
+`gremlin`, `triager`, `challenger`, and `hardener` under `.apm/agents/`, which
+`apm install` deploys to the runtime's agent directory. When a run finds those types
+absent (a skill-only copy, a runtime that does not load them), it does NOT abort or
+skip the agent step: it spawns a generic agent (`general-purpose`, or the runtime's
+default) with the SAME Brief, since every Brief in `references/*-brief.md` is
+self-contained and names its own return format. The agent definition sharpens the
+role; the Brief carries the work. Record "ran with generic agents, definitions
+absent" as a gap so the report states the posture. A run that stalls because a named
+type is missing is a run that failed on packaging, not on the target.
+
 ## Division of labour
 
 The split that keeps findings honest: authors write, the executor executes, and
