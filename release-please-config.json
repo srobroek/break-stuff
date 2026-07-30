@@ -48,6 +48,7 @@
       "exclude-paths": [
         "packages"
       ],
+      "bootstrap-sha": "492d4dfc28c7ab2faa5b44147695e0fc7f3d3c95",
       "extra-files": [
         {
           "type": "yaml",
@@ -60,6 +61,7 @@
       "release-type": "simple",
       "component": "sabot",
       "changelog-path": "CHANGELOG.md",
+      "bootstrap-sha": "492d4dfc28c7ab2faa5b44147695e0fc7f3d3c95",
       "extra-files": [
         {
           "type": "yaml",

@@ -348,6 +348,11 @@ CHANGELOG_SECTIONS = [
 ]
 
 
+# Last non-Conventional web-edit commit ("Update README.md") in history; first-
+# release parsing begins after it. See the per-package bootstrap-sha below.
+BOOTSTRAP_SHA = "492d4dfc28c7ab2faa5b44147695e0fc7f3d3c95"
+
+
 def _build_release_config(pkgs: list[str]) -> dict:
     # Root component is derived from the repo's own apm.yml name, not a hardcoded
     # monorepo id, so a renamed repo (or a fork of this template) tags its root
@@ -361,12 +366,18 @@ def _build_release_config(pkgs: list[str]) -> dict:
     root_component = (
         f"{root_name}-marketplace" if root_name in pkgs else root_name
     )
+    # First-release parsing starts here. History carries non-Conventional web-edit
+    # commits ("Update README.md": a 6-char type + space that aborts release-please's
+    # header parser with "unexpected token ' ' at 1:7"). BOOTSTRAP_SHA is the last
+    # such commit, so parsing begins at the first release-worthy commit after it.
+    # Drop this once a real release tag exists (then history is read since the tag).
     packages = {}
     packages["."] = {
         "release-type": "simple",
         "component": root_component,
         "changelog-path": "CHANGELOG.md",
         "exclude-paths": ["packages"],
+        "bootstrap-sha": BOOTSTRAP_SHA,
         "extra-files": [{"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}],
     }
     for p in pkgs:
@@ -374,6 +385,7 @@ def _build_release_config(pkgs: list[str]) -> dict:
             "release-type": "simple",
             "component": p,
             "changelog-path": "CHANGELOG.md",
+            "bootstrap-sha": BOOTSTRAP_SHA,
             "extra-files": [{"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}],
         }
     return {

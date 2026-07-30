@@ -42,11 +42,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # Start parsing after the pre-history web-edit commits ("Update README.md",
-          # a 6-char type + space that is not a Conventional Commit and aborts the
-          # parser with "unexpected token ' ' at 1:7"). 492d4df is the last such
-          # commit; everything release-worthy lands after it.
-          bootstrap-sha: 492d4dfc28c7ab2faa5b44147695e0fc7f3d3c95
+          # (History cutoff for non-Conventional web-edit commits lives in the config
+          # file as per-package bootstrap-sha, not here -- it is not an action input.)
 
       - name: Set up Python
         if: ${{ steps.release.outputs.pr }}
