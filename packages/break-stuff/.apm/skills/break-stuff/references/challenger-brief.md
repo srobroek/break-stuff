@@ -16,7 +16,7 @@ finding, decide the evidence tier and defend it. You never edit anything.
 - Run epic: <bead id>
 - Working directory: <repo root, or the worktree path for a ref target>
 - Findings to judge: discover them yourself with
-    bd list --label brk-finding --parent <epic> --all --json
+    bd list --label brk-finding --metadata-field run_id=<id> --all --json
   Judge every one lacking a `tier`.
 - Artifacts dir: <absolute path -- repro inputs and scanner output live here>
 

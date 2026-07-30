@@ -23,13 +23,21 @@ clean).
 
 ## Objects
 
+Every campaign bead carries the same `run_id` metadata as the epic. Rollup
+queries filter on it, since a rollup by parent or label alone breaks on bd 1.1.2:
+`--parent <epic>` returns only direct children (surface nodes), so a finding two
+levels down never appears, and a child inherits its parent's labels, so a
+label-only query over the shared database over-selects and bleeds across
+concurrent campaigns. The `run_id` field scopes every rollup to one run.
+
 | Object | Beads representation |
 |---|---|
 | Run | one **epic** bead; metadata `run_id`, `target`, `base_sha`, `budget` (JSON), `artifacts` (abs dir) |
-| Surface node | **task** bead, `--parent <epic>`, label `brk-surface`, metadata `surface`, `scope` (JSON array of globs) |
-| Harness wisp | **task** bead, `--parent <surface>`, labels `brk-harness` + `non-work`, metadata `entry_point`, `runner`, `harness_path` |
-| Crash wisp | **task** bead, `--parent <surface>`, labels `brk-crash` + `non-work`, metadata `input_path`, `stack_hash` |
-| Finding wisp | **task** bead, `--parent <surface>`, label `brk-finding`, metadata `tier`, `impact`, `locus`, `surface` |
+| Surface node | **task** bead, `--parent <epic>`, label `brk-surface`, metadata `run_id`, `surface`, `scope` (JSON array of globs) |
+| Harness wisp | **task** bead, `--parent <surface>`, labels `brk-harness` + `non-work`, metadata `run_id`, `entry_point`, `runner`, `harness_path`, `input_shape` |
+| Crash wisp | **task** bead, `--parent <surface>`, labels `brk-crash` + `non-work`, metadata `run_id`, `input_path`, `stack_hash` |
+| Finding wisp | **task** bead, `--parent <surface>`, label `brk-finding`, metadata `run_id`, `tier`, `by`, `source`, `impact`, `locus`, `surface`, `path` |
+| Coverage record | **task** bead, `--parent <surface>`, label `brk-coverage` + `non-work`, metadata `run_id`, `scanners_run`, `scanners_skipped`, `harnesses_run`, `harnesses_total`, one per surface node |
 | Decision | **decision** bead under the epic, for an accepted-risk or scope ruling that outlives one finding |
 
 ```
@@ -40,15 +48,18 @@ clean).
 EPIC=$(bd create "break-stuff run-<id>" --type epic --json \
   --metadata '{"run_id":"run-<id>","target":"<resolved target>","base_sha":"<sha>","budget":{"wall_s":60,"jobs":4,"mem_mb":2048},"artifacts":"<abs>/.break-stuff/run-<id>/artifacts"}' \
   | jq -r '.id')
+# Every child carries run_id=run-<id> too, since rollups filter on it (see below).
 S1=$(bd create "surface: shell" --parent "$EPIC" --labels brk-surface --json \
-  --metadata '{"surface":"shell","scope":["packages/*/scripts/**","**/*.sh"]}' \
+  --metadata '{"run_id":"run-<id>","surface":"shell","scope":["packages/*/scripts/**","**/*.sh"]}' \
   | jq -r '.id')
 bd dep cycles                 # must stay clean
 ```
 
 MUST Capture a bead id with `bd create ... --json | jq -r '.id'`, never with `--silent`. On bd 1.1.2 `--silent` prints a status block rather than a bare id, so the capture is garbage and the run graph is silently broken from the first child.
-MUST Label harness and crash wisps `non-work` as well as their own label. Generic ready and claim selectors exclude `non-work`, which keeps a coordination wisp out of any other agent's work queue.
+MUST Stamp `run_id` on every campaign bead, matching the epic's. Rollups filter on it (see Reading the run), and a bead created without it is invisible to every rollup, so its harness never runs or its finding never reports.
+MUST Label harness, crash, and coverage wisps `non-work` as well as their own label, then discover them by their own label rather than by `bd ready`. On bd 1.1.2 `bd ready` still returns a `non-work` wisp, so a discovery query keys on the specific label (`brk-harness`) plus the surface parent, not on the ready queue.
 MUST Use `--metadata` for stamps, since it merges with existing keys and never clobbers `surface` or `scope`.
+MUST Write `--label` (singular) on every `bd list`. On bd 1.1.2 `bd list --labels` is a hard error, so a discovery command written with the plural silently fails and the agent finds nothing. Only `bd create` takes `--labels`.
 
 ## Handoff chain
 
@@ -66,7 +77,7 @@ graph rather than from a parent's prose.
 A `gremlin` discovers its work with:
 
 ```
-bd list --parent <surface> --labels brk-harness --status open --json
+bd list --parent <surface> --label brk-harness --status open --json
 bd update <harness-wisp> --claim        # atomic, first-wins, sets assignee
 ```
 
@@ -103,16 +114,22 @@ generator reads structure rather than prose:
 
 ```
 FINDING=$(bd create "finding: <one-line claim>" --parent <surface> --labels brk-finding --json \
-  --metadata '{"tier":"PROVEN","impact":"HIGH","locus":"src/auth/token.rs:88","surface":"code","cwe":"CWE-190","repro":"<abs path to minimized input>"}' \
+  --metadata '{"run_id":"run-<id>","tier":"PROVEN","by":"challenger","source":"synthesized-rule","impact":"HIGH","locus":"src/auth/token.rs:88","surface":"code","cwe":"CWE-190","repro":"<abs path to minimized input>","path":"handle_post -> parse_body -> alloc @ api.rs:41"}' \
   | jq -r '.id')
 ```
 
 | Field | Values |
 |---|---|
 | `tier` | `PROVEN` (repro or traced exploit path) · `REACHABLE` (path traced, no repro) · `HARDENING` (no path, or tool-only) · `REFUTED` (challenger disproved it) |
+| `by` | who set the tier: `challenger` (an independent pass) or `self` (the finder tiered inline, no independent pass). The report headlines a `self` tier as unchallenged. |
+| `source` | what produced the finding: `synthesized-rule` · `stock-pack` · `harness` · `read`. The report's provenance table groups on it, so a stock-only sweep is visible rather than presented as an audit. |
 | `impact` | `CRITICAL` · `HIGH` · `MEDIUM` · `LOW`, calibrated per surface doc |
 | `locus` | `file:line`, always |
+| `path` | the reachability chain the gremlin recorded, `entry -> ... -> sink` with a `file:line` per hop, so the challenger verifies the recorded path rather than re-tracing it |
 | `repro` | absolute path to the minimized input, when one exists |
+
+MUST Stamp `by=self` when the agent that found a finding also tiered it, and `by=challenger` when an independent pass did. The report cannot tell a self-tier from a challenged one otherwise, so a self-judged finding reads as independently confirmed.
+MUST Record `source` on every finding, since a report whose findings are all `source=stock-pack` did no recon, and the provenance table can only say so when the field is on the wisp rather than in prose.
 
 MUST Never delete a finding wisp. A refuted finding is stamped `tier=REFUTED` with the refutation in a comment, then closed with reason `refuted`, because a deleted finding cannot be re-examined when the code changes.
 MUST Re-read a finding wisp after stamping a tier. A tier that failed to write leaves the report claiming evidence it does not have.
@@ -135,26 +152,41 @@ rather than the content.
 
 ## Reading the run
 
+Surface nodes are direct children of the epic, so `--parent <epic>` reaches them.
+Harnesses, findings, crashes, and coverage records are grandchildren (children of a
+surface node), so `--parent <epic>` never returns them on bd 1.1.2; roll them up by
+their own label scoped to the run with `--metadata-field run_id=<id>`.
+
 | Question | Command |
 |---|---|
 | campaign status | `bd list --label brk-surface --parent <epic> --all --json` |
-| all findings by tier | `bd list --label brk-finding --parent <epic> --all --json` then group by `metadata.tier` |
+| all findings by tier | `bd list --label brk-finding --metadata-field run_id=<id> --all --json` then group by `metadata.tier` |
 | one finding's story | `bd show <bead> --json` with `bd comments <bead>` |
-| unexecuted harnesses | `bd list --label brk-harness --parent <epic> --status open --json` |
-| coverage gaps | findings and surfaces carrying `state:budget_exhausted` or `state:invalid` |
-| resume after crash | in-flight = `bd list --parent <epic> --status in_progress --json`; agent handle = bead `assignee` |
-| close-out gate | `bd dep cycles` clean AND no `brk-harness` wisp left `open` AND every `brk-finding` carries a `tier` |
+| unexecuted harnesses | `bd list --label brk-harness --metadata-field run_id=<id> --status open --json` |
+| coverage record per surface | `bd list --label brk-coverage --metadata-field run_id=<id> --all --json` |
+| coverage gaps | harnesses and findings carrying `state:budget_exhausted` or `state:invalid`: `bd list --metadata-field run_id=<id> --all --json` filtered on the `state:` label |
+| resume after crash | in-flight = `bd list --metadata-field run_id=<id> --status in_progress --all --json`; agent handle = bead `assignee` |
+| close-out gate | `bd dep cycles` clean AND every detected surface node has a `brk-coverage` record AND no `brk-harness` wisp left `open` or `blocked` AND every `brk-finding` carries a `tier` |
+
+MUST Roll up grandchildren with `--metadata-field run_id=<id>`, never `--parent <epic>`. On bd 1.1.2 `--parent` returns direct children only, so an epic-parent query for findings or harnesses returns an empty set and the close-out gate passes over unrun, untiered work.
+MUST Gate close-out on a `brk-coverage` record existing for every detected surface. A gremlin that died before writing coverage leaves a surface untested, and without this check the report simply omits it and reads as clean.
+MUST Count a `blocked` (INVALID) harness as unfinished at the gate, not only an `open` one, since an INVALID harness is an untested entry point that would otherwise pass a gate keyed on `open` alone.
 
 ## Resume
 
-A campaign resumes without re-running finished work:
+A campaign resumes without re-running finished work. Every list below scopes to the
+run with `--metadata-field run_id=<id>`:
 
 1. Read the epic's `budget` metadata rather than re-asking the user, since the
    approved budget is durable.
-2. List harness wisps still `open` and hand them to a fresh `gremlin`.
+2. Hand a fresh `gremlin` every harness wisp that is `open`, or `blocked` with
+   `state:invalid` (a crashed scanner or unbuilt harness the previous run never
+   completed), or `open` with `state:budget_exhausted` (ran out of clock with
+   coverage climbing). Skip any carrying `state:executed`.
 3. List crash wisps still `open` and hand them to a fresh `triager`.
 4. List finding wisps with no `tier` and hand them to `challenger`.
 5. Report from the graph.
 
+MUST Include `state:invalid` and `state:budget_exhausted` harnesses in the resume set. An INVALID harness is `blocked` rather than `open`, so a resume that lists only `open` harnesses silently drops the exact entry points the previous run failed to test.
 MUST Verify a claim before stealing it. A wisp `in_progress` with a live assignee belongs to a running agent; treat it as dead only when the assignee's session is gone.
 NOT Re-running an already-executed harness wastes the budget and produces duplicate crash wisps, so check `state:executed` before dispatch.

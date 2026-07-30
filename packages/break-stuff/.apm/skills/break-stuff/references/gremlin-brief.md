@@ -48,7 +48,7 @@ docs. A rule the project disabled with a stated reason caps at HARDENING.>
 
 ## Harnesses to execute
 <list the harness wisps for this surface. Discover them yourself with:
-  bd list --parent <surface-bead> --labels brk-harness --status open --json
+  bd list --parent <surface-bead> --label brk-harness --status open --json
 Claim each with `bd update <wisp> --claim` before running it.>
 
 ## Isolation (mandatory for execution)
