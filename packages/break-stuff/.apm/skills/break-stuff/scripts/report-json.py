@@ -99,12 +99,29 @@ def comments(bead):
     return [c.get("text", "") for c in bead.get("comments") or []]
 
 
-def bucket_of(labels):
-    labels = set(labels or [])
-    for label, bucket in LABEL_BUCKET:
-        if label in labels:
-            return bucket
-    return None
+# When an agent drops a wisp's own label, only the inherited `brk-surface` remains.
+# The metadata shape still identifies the kind, so classify by it as a fallback and
+# let the caller flag the mislabel -- the same defend-in-depth as the run_id gap.
+META_SIGNATURE = [
+    ("harnesses", ("entry_point", "harness_path")),
+    ("coverage", ("harnesses_total", "scanners_run")),
+    ("crashes", ("input_path", "stack_hash")),
+    ("findings", ("tier", "locus")),
+]
+
+
+def bucket_of(bead):
+    labels = set(bead.get("labels") or [])
+    own = [b for lbl, b in LABEL_BUCKET if lbl in labels and lbl != "brk-surface"]
+    if own:
+        return own[0], False  # a real own-label match
+    meta = parse_meta(bead)
+    for bucket, keys in META_SIGNATURE:
+        if any(k in meta for k in keys):
+            return bucket, True  # inferred from metadata: the own label was dropped
+    if "brk-surface" in labels:
+        return "surfaces", False
+    return None, False
 
 
 def shape(bead, bucket):
@@ -216,14 +233,20 @@ def main():
     # Select by descent from the epic, not by a run_id stamp: a properly parented
     # finding is never silently dropped, even when its run_id was not stamped.
     for bid, bead in descendants(beads, epic_id).items():
-        bucket = bucket_of(bead.get("labels"))
+        bucket, mislabeled = bucket_of(bead)
         if not bucket:
             continue
         report[bucket].append(shape(bead, bucket))
         bead_run = parse_meta(bead).get("run_id")
         if bead_run != run_id:
             report["stamping_gaps"].append(
-                {"id": bid, "bucket": bucket, "run_id": bead_run}
+                {"id": bid, "bucket": bucket, "run_id": bead_run, "issue": "missing run_id"}
+            )
+        if mislabeled:
+            want = {"harnesses": "brk-harness", "crashes": "brk-crash",
+                    "findings": "brk-finding", "coverage": "brk-coverage"}.get(bucket, bucket)
+            report["stamping_gaps"].append(
+                {"id": bid, "bucket": bucket, "issue": f"classified as {bucket} by metadata; {want} label missing"}
             )
 
     # Summary the report headline reads without re-walking the findings.

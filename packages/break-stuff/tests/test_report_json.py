@@ -61,6 +61,13 @@ EXPORT_LINES = [
      "metadata": {"tier": "REACHABLE", "impact": "MEDIUM", "locus": "x.py:1"},
      "labels": ["brk-finding", "brk-surface"],
      "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}]},
+    # A harness whose own brk-harness label the agent dropped (only inherited
+    # brk-surface remains). Metadata shape still identifies it; it must bucket as a
+    # harness and be flagged, not counted as a second surface.
+    {"id": "e.1.5", "issue_type": "task", "title": "mislabeled harness", "status": "open",
+     "metadata": {"run_id": "run-A", "entry_point": "y.py:2", "harness_path": "t/h.py"},
+     "labels": ["brk-surface"],
+     "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}]},
     # run-B: must not appear in a run-A report.
     {"id": "z", "issue_type": "epic", "title": "other", "status": "open",
      "metadata": {"run_id": "run-B"}},
@@ -103,8 +110,8 @@ def test_buckets_and_filters_to_run(stub_bd):
     out = json.loads(r.stdout)
     assert out["run_id"] == "run-A"
     assert out["epic"]["target"] == "repo"
-    assert len(out["surfaces"]) == 1
-    assert len(out["harnesses"]) == 1
+    assert len(out["surfaces"]) == 1  # only the real surface node; the mislabeled harness is not counted here
+    assert len(out["harnesses"]) == 2  # the labeled one + the mislabeled-but-metadata-classified one
     assert len(out["findings"]) == 2  # the stamped one + the unstamped one, both under the epic
     assert len(out["coverage"]) == 1
     # run-B and the infra bead are gone.
@@ -129,6 +136,17 @@ def test_unstamped_finding_is_collected_and_flagged(stub_bd):
     gap_ids = {g["id"] for g in out["stamping_gaps"]}
     assert "e.1.4" in gap_ids  # and flagged
     assert out["summary"]["stamping_gaps"] >= 1
+
+
+def test_mislabeled_harness_bucketed_by_metadata_and_flagged(stub_bd):
+    """Bug 3: a harness that lost its brk-harness label (only inherited brk-surface)
+    must still bucket as a harness via its metadata shape, not inflate surfaces."""
+    out = json.loads(run_script(stub_bd, "--epic", "e").stdout)
+    hids = {h["id"] for h in out["harnesses"]}
+    assert "e.1.5" in hids  # bucketed as a harness despite the missing label
+    assert "e.1.5" not in {s["id"] for s in out["surfaces"]}  # not counted as a surface
+    gap_ids = {g["id"] for g in out["stamping_gaps"]}
+    assert "e.1.5" in gap_ids  # and flagged as a mislabel
 
 
 def test_finding_keeps_metadata_and_edges(stub_bd):
