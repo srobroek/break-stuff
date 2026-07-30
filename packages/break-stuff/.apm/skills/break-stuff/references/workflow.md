@@ -14,7 +14,11 @@ positive signal, which being handed a target is not:
 | Any invocation without a non-interactive signal, even one that named a target | interactive (DEFAULT): both gates block, so ask and wait |
 | The invocation says CI / cron / non-interactive, or you are a spawned sub-agent with no channel back to a human | non-interactive: skip the gates and use defaults; record every gap |
 
-Check `bd` availability per `beads-store.md`. No `bd` stops the run.
+Check the two hard preconditions before anything else, and ABORT loudly (non-zero
+exit, a message naming what is missing) if either fails, before opening the run graph
+or spawning an agent: a container runtime must be present (`isolation.md`, No
+container runtime) and `bd` must be present (`beads-store.md`). Neither is
+degradable; there is no static-only or fallback-store run.
 
 Determine the scope mode: `quick`, `full` (default), `audit-only`, or
 `harness-only`.

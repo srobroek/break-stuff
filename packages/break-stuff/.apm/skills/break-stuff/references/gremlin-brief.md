@@ -52,12 +52,14 @@ docs. A rule the project disabled with a stated reason caps at HARDENING.>
   bd list --parent <surface-bead> --label brk-harness --status open --json
 Claim each with `bd update <wisp> --claim` before running it.>
 
-## Isolation (mandatory for execution)
-Run every harness, scanner-that-executes, and dev-server inside the container of
+## Isolation (mandatory)
+Run every tool, harness, scanner, and dev-server inside the container of
 `references/isolation.md`: `--network none`, the budget as kernel-enforced mem/pid
-caps, target mounted read-only, findings to the `/artifacts` mount, non-root. If no
-container runtime is present, do NOT run the execution phases on the host: report
-them as an isolation coverage gap and run only the static/reading passes.
+caps, target mounted read-only, findings to the `/artifacts` mount, non-root. The
+runtime is a hard precondition the orchestrator already checked at step 0, so by the
+time you are spawned it is present. Never run any pass on the host, static or
+otherwise; if the runtime somehow vanished mid-run, stop and report an isolation
+failure rather than falling back to the host.
 
 ## Assert the fuzzer before the fuzz phase
 Before running any coverage-guided fuzz harness, assert its tool is in the image:

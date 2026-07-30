@@ -141,7 +141,8 @@ Run in order. The full procedure lives in `references/workflow.md`; LOAD it firs
 MUST Fuzz and attack only local code in this repo or worktree. A network host, public endpoint, or third-party service is out of scope regardless of who asks.
 MUST Attack this codebase rather than a model. An LLM red-team tool measures a model's alignment, which is a different target, so it stays out of scope even on the agents surface.
 MUST Cap every campaign with the wall-clock, job, and memory limits set in step 3, and stop when they are reached.
-MUST Run every execution phase (fuzzing, DAST, build-script execution) in a container per `references/isolation.md`, never on the host, and refuse the execution phases when no container runtime is present rather than falling back to the host.
+MUST Run every target-touching tool (scanners, fuzzing, DAST, build-script execution) in a container per `references/isolation.md`, never on the host. When no container runtime is present, ABORT the whole run loudly at step 0 with a non-zero exit; do not fall back to the host and do not run a static-only subset.
+MUST Abort the run loudly when `bd` is absent (`references/beads-store.md`). The container runtime and `bd` are hard preconditions, not degradable ones.
 MUST Never author an input whose effect is irreversible even inside the container. Fuzz the code path that receives `rm -rf` while leaving the command itself unexecuted. See `references/isolation.md`.
 MUST Keep every finding. A challenger-refuted finding is reported as REFUTED with its reason, and a finding with no traced path is reported as HARDENING.
 MUST Carry both axes plus a `file:line` on every finding: the evidence tier (PROVEN|REACHABLE|HARDENING|REFUTED) and the impact (CRITICAL|HIGH|MEDIUM|LOW).

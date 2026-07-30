@@ -15,8 +15,8 @@ would run the target's code outside the container, so every tool lives in the im
 
 1. **Preflight (host):** `install-tools.sh --probe` confirms a runtime
    (`docker`/`finch`), `bd`, and `git`, and lists which `break-stuff/<surface>:1`
-   images are built. No runtime means the execution phases cannot run
-   (`isolation.md`, Degrade loudly).
+   images are built. A missing runtime or missing `bd` ABORTS the whole run at step
+   0 (`isolation.md`, No container runtime); there is no degraded run.
 2. **Provision (image):** build any missing surface image from
    `references/containers/`, and extend it with the target's dev-deps per
    `isolation.md` Provisioning, keyed on the manifest+lock so the layer caches.
@@ -24,11 +24,11 @@ would run the target's code outside the container, so every tool lives in the im
    every campaign tool answers inside the image before the run trusts a clean result.
 
 MUST Provision tools into the image, never onto the host. A scanner on the host runs the target's build code unconfined, the exact risk the container removes.
-MUST Treat a missing runtime as a hard stop for the execution phases. Report a missing image tool as a coverage gap in the report; never let it pass as a silent skip.
+MUST Treat a missing runtime (or missing `bd`) as a hard abort of the whole run: stop at step 0 before opening the run graph, not merely skip the execution phases. Report a missing image tool as a coverage gap in the report; never let it pass as a silent skip.
 
-When no container runtime exists at all, the run does not fall back to host tools: it
-refuses every execution phase and runs only the host-safe reads, per `isolation.md`
-(Degrade loudly). There is no host-install path to reach for.
+When no container runtime exists, the run aborts entirely at step 0: no container, no
+campaign. It does not fall back to host tools or a static-only subset (`isolation.md`,
+No container runtime). There is no host-install path to reach for.
 
 ## Image build notes
 
