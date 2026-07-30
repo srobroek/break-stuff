@@ -48,7 +48,11 @@ MUST Record the entry points before step 4. A fuzzer given no entry points inven
 
 ## Step 3: probe, propose, wait
 
-1. Run `install-tools.sh --probe`.
+1. Run `install-tools.sh --probe` (host preflight: runtime + `bd` + `git`, and which
+   surface images exist). Then provision the image per `installer.md` and
+   `isolation.md` Provisioning: build any missing surface image, extend it with the
+   target's dev-deps (from the step-2 manifest map, keyed on the lockfile so the
+   layer caches), and `--assert-tools` it. Tools run in the image, not on the host.
 2. Build the proposal per `installer.md`: every viable tool for each detected
    surface, default-on pre-selected ON, opt-in shown OFF with its reason.
 3. Build the budget table per `fuzzing.md`, stating the harness count and the

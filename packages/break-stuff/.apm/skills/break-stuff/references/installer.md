@@ -1,21 +1,38 @@
 # Installer flow
 
-How break-stuff handles tool availability. Tools are optional, are never
-auto-installed, and are never installed with sudo. A missing tool becomes a reported
-coverage gap.
+How break-stuff handles tool availability. The tools run in the surface image, not
+on the host (`references/isolation.md`, What runs where), so step 3 does not install
+scanners on the host at all: it builds or extends the image and bakes the target's
+dev-deps into it (`isolation.md`, Provisioning). A tool missing from the image
+becomes a reported coverage gap, surfaced by `--assert-tools`.
 
-`scripts/install-tools.sh` does the mechanical work; this file is the agent's
-playbook for using it.
+## Host preflight, then image provisioning
 
-## Routes before installs
+The only host requirement is the container runtime plus `bd` and `git`;
+`scripts/install-tools.sh --probe` is a preflight that confirms these and reports
+which surface images exist. It installs nothing on the host: a host-side scanner
+would run the target's code outside the container, so every tool lives in the image.
 
-Most tools run ephemerally, so the step-3 proposal is usually about which tools to
-*use* rather than which to install. `install-tools.sh --routes` prints the
-invocation per tool: `uvx` for Python-packaged tools, `npx` for JS ones, `go run`
-for Go, a cargo subcommand for Rust, and `mise x <spec>` for prebuilt binaries.
+1. **Preflight (host):** `install-tools.sh --probe` confirms a runtime
+   (`docker`/`finch`), `bd`, and `git`, and lists which `break-stuff/<surface>:1`
+   images are built. No runtime means the execution phases cannot run
+   (`isolation.md`, Degrade loudly).
+2. **Provision (image):** build any missing surface image from
+   `references/containers/`, and extend it with the target's dev-deps per
+   `isolation.md` Provisioning, keyed on the manifest+lock so the layer caches.
+3. **Assert (image):** `run-contained.sh --assert-tools <image> <tools>` confirms
+   every campaign tool answers inside the image before the run trusts a clean result.
 
-MUST Offer the ephemeral route first, and treat an install as the fallback for a tool that has none or that the user wants pinned.
-MUST Verify a mise spec resolves with `mise ls-remote <spec>` before proposing it, since an unresolvable spec fails at run time and reads as a missing tool.
+MUST Provision tools into the image, never onto the host. A scanner on the host runs the target's build code unconfined, the exact risk the container removes.
+MUST Treat a missing runtime as a hard stop for the execution phases. Report a missing image tool as a coverage gap in the report; never let it pass as a silent skip.
+
+## Legacy: host ephemeral routes (pre-container model)
+
+The routes below predate the all-in-container model and are retained only for a
+degraded host-only run where no container runtime exists at all. In that case the
+run is already refusing every execution phase, so these cover the text-only scanners.
+`install-tools.sh --routes` prints the per-tool invocation: `uvx` for Python-packaged
+tools, `npx` for JS ones, `go run` for Go, a cargo subcommand for Rust, `mise x`.
 
 ## Step-3 sequence
 
