@@ -24,11 +24,21 @@ finding, decide the evidence tier and defend it. You never edit anything.
 - The claim, one line
 - `locus` file:line
 - `surface`
-- The source: which scanner or which read produced it
+- `source`: what produced it (`synthesized-rule` · `stock-pack` · `harness` · `read`)
+- `path`: the reachability chain the gremlin recorded, `entry -> ... -> sink` with a
+  file:line per hop. Verify this rather than re-tracing from scratch; re-derive only
+  when it is absent.
 - `repro`: absolute path to a minimized input, when one exists
 - The reproduce command, when one exists
 
 You are NOT given anyone's opinion about severity. Form your own.
+
+## Chaining
+After every finding carries a tier, read `references/escalation.md` and look for
+chains: where one finding's primitive reaches what another needs. File each chain as
+a NEW finding wisp citing the constituent ids, tiered at its endpoint impact; the
+constituents stay unchanged (the no-delete rule holds). Trace every hop against the
+recorded `path` metadata before filing; an unverified hop makes it a HARDENING note.
 
 ## Tiers (assign exactly one per finding)
 | Tier | Requires |
@@ -64,11 +74,15 @@ You are NOT given anyone's opinion about severity. Form your own.
 - Judge from the claim alone without reading the cited code.
 
 ## What you write
-For each finding, stamp the wisp and record the reasoning:
-  bd update <wisp> --set-metadata tier=<TIER> --set-metadata impact=<LEVEL>
-  bd comment <wisp> "TIERED tier=<TIER> impact=<LEVEL> because=<one line> evidence=<file:line or command>"
+For each finding, stamp the wisp with a single merging `--metadata` blob (never
+`--set-metadata`, which `beads-store.md` bans because it clobbers sibling keys) and
+record the reasoning:
+  bd update <wisp> --metadata '{"tier":"<TIER>","impact":"<LEVEL>","by":"challenger"}'
+  bd comment <wisp> "TIERED tier=<TIER> impact=<LEVEL> by=challenger because=<one line> evidence=<file:line or command>"
 Then read the wisp back, because a tier that failed to write leaves the report
-claiming evidence it does not have.
+claiming evidence it does not have. Stamp `by=challenger` so the report marks the
+finding independently challenged; a self-tier (`by=self`) is the inline-only path in
+`workflow.md` step 8.
 
 ## Return
 The Challenger Output format from your agent definition: a verdict line with tier

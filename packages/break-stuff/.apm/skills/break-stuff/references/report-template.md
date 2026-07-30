@@ -83,6 +83,16 @@ A path was traced from an entry point, with no reproduction available.
 |---|---|---|---|---|---|
 | 4 | brk-15 | HIGH | code | `api.rs:41` | `handle_post` -> `parse_body` -> unchecked `alloc` |
 
+## Chains
+
+Two or more findings that combine to an impact none reaches alone, tiered at the
+endpoint impact. The constituent findings keep their own rows above; a chain is an
+additional finding, not a replacement. Drop this section when no chain was found.
+
+| # | Bead | Endpoint impact | Constituents | Chain (hop -> hop) |
+|---|---|---|---|---|
+| 7 | brk-22 | CRITICAL | brk-15 (HIGH) + brk-18 (MEDIUM) | arbitrary write `brk-18` -> config read at `load.rs:30` -> code exec `brk-15` |
+
 ## HARDENING
 
 No traced path, or scanner evidence alone. Real, and lower priority than the

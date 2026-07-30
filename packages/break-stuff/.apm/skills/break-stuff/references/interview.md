@@ -12,16 +12,20 @@ not for what was already given.
 
 ## What MUST be certain before recon
 
-Every campaign needs these five resolved. Until each is either answered or
-defaulted-with-a-recorded-gap, the scope is not pinned.
+The three STOP questions in `SKILL.md` are the gate; these five facts are what they
+resolve. Target, surfaces, and tools+budget are questions 1-3 directly; the user's
+threat rides on question 1 (it shapes the target and the report order) and
+blast-radius consent rides on question 3 (live-spawn and DAST are tools the user
+opts into). Until each fact is answered or defaulted-with-a-recorded-gap, the scope
+is not pinned.
 
-| Fact | Why it changes the run | Unpins the run when |
-|---|---|---|
-| Target | decides the file list and the base ref | "the repo" without a kind, since scanning the whole repo is a choice the user has to make deliberately |
-| Threat model | what the user fears decides which surface leads | absent: the run attacks everything equally and prioritizes nothing |
-| Surfaces | each surface is a parallel gremlin and a cost | detected set never shown to the user to trim or extend |
-| Tools + budget | decides coverage and wall-clock, and bounds the machine | "go" on an unseen tool set, or a budget the user never approved |
-| Blast-radius consent | live-spawn and DAST run real payloads through real grants | live-spawn or a dev-server scan assumed rather than authorized |
+| Fact | STOP question | Why it changes the run | Unpins the run when |
+|---|---|---|---|
+| Target | 1 | decides the file list and the base ref | "the repo" without a kind, since scanning the whole repo is a choice the user has to make deliberately |
+| User's threat | 1 | what the user fears decides which surface leads and orders the report | absent: the report prioritizes nothing |
+| Surfaces | 2 | each surface is a parallel gremlin and a cost | detected set never shown to the user to trim or extend |
+| Tools + budget | 3 | decides coverage and wall-clock, and bounds the machine | "go" on an unseen tool set, or a budget the user never approved |
+| Blast-radius consent | 3 | live-spawn and DAST run real payloads through real grants | live-spawn or a dev-server scan assumed rather than authorized |
 
 MUST Resolve all five before spawning a scout. A campaign that starts under an unpinned scope produces findings for the wrong target and a coverage claim it cannot support.
 MUST Record every defaulted fact as a gap in the report. "Whole repo, because none was named" belongs there, since the user may have meant one module.
@@ -74,12 +78,16 @@ MUST Record every default as a coverage gap. A non-interactive run that hides it
 
 ## Handing the scope forward
 
-The interview's output is the input to step 1 (open the run) and step 2 (resolve the
-target). Stamp the resolved scope on the run epic so a resumed campaign reuses it
-rather than re-interviewing:
+The interview feeds step 1 (open the run) and step 2 (resolve the target). Stamp the
+resolved scope on the run epic so a resumed campaign reuses it rather than
+re-interviewing. The target kind and base ref flow into `targeting.md`; the surfaces
+and budget become the surface nodes and the epic's `budget` metadata.
 
-- target kind + resolved file list + base ref + checkout decision → `targeting.md`
-- threat model in one falsifiable line → carried into every scout Brief as the aim
-- surfaces + budget → the surface nodes and the epic's `budget` metadata
+The user's stated threat is stamped on the epic as `threat` metadata, where it
+orders the report and ranks which surface leads. It is NOT injected into a scout
+Brief as a thing to look for: a scout told where the bug is stops censusing, and the
+repo's own threat model is what recon derives independently (see `recon.md` and
+`scout-brief.md`). The user's fear prioritizes attention; the repo's derived threat
+model is the map recon builds without a hypothesis. Keep them separate.
 
-MUST Stamp the threat model on the epic, since it is what aims recon and a scout without it censuses everything and prioritizes nothing.
+MUST Stamp the user's threat on the epic for prioritization and reporting, and keep it out of the scout Brief. A scout handed a suspected bug narrows its census to that guess and misses the deviations that census exists to find.

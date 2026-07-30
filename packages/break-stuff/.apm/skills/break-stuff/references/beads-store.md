@@ -172,6 +172,32 @@ MUST Roll up grandchildren with `--metadata-field run_id=<id>`, never `--parent 
 MUST Gate close-out on a `brk-coverage` record existing for every detected surface. A gremlin that died before writing coverage leaves a surface untested, and without this check the report simply omits it and reads as clean.
 MUST Count a `blocked` (INVALID) harness as unfinished at the gate, not only an `open` one, since an INVALID harness is an untested entry point that would otherwise pass a gate keyed on `open` alone.
 
+## Raw export: the graph IS the persistence
+
+The run graph is the campaign's single store, so no agent writes a parallel
+findings file. One command emits the whole run as parseable JSON for a machine
+reader, a diff against a later run, or an archive:
+
+```
+bd list --metadata-field run_id=<id> --all --json > <artifacts>/run-<id>.json
+```
+
+That object holds every surface node, harness, crash, finding, and coverage record
+with its metadata, which is what lets the report generator read structure rather
+than prose and what carries work between agents: each of `scout`, `fuzzer`,
+`gremlin`, `triager`, and `challenger` reads its inputs from the wisps a prior agent
+filed (see Handoff chain) rather than from a parent's reply. Correlation is by
+`run_id` and by parent, so a finding traces to its surface, its harness, and its
+crash input without a join table.
+
+Only the oversized payloads stay outside the graph, cited by absolute path in a bead
+comment: the recon document, scanner JSON, harness source, and crash-input binaries.
+A bead holds the structure and the pointer; the file holds the bytes. This keeps
+every `bd list` query small while the blobs remain one `cat` away.
+
+MUST Emit the raw `run-<id>.json` alongside the report, since it is the parseable form of everything the markdown summarizes and the only export a later campaign can diff against.
+NOT Never write a finding, tier, or coverage fact to a side file the graph does not also hold. A fact that lives only in a file breaks correlation and dies outside the run, which is the failure the graph exists to prevent.
+
 ## Resume
 
 A campaign resumes without re-running finished work. Every list below scopes to the

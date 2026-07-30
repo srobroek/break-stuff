@@ -25,24 +25,28 @@ spawning a `gremlin`. None is skippable in an interactive run. LOAD
 answer should make you distrust. It also gives the defaults a non-interactive run
 records as gaps.
 
-1. **Which target?** Ask in two steps when the user named none. Offer every time:
-   `whole repo` · `language/area filter` · `directory/module` · `file(s)` ·
-   `one script/hook` · `one agent or skill` · `uncommitted changes` · `commit` ·
-   `commit range / branch compare` · `PR`. Kinds compose. Assuming whole repo is
-   a scope error.
+1. **Which target, and what do you fear most?** Ask in two steps when the user named
+   none. Offer every time: `whole repo` · `language/area filter` · `directory/module` ·
+   `file(s)` · `one script/hook` · `one agent or skill` · `uncommitted changes` ·
+   `commit` · `commit range / branch compare` · `PR`. Kinds compose. Assuming whole
+   repo is a scope error. Capture the user's stated fear too; it is stamped on the
+   epic as `threat` and orders the report, without being handed to a scout as a
+   hypothesis.
 2. **Which surfaces?** Detect them from the target via `references/surfaces/index.md`,
    then present the detected set for the user to trim or extend, pre-selected ON.
    `robustness` is mandatory and cannot be removed. A surface file-detection missed
    (a frontend with no framework marker, live web DAST the user wants) can be added
    here; a detected surface the user does not want scanned can be dropped. This is
    one message with question 3, not a separate prompt.
-3. **Which tools, and what fuzz budget?** Run
+3. **Which tools, what fuzz budget, and any blast-radius opt-in?** Run
    `<skill-dir>/scripts/install-tools.sh --probe`. In one message, propose the
    full thorough tool set per detected surface as a tiered table (default-on
    pre-selected ON, opt-in shown OFF with a reason) together with a fuzz budget
-   table covering wall-clock per harness, parallel jobs, and memory cap. Then wait
-   for the reply. "go" means: install every missing default-on tool, accept the
-   proposed budget, run everything.
+   table covering wall-clock per harness, parallel jobs, and memory cap. Live-spawn
+   agentic fuzzing and dev-server DAST run real payloads through real grants, so they
+   are OFF until the user names the target and opts in here. Then wait for the reply.
+   "go" means: install every missing default-on tool, accept the proposed budget, run
+   everything except the blast-radius opt-ins.
 
 A **non-interactive** run (CI, or a sub-agent with no user to ask) is the only
 exception: use the target it was given or the whole repo, the full detected surface set,

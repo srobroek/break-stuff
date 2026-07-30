@@ -66,7 +66,7 @@ the chain hits an impact worth reporting or runs out of reach.
 | Influence one agent's output | who parses that output, and does the format let it forge control | a caller parses a verdict line the output can forge |
 
 MUST Construct a chain by following recon's trust map from each primitive to what it reaches, rather than matching the finding to an exploit. The chain that matters here is the one this repo's wiring permits, which no external template knows.
-MUST Report the chain as one finding at the impact of its endpoint, not as separate findings at the impact of each link. Two MEDIUM primitives that chain to code execution is a CRITICAL, and splitting them hides it.
+MUST File the chain as its own additional finding tiered at the endpoint impact, citing the constituent findings by id. The constituents keep their own rows and tiers under the no-delete rule; the chain sits above them. Two MEDIUM primitives that chain to code execution surface as a CRITICAL the separate rows would hide.
 MUST Name every link with a `file:line` and the primitive it grants, so the challenger can test each hop rather than the assertion that they connect.
 NOT Never assert a chain you did not trace hop by hop. "These could combine" without the intermediate reach stays a HARDENING note until the reach is shown.
 
@@ -84,7 +84,7 @@ that happens.
 | Superlinear work (ReDoS, quadratic parse) | the work runs on a request path with no upstream time or size cap |
 | A crash on the hot path | a supervisor restarts into the same input, or a fail-open path opens on the outage |
 | Lock or resource never released | a second request blocks forever, turning one bad input into a wedge |
-| Fork or spawn without a ceiling | the input controls the count, so the machine is the cap |
+| Fork or spawn without a ceiling | the input sets the count with no limit above it (fuzz the code that reads the count; never author a harness that actually spawns them, per the authoring ban) |
 
 MUST Judge an availability finding by what the outage reaches, not by the crash alone. A panic on a local dev tool is LOW; the same panic on a shared request path where a supervisor re-feeds the input is a sustained outage.
 MUST Fuzz the code path that RECEIVES the exhausting input, never author a harness that performs the exhaustion. The finding is that the target accepts an input that would exhaust, per the authoring ban in `isolation.md`.
