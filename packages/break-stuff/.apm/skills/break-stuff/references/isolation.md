@@ -133,9 +133,10 @@ it. Per stack, the toolchain's own resolver fetches exactly what its manifest na
 | Python | `pyproject.toml` dev group / `requirements-dev.txt` | `uv sync` / `pip install -r` |
 | Go | `go.mod` (test deps not separated) | `go mod download` |
 
-**Layered so a source change never rebuilds the world.** Copy ONLY the manifest and
-lockfile into the build context first, run the fetch, THEN nothing else. The deps
-become their own cache layer keyed on the lock, so only a lock change re-fetches:
+**Layered so a source change never rebuilds the world.** `scripts/build-ext-image.sh`
+copies ONLY the manifest and lockfile into a temp build context, runs the fetch, and
+copies nothing else. The deps become their own cache layer keyed on the lock, so only
+a lock change re-fetches. The generated Dockerfile:
 
 ```
 FROM break-stuff/rust:1
@@ -144,11 +145,22 @@ RUN cargo fetch                         # dev-deps into the image's cargo cache;
 # no COPY of the source: the target is mounted read-only at /target at run time
 ```
 
-Build this ext image at step 3 (`break-stuff/<surface>-ext:1`), then `--assert-tools`
-against it, then run the campaign against it under the unchanged network-none
-contract. The extension NEVER copies the target source into the image (the target is
-mounted read-only at run time); it copies only the manifest+lock to drive the fetch,
-so nothing about the audited code enters a persisted layer.
+Build the ext image at step 3 with the script, which runs `detect-stacks.py`, writes
+the thin Dockerfile, and builds it:
+
+```
+scripts/build-ext-image.sh --target <dir> --base break-stuff/<surface>:1 \
+                           --tag break-stuff/<surface>-ext:1
+```
+
+The script bakes the dep caches into a persistent `/deps` prefix (it sets
+`CARGO_HOME`, `GOMODCACHE`, `npm_config_cache`, `PIP_CACHE_DIR`, `UV_CACHE_DIR` there),
+NOT under `/scratch`: `run-contained.sh` mounts `/scratch` as a fresh tmpfs per run,
+so a cache baked there is masked at run time. Then `--assert-tools` against the ext
+image, then run the campaign against it under the unchanged network-none contract. The
+extension NEVER copies the target source into the image (the target is mounted
+read-only at run time); it copies only the manifest+lock to drive the fetch, so
+nothing about the audited code enters a persisted layer.
 
 MUST Provision at step 3, network-available, before the fan-out. A dep fetched mid-campaign is a fetch the `--network none` gremlin cannot do, so the harness reports a false coverage gap instead of running.
 MUST Detect dev-deps from the target's manifest and lockfile, never a hardcoded list. The manifest is the exact declaration; a guessed set bakes the wrong tools and still fails the harness.
