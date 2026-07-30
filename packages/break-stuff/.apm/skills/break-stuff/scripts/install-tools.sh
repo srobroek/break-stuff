@@ -29,7 +29,7 @@ probe() {
   if [ -n "$rt" ]; then
     echo "  runtime:  $rt  (context: $("$rt" context show 2>/dev/null || echo default))"
   else
-    echo "  runtime:  MISSING -- no docker/finch/podman/nerdctl. Execution phases will be refused (isolation.md, Degrade loudly)."
+    echo "  runtime:  MISSING -- no docker/finch/podman/nerdctl. The campaign ABORTS: no runtime, no run (isolation.md, No container runtime)."
   fi
 
   # bd + git -- the orchestration primitives the agent needs on the host.

@@ -157,14 +157,19 @@ MUST Extend the image with a toolchain per detected stack for a multi-language t
 MUST Bake the deps as their own layer keyed on the lockfile (copy manifest+lock, fetch, stop), so a source change reuses the cached deps rather than re-fetching every run.
 NOT Never COPY the target source into the image. The target is mounted read-only at run time; copying it into a build layer both defeats the read-only guarantee and persists the audited code in the image.
 
-## Degrade loudly, never silently
+## No container runtime: fail the whole run, loudly
 
-A container runtime may be absent (`docker`, `podman`, `finch`, `nerdctl`). Since
-execution is container-mandatory, the run cannot proceed to an execution phase
-without one.
+A container runtime (`docker`, `podman`, `finch`, `nerdctl`) is not optional. Since
+every target-touching tool runs in the container (What runs where), no runtime means
+the campaign cannot scan or execute anything safely, so it does not run a degraded
+subset: it aborts at step 3 with a clear message and a non-zero exit, before opening
+the run graph or spawning any agent. A partial "static-only" run is not offered,
+because it would present an incomplete audit as a completed one and, for a compiling
+scanner, would run the target's build code on the host.
 
-MUST Probe for a runtime at step 3 and, when none is present, refuse the execution phases and say so in the report. Static scanning and recon ran; fuzzing and DAST and build-execution did not; and the coverage gap is the whole execution surface.
-MUST Never fall back to host execution when no container is available. A host-only fuzz run is the exact unbounded risk the container exists to prevent, and a silent fallback presents it as a completed campaign.
+MUST Probe for a container runtime at step 3 (part of the `install-tools.sh --probe` preflight) and, when none is present, ABORT the whole campaign with a loud message naming the missing runtime and a non-zero exit. Do not open the run graph, do not spawn a scout, do not run a host-side scan.
+MUST Abort the run when `bd` is absent too, per `beads-store.md`: no run graph means no durable state, so there is no campaign to run. Both the runtime and `bd` are hard preconditions, not degradable ones.
+MUST Never fall back to host execution or a static-only subset when no container is available. A host-only run is the exact unbounded risk the container exists to prevent, and a partial run presents an incomplete audit as a completed campaign.
 NOT Never weaken the container contract (add network, drop the mem cap, run root) to make a harness pass. A harness that only runs unconfined is a harness that does not run.
 
 ## The authoring ban
