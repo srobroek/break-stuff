@@ -81,6 +81,33 @@ bd list --parent <surface> --label brk-harness --status open --json
 bd update <harness-wisp> --claim        # atomic, first-wins, sets assignee
 ```
 
+## Correlation edges
+
+Parenthood scopes a wisp to its surface; a typed `bd dep` edge records how one wisp
+produced another, so the correlation is traversable (`bd dep tree <bead>`) rather
+than reconstructed from prose. Each agent draws the edge for the link it creates, at
+the moment it files the wisp:
+
+| Edge | From -> To | Drawn by | Meaning |
+|---|---|---|---|
+| `discovered-from` | finding -> harness | `gremlin` | this finding came out of running that harness |
+| `discovered-from` | finding -> crash | `triager` | this finding is the minimized form of that crash |
+| `caused-by` | crash -> harness | `gremlin` | that harness produced this crash |
+| `relates-to` | chain finding -> each constituent | `challenger` | the chain is built from these findings |
+| `validates` | regression test wisp -> finding | `hardener` | this test proves that finding is fixed |
+| `supersedes` | re-run finding -> prior finding | `hardener` | the verification re-run replaced the original |
+
+```
+# gremlin, filing a finding a harness produced:
+bd dep add <finding> <harness> --type discovered-from
+# challenger, linking a chain to its constituents:
+bd dep add <chain> <constituent> --type relates-to
+```
+
+MUST Draw the correlation edge when you file the wisp, since an edge added later is an edge usually never added, and the report and the raw export both traverse edges to correlate a finding with the harness, crash, or chain it came from.
+MUST Keep `bd dep cycles` clean after wiring. A correlation edge is a DAG edge; a cycle means a finding was linked as its own ancestor, which breaks traversal.
+NOT Never use `blocks` for a correlation. `blocks` gates the ready queue, so a correlation drawn as a blocker would stall the wisp it merely annotates.
+
 ## State mapping
 
 `bd set-state` owns the `state:` label dimension: each transition deletes the

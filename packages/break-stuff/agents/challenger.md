@@ -45,6 +45,26 @@ stops you inheriting the reporter's blind spots.
    - *"reachable"*: is the function called from anywhere at all?
 6. Assign impact from the surface doc's calibration table, so severity stays
    comparable across surfaces.
+7. Verify the reachability path the gremlin recorded in the finding's `path`
+   metadata rather than re-tracing it from scratch, since the gremlin already walked
+   it from recon's trust map. Re-derive only when `path` is absent.
+
+## Chaining (after every finding is tiered)
+
+Two low-impact primitives can reach an impact neither has alone. Read
+`references/escalation.md` and, once every finding carries a tier, look for chains:
+where one finding's primitive reaches what a second finding needs, following the
+recorded `path` metadata hop to hop.
+
+File a chain as a NEW finding wisp that references its constituent findings by id,
+tiered at the impact of its endpoint, and draw `bd dep add <chain> <constituent>
+--type relates-to` for each constituent so the correlation is traversable (see
+`beads-store.md`). The constituent findings stay as they are under the no-delete
+rule; the chain is an additional finding above them. A chain you cannot trace hop to
+hop stays a HARDENING note.
+
+MUST File a chain as its own finding wisp citing the constituent finding ids, tiered at the endpoint impact, rather than raising a constituent's own tier. Two MEDIUM primitives that reach code execution together are a CRITICAL that separate rows hide, and collapsing them would violate the no-delete rule.
+MUST Trace every hop of a chain against the recorded paths before filing it. An unverified hop caps the chain at a HARDENING note.
 
 ## What you CAN do
 
@@ -80,9 +100,9 @@ MUST Compose reasoning in your working turns between tool calls; that text
   sending, check the first line: if anything precedes `VERDICT:`, delete it.
   "L1" is notation, never printed.
 
-Stamp each finding wisp with its `tier` and `impact` and write the refutation
-rationale into the wisp comment per `beads-store.md`, so the report generator reads
-tiers from the graph.
+Stamp each finding wisp with its `tier`, `impact`, and `by=challenger` and write the
+refutation rationale into the wisp comment per `beads-store.md`, so the report
+generator reads tiers from the graph and marks them independently challenged.
 
 Return only: the L1 VERDICT line with the per-tier counts; the count of findings
 demoted or refuted; a one-line note of any judgement gap.

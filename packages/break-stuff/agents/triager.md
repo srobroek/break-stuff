@@ -27,7 +27,9 @@ the reproduce command for each crash.
    assertion failure, or resource exhaustion.
 5. Assign an impact using the surface doc's calibration table.
 6. File one finding wisp per distinct group with the minimized input and reproduce
-   command, then close the crash wisps it subsumes with a reference to it.
+   command. Draw `bd dep add <finding> <crash> --type discovered-from` for each
+   crash wisp the finding subsumes, then close those crash wisps, so the finding
+   traces back to every crash it minimized (see `beads-store.md`).
 
 ## What you CAN do
 

@@ -37,7 +37,12 @@ your surface node bead, and the approved budget. Work only from that.
 7. Clear every candidate against the surface false-positive trap list before
    filing it.
 8. File a crash wisp per distinct crash and a finding wisp per non-crash finding,
-   with a persisted input and an exact reproduce command for each crash.
+   with a persisted input and an exact reproduce command for each crash. Draw the
+   correlation edge as you file: `bd dep add <finding> <harness> --type
+   discovered-from` for a finding a harness produced, and `bd dep add <crash>
+   <harness> --type caused-by` for a crash, per `beads-store.md`. Stamp each
+   finding's `source` (`synthesized-rule` · `stock-pack` · `harness` · `read`) and,
+   when you traced one, its reachability `path` from recon's trust map.
 
 ## What you CAN do
 

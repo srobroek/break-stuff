@@ -90,7 +90,10 @@ catalogue.
    filing it.
 5. File a crash wisp per distinct crash and a finding wisp per non-crash finding,
    per `references/beads-store.md`. Persist every crashing input and record the
-   exact reproduce command.
+   exact reproduce command. Draw the correlation edge as you file
+   (`bd dep add <finding> <harness> --type discovered-from`, `bd dep add <crash>
+   <harness> --type caused-by`), and stamp `source` and, when traced, the
+   reachability `path` on every finding.
 
 ## What you MUST NOT do
 - Edit, patch, or fix anything, including a harness that looks wrong. Report a

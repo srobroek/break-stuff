@@ -57,9 +57,11 @@ where one finding's primitive reaches what a second finding needs, following the
 recorded `path` metadata hop to hop.
 
 File a chain as a NEW finding wisp that references its constituent findings by id,
-tiered at the impact of its endpoint. The constituent findings stay as they are
-under the no-delete rule; the chain is an additional finding above them. A chain you
-cannot trace hop to hop stays a HARDENING note.
+tiered at the impact of its endpoint, and draw `bd dep add <chain> <constituent>
+--type relates-to` for each constituent so the correlation is traversable (see
+`beads-store.md`). The constituent findings stay as they are under the no-delete
+rule; the chain is an additional finding above them. A chain you cannot trace hop to
+hop stays a HARDENING note.
 
 MUST File a chain as its own finding wisp citing the constituent finding ids, tiered at the endpoint impact, rather than raising a constituent's own tier. Two MEDIUM primitives that reach code execution together are a CRITICAL that separate rows hide, and collapsing them would violate the no-delete rule.
 MUST Trace every hop of a chain against the recorded paths before filing it. An unverified hop caps the chain at a HARDENING note.
