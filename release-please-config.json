@@ -43,7 +43,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "component": "sabot",
+      "component": "sabot-marketplace",
       "changelog-path": "CHANGELOG.md",
       "exclude-paths": [
         "packages"
