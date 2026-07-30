@@ -82,10 +82,17 @@ comma-list the surface doc's Tools table names:
 
 | Surface image | Assert (all campaign tools for the surface) |
 |---|---|
-| `break-stuff/rust:1` | `cargo-fuzz,cargo-audit,clippy` |
+| `break-stuff/rust:1` | `cargo-fuzz,cargo-audit,clippy,cargo-geiger` |
 | `break-stuff/python:1` | `atheris,hypothesis,bandit,ruff,semgrep` |
 | `break-stuff/node:1` | `jazzer,fast-check,retire` |
-| `break-stuff/base:1` | `semgrep,shellcheck,ripgrep` |
+| `break-stuff/base:1` | `semgrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner` |
+
+This table is the same manifest `scripts/install-tools.sh --probe` asserts. The base
+image carries the cross-surface and CI/supply-chain scanners (`gitleaks`,
+`osv-scanner`, `trivy`, and the workflow-dataflow pair `zizmor`+`actionlint`, plus
+`pinact`), since a repo's `.github/workflows` and dependency manifests are read on
+every run regardless of language. A tool named here but absent from a built image
+FAILS the preflight; the campaign does not start until the image ships the full set.
 
 Exit 0 means every tool answered `--version` inside the image; non-zero names
 the missing ones. Assert the complete set once, up front, so a campaign never
