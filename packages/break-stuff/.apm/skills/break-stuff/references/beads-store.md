@@ -209,16 +209,24 @@ It filters to one run and reshapes each kept bead into the schema below, droppin
 fields a report never uses.
 
 ```
-report-json.py --run-id run-<id> -o <artifacts>/run-<id>.json
+report-json.py --epic <epic-id> -o <artifacts>/run-<id>.json
 ```
 
-The script's output is what the report generator consumes; it reconstructs the whole
-run from that file rather than re-querying. The same graph carries work between
-agents, since each of `scout`, `fuzzer`, `gremlin`, `triager`, and `challenger`
-reads its inputs from the wisps a prior agent filed (see Handoff chain). Correlation
-needs no join table: `run_id` scopes the run, the parent edge places each wisp on its
-surface, and the typed edges (`discovered-from`, `caused-by`, `relates-to`) link a
-finding to the harness, crash, or chain it came from.
+The script selects the run by **descent from the epic** (walking `parent-child`
+edges, with the hierarchical bead id as a fallback), not by a `run_id` filter. The
+structure is the scope: a finding belongs to the run because it descends from the
+epic, so a wisp whose `run_id` an agent forgot to stamp is still collected rather
+than silently dropped. The script flags any such wisp in a `stamping_gaps` list, so
+the missing stamp is visible instead of costing a finding. (`--run-id <id>` still
+works as an alias that resolves the epic.)
+
+The same graph carries work between agents, since each of `scout`, `fuzzer`,
+`gremlin`, `triager`, and `challenger` reads its inputs from the wisps a prior agent
+filed (see Handoff chain). Correlation needs no join table: the parent edge places
+each wisp on its surface under the epic, and the typed edges (`discovered-from`,
+`caused-by`, `relates-to`) link a finding to the harness, crash, or chain it came
+from. The `run_id` stamp is a convenience for live `bd list` queries, not the
+report's source of truth.
 
 ### Report schema
 
