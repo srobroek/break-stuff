@@ -18,8 +18,11 @@ would run the target's code outside the container, so every tool lives in the im
    images are built. A missing runtime or missing `bd` ABORTS the whole run at step
    0 (`isolation.md`, No container runtime); there is no degraded run.
 2. **Provision (image):** build any missing surface image from
-   `references/containers/`, and extend it with the target's dev-deps per
-   `isolation.md` Provisioning, keyed on the manifest+lock so the layer caches.
+   `references/containers/`, then extend it with the target's dev-deps by running
+   `scripts/build-ext-image.sh --target <dir> --base break-stuff/<surface>:1 --tag break-stuff/<surface>-ext:1`
+   (`isolation.md` Provisioning); it copies only the manifest+lock, so the layer
+   caches on the lock. The orchestrator runs this autonomously, without a separate
+   confirmation gate: the interview's tool answers already authorized it.
 3. **Assert (image):** `run-contained.sh --assert-tools <image> <tools>` confirms
    every campaign tool answers inside the image before the run trusts a clean result.
 

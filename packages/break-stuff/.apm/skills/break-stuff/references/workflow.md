@@ -54,9 +54,15 @@ MUST Record the entry points before step 4. A fuzzer given no entry points inven
 
 1. Run `install-tools.sh --probe` (host preflight: runtime + `bd` + `git`, and which
    surface images exist). Then provision the image per `installer.md` and
-   `isolation.md` Provisioning: build any missing surface image, extend it with the
-   target's dev-deps (from the step-2 manifest map, keyed on the lockfile so the
-   layer caches), and `--assert-tools` it. Tools run in the image, not on the host.
+   `isolation.md` Provisioning: build any missing surface image, then extend it with
+   the target's dev-deps by running
+   `scripts/build-ext-image.sh --target <dir> --base break-stuff/<surface>:1 --tag break-stuff/<surface>-ext:1`
+   (it runs `detect-stacks.py`, writes a thin Dockerfile that copies only the
+   manifests+lockfiles, and builds the layer keyed on the lock). Then `--assert-tools`
+   the ext image and run the campaign against it. Tools run in the image, not on the
+   host.
+
+MUST Build and extend the surface image autonomously here, without a separate confirmation gate. The interview already authorized the toolset; provisioning the image to hold it executes that approved plan rather than deciding anything new. The blast-radius opt-ins (live-spawn, DAST) stay gated; the image build does not.
 2. Build the proposal per `installer.md`: every viable tool for each detected
    surface, default-on pre-selected ON, opt-in shown OFF with its reason.
 3. Build the budget table per `fuzzing.md`, stating the harness count and the
