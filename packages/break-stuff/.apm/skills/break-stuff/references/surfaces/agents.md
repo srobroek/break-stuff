@@ -7,10 +7,18 @@ reachable by whoever controls that content.
 
 ## Detect
 
-`SKILL.md`, `*.agent.md`, `.claude/agents/**`, `.codex/agents/**`, `.mcp.json`,
-`settings.json` or `settings.local.json` carrying `hooks` or `permissions`,
-`CLAUDE.md`, `AGENTS.md`, `.claude/rules/**`, `.apm/instructions/**`,
-`.apm/context/**`, and any prompt template a program builds at runtime.
+`SKILL.md`, `*.agent.md`, `.mcp.json`, `settings.json` or `settings.local.json`
+carrying `hooks` or `permissions`, and any prompt template a program builds at
+runtime, when these are the PRODUCT under audit (a repo that ships agents, skills,
+or an MCP server as its deliverable).
+
+The user's own agentic-tooling config (`.claude/`, `.codex/`, `.agents/`, `.cursor/`,
+a repo-root `CLAUDE.md`/`AGENTS.md`, `.apm/instructions/**`, `.apm/context/**`) is
+EXCLUDED by default per `targeting.md`, even on a whole-repo run: it is the
+developer's setup, not the product, and the break-stuff skill itself often lives
+there. Scan it only when the user opts in by naming those paths as the target.
+
+MUST Scan the user's `.claude`/`.codex`/`.agents` config only on an explicit opt-in, never as part of a whole-repo sweep. A repo audit targets the product; a finding in the developer's own agent setup is a different request they make deliberately.
 
 ## Tools
 
