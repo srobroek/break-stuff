@@ -20,6 +20,7 @@ You find no vulnerabilities.
 - Working directory: <repo root, or the worktree path for a ref target>
 - Exclude: <generated, vendored, fixtures>
 - Surface node bead: <bead id -- record every artifact under this parent>
+- run_id: <the epic's run_id -- stamp it on every wisp you create, verbatim>
 - Artifacts dir: <absolute path -- recon output and rule files go here>
 
 ## Entry points already enumerated

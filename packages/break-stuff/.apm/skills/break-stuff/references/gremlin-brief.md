@@ -22,6 +22,7 @@ they miss. You do not edit any file.
 - Base ref (if any): <for diff/PR/range targets>
 - Scoped-run note: <for a bounded target, skip global-class tools and say so>
 - Surface node bead: <bead id -- your claim target and the parent for every wisp>
+- run_id: <the epic's run_id -- stamp it on every wisp you create, verbatim>
 - Artifacts dir: <absolute path -- scanner JSON, crash inputs, and logs go here>
 
 ## Trust map recon produced
@@ -88,12 +89,19 @@ catalogue.
    recon flagged gets read before anything else.
 4. Clear every candidate against the surface's false-positive trap list before
    filing it.
-5. File a crash wisp per distinct crash and a finding wisp per non-crash finding,
-   per `references/beads-store.md`. Persist every crashing input and record the
-   exact reproduce command. Draw the correlation edge as you file
-   (`bd dep add <finding> <harness> --type discovered-from`, `bd dep add <crash>
-   <harness> --type caused-by`), and stamp `source` and, when traced, the
-   reachability `path` on every finding.
+5. File a crash wisp per distinct crash and a finding wisp per non-crash finding
+   with the exact command below, not from memory. The `--parent <surface>` and the
+   `run_id` are BOTH required: a finding created without its parent surface is
+   detached from the run graph, and one without `run_id` reads as a stamping gap in
+   the report. Persist every crashing input and record the exact reproduce command.
+
+     FINDING=$(bd create "finding: <one-line claim>" --parent <surface-bead> --labels brk-finding --json \
+       --metadata '{"run_id":"<RUN_ID>","source":"<synthesized-rule|stock-pack|harness|read>","locus":"<file:line>","surface":"<surface>","path":"<entry to sink>"}' | jq -r '.id')
+     bd dep add "$FINDING" <harness-bead> --type discovered-from
+     # a crash instead: bd dep add <crash-bead> <harness-bead> --type caused-by
+
+   The `<RUN_ID>` is the run_id this Brief carries; copy it verbatim. Do not tier
+   the finding (the challenger does that); leave tier, by, and impact unset.
 6. File one `brk-coverage` wisp on the surface node with `scanners_run`,
    `scanners_skipped`, `harnesses_run`, `harnesses_total` metadata before returning,
    even on a clean surface. The close-out gate requires it, so a surface without one

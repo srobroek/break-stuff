@@ -55,6 +55,12 @@ EXPORT_LINES = [
                   "harnesses_run": 1, "harnesses_total": 2},
      "labels": ["brk-coverage", "brk-surface", "non-work"],
      "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}]},
+    # A finding the agent filed WITHOUT run_id (the live-test bug). It must still be
+    # collected via the parent-child walk, and flagged as a stamping gap.
+    {"id": "e.1.4", "issue_type": "task", "title": "unstamped finding", "status": "open",
+     "metadata": {"tier": "REACHABLE", "impact": "MEDIUM", "locus": "x.py:1"},
+     "labels": ["brk-finding", "brk-surface"],
+     "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}]},
     # run-B: must not appear in a run-A report.
     {"id": "z", "issue_type": "epic", "title": "other", "status": "open",
      "metadata": {"run_id": "run-B"}},
@@ -99,16 +105,35 @@ def test_buckets_and_filters_to_run(stub_bd):
     assert out["epic"]["target"] == "repo"
     assert len(out["surfaces"]) == 1
     assert len(out["harnesses"]) == 1
-    assert len(out["findings"]) == 1
+    assert len(out["findings"]) == 2  # the stamped one + the unstamped one, both under the epic
     assert len(out["coverage"]) == 1
     # run-B and the infra bead are gone.
     ids = [f["id"] for f in out["findings"]]
     assert "z.1" not in ids
 
 
+def test_selects_by_epic_directly(stub_bd):
+    """The preferred API: pass the epic id, collect its descendants by parentage."""
+    out = json.loads(run_script(stub_bd, "--epic", "e").stdout)
+    assert out["epic_id"] == "e"
+    assert out["run_id"] == "run-A"
+    assert {f["id"] for f in out["findings"]} == {"e.1.2", "e.1.4"}
+
+
+def test_unstamped_finding_is_collected_and_flagged(stub_bd):
+    """The live-test bug: a finding with no run_id must NOT be silently dropped.
+    It is collected via the parent-child walk and reported as a stamping gap."""
+    out = json.loads(run_script(stub_bd, "--epic", "e").stdout)
+    ids = {f["id"] for f in out["findings"]}
+    assert "e.1.4" in ids  # collected despite missing run_id
+    gap_ids = {g["id"] for g in out["stamping_gaps"]}
+    assert "e.1.4" in gap_ids  # and flagged
+    assert out["summary"]["stamping_gaps"] >= 1
+
+
 def test_finding_keeps_metadata_and_edges(stub_bd):
     out = json.loads(run_script(stub_bd, "--run-id", "run-A").stdout)
-    f = out["findings"][0]
+    f = next(f for f in out["findings"] if f["id"] == "e.1.2")
     assert f["tier"] == "PROVEN"
     assert f["by"] == "challenger"
     assert f["impact"] == "CRITICAL"
@@ -134,6 +159,11 @@ def test_harness_keeps_input_shape(stub_bd):
 
 def test_unknown_run_id_exits_4(stub_bd):
     r = run_script(stub_bd, "--run-id", "run-NONE")
+    assert r.returncode == 4
+
+
+def test_unknown_epic_exits_4(stub_bd):
+    r = run_script(stub_bd, "--epic", "nonexistent")
     assert r.returncode == 4
 
 

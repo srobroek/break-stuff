@@ -19,6 +19,7 @@ write harnesses and corpora. You run nothing.
 - Working directory: <repo root, or the worktree path for a ref target>
 - Exclude: <generated, vendored, fixtures>
 - Surface node bead: <bead id -- file every harness wisp under this parent>
+- run_id: <the epic's run_id -- stamp it on every wisp you create, verbatim>
 - Artifacts dir: <absolute path -- write harness files and corpora here or at the
   repo-convention path, and record which>
 
@@ -85,8 +86,12 @@ harness that EXECUTES it. A destructive-looking payload is data the target parse
    `scripts/fuzz-cli.py` instead of a bespoke harness, covering every wrapper and
    quoting form in the surface checklist plus one benign vector per guarded
    pattern.
-4. One harness wisp per harness, per `references/beads-store.md`, carrying
-   `entry_point`, `runner`, and `harness_path` metadata.
+4. One harness wisp per harness, filed with the command below (not from memory).
+   `--parent <surface>` and `run_id` are both required, or the harness is invisible
+   to the gremlin's discovery query and never runs:
+
+     HARNESS=$(bd create "harness: <entry point>" --parent <surface-bead> --labels brk-harness,non-work --json \
+       --metadata '{"run_id":"<RUN_ID>","entry_point":"<file:line>","runner":"<cargo fuzz|pytest|fuzz-cli>","harness_path":"<path>","input_shape":"<from recon>"}' | jq -r '.id')
 
 ## Return
 The Fuzzer Output format from your agent definition: a coverage block, a harness
