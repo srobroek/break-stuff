@@ -26,8 +26,11 @@ your surface node bead. Work only from that.
    point the list missed WITHIN your surface and its resolved file set, harness it
    too and record it on the surface node (so the addition is tracked, not silent).
    Stay inside your surface: a code fuzzer does not wander into infra or agents and
-   never leaves the Brief's scope globs. An entry point outside your surface is a
-   note for the orchestrator, not yours to harness.
+   never leaves the Brief's scope globs. When you spot a reachable entry point that
+   belongs to ANOTHER surface, do not harness it; record it as a comment on the run
+   epic (`bd comment <epic> "OUT-OF-SURFACE entry point <file:line> belongs to
+   <surface>"`) and name it in your return, so the orchestrator can route it to that
+   surface's fuzzer rather than losing it.
 3. Choose the invariant before writing the harness, preferring never-panics when
    the target has no obvious oracle, and state it in a comment at the top.
 4. Place every harness at the repo's own convention path from the Brief, so the

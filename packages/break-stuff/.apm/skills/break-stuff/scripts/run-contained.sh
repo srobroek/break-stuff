@@ -17,6 +17,8 @@ set -euo pipefail
 #   --cap-drop ALL --security-opt no-new-privileges   no caps to escalate
 #   image default user is non-root (uid 1000, owns /artifacts) so no root, no uid match
 #   --read-only root + tmpfs /scratch             nothing else writable
+#   workdir=/scratch, CARGO_TARGET_DIR/GOCACHE/TMPDIR/HOME -> /scratch  builds write here, not the ro target
+#     (the command after -- reads the target at /target: `cargo test --manifest-path /target/Cargo.toml`)
 #   --rm + disposable volume      no state carried between runs
 #
 # The container backend is colima/finch/docker; on this host `docker` targets a
@@ -126,12 +128,25 @@ printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
   "$DK" "$CTX" "$IMAGE" "$NET" "$MEM" "$PIDS" >&2
 
 set +e
+# The target is read-only, so every build/test toolchain must write its output to
+# the one writable path (/scratch, a tmpfs), not into the target tree. Point the
+# common toolchains there and set cwd to /scratch, so `cargo test`, `go test`, and
+# npm all build without a write to the read-only mount. workdir is /scratch, not
+# /target, so a relative build path lands in the writable place.
 timeout "$TMO" "$DK" run --rm \
   "${NETFLAG[@]}" \
   --memory "$MEM" --memory-swap "$MEM" --pids-limit "$PIDS" --cpus "$CPUS" \
   --read-only --tmpfs /scratch:size=512m \
   --cap-drop ALL --security-opt no-new-privileges \
   --user 1000:1000 \
+  --workdir /scratch \
+  --env HOME=/scratch \
+  --env TMPDIR=/scratch \
+  --env CARGO_TARGET_DIR=/scratch/target \
+  --env GOCACHE=/scratch/go-build \
+  --env GOPATH=/scratch/go \
+  --env npm_config_cache=/scratch/npm \
+  --env XDG_CACHE_HOME=/scratch/cache \
   -v "$MOUNT_SRC:/target:ro" \
   -v "$VOL:/artifacts" \
   "$IMAGE" \
