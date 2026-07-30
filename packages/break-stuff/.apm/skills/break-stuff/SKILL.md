@@ -39,6 +39,19 @@ non-interactive run then takes the defaults below and records each as a gap.
    repo is a scope error. Capture the user's stated fear too; it is stamped on the
    epic as `threat` and orders the report, without being handed to a scout as a
    hypothesis.
+   - **"Whole repo" excludes the agentic-tooling config by default**, per
+     `references/targeting.md`. Describe the whole-repo option as the product tracked
+     by git minus `.claude/`, `.codex/`, `.agents/`, `.cursor/`, and a repo-root
+     `AGENTS.md`/`CLAUDE.md`. Never list those directories as covered by "whole repo",
+     and never present the user's own agent assets as an in-scope item, since a
+     whole-repo audit targets the product and the break-stuff skill itself often lives
+     in `.claude/`. Auditing that config is a SEPARATE target the user names
+     explicitly (the agents surface pointed at those paths), offered only on request.
+   - This exclusion is about the user's TOOLING config, not about agentic code. A
+     production agent in `src/` (a `langgraph`/`langchain`/AgentCore app, a
+     prompt-assembly path) IS in scope on a whole-repo run; the scout detects it by
+     signature (see `references/surfaces/agents.md`). Exclude the config dirs; keep
+     the app's agentic code.
 2. **Which surfaces?** Detect them from the target via `references/surfaces/index.md`,
    then present the detected set for the user to trim or extend, pre-selected ON.
    `robustness` is mandatory and cannot be removed. A surface file-detection missed
