@@ -6,12 +6,13 @@ index; this file is the operating detail.
 ## Step 0: mode and preconditions
 
 Determine interactive or non-interactive first, since it decides whether the
-blocking gates apply:
+blocking gates apply. Interactive is the default; non-interactive requires a
+positive signal, which being handed a target is not:
 
 | Condition | Mode |
 |---|---|
-| A user is present to answer | interactive: both gates block |
-| CI, a cron run, or a sub-agent invocation | non-interactive: skip the gates and use defaults; record every gap |
+| Any invocation without a non-interactive signal, even one that named a target | interactive (DEFAULT): both gates block, so ask and wait |
+| The invocation says CI / cron / non-interactive, or you are a spawned sub-agent with no channel back to a human | non-interactive: skip the gates and use defaults; record every gap |
 
 Check `bd` availability per `beads-store.md`. No `bd` stops the run.
 

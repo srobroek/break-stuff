@@ -17,13 +17,20 @@ campaign survives a crash and resumes from the durable graph. LOAD
 This SKILL is a router. Load the referenced file for each step rather than
 inlining its content.
 
-## STOP: pin the scope before you touch the target
+## STOP: interview the user before you touch the target
 
-Answer the three questions below before detecting the stack, running a scanner, or
-spawning a `gremlin`. None is skippable in an interactive run. LOAD
+Ask the three questions below and WAIT for the answers before detecting the stack,
+running a scanner, or spawning a `gremlin`. This is the default on every invocation:
+interviewing is the assumption, and naming a target does not waive it. A user who
+types "run break-stuff on this repo" has told you the repo, not the surfaces, tools,
+budget, or what they fear, and those are the answers that shape the run. LOAD
 `references/interview.md` for how to probe for what the user left unsaid and what an
-answer should make you distrust. It also gives the defaults a non-interactive run
-records as gaps.
+answer should make you distrust.
+
+Skip the interview ONLY on a positive non-interactive signal: the invocation itself
+says non-interactive/CI/cron, or you are a spawned sub-agent with no channel back to
+a human. Being handed a target is NOT such a signal. When in doubt, ask. A
+non-interactive run then takes the defaults below and records each as a gap.
 
 1. **Which target, and what do you fear most?** Ask in two steps when the user named
    none. Offer every time: `whole repo` · `language/area filter` · `directory/module` ·
@@ -48,10 +55,11 @@ records as gaps.
    "go" means: install every missing default-on tool, accept the proposed budget, run
    everything except the blast-radius opt-ins.
 
-A **non-interactive** run (CI, or a sub-agent with no user to ask) is the only
-exception: use the target it was given or the whole repo, the full detected surface set,
-the budget defaults from `references/fuzzing.md`, and the installed tools, then
-record every gap.
+A **non-interactive** run (an invocation that says CI/cron/non-interactive, or a
+sub-agent with no channel to a human) takes the defaults rather than asking: the
+target it was given or the whole repo, the full detected surface set, the budget
+defaults from `references/fuzzing.md`, and the installed tools, then records every
+default as a gap. Being handed a target does not by itself make a run non-interactive.
 
 **Skill dir vs. target dir.** Tools run with cwd set to the *target* repo, while
 this skill's shipped assets (`scripts/`, `references/corpora/`) live in the *skill*

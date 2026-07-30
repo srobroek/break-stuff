@@ -24,16 +24,23 @@ DEFAULT Kinds compose. "The shell in this PR" is the PR file list filtered to th
 
 ## Excludes
 
-Drop these from every resolved list unless the user names one explicitly:
+Resolve a whole-repo target from the repo's tracked files (`git ls-files`), so
+`.gitignore` is honored and build output, caches, and untracked local scratch never
+enter scope. On top of that, drop these from every resolved list unless the user
+names one explicitly:
 
 | Exclude | Why |
 |---|---|
+| anything `.gitignore` ignores | not part of the repo; build output and local scratch, owned by the toolchain |
+| agentic-tooling config: `.claude/`, `.codex/`, `.agents/`, `.cursor/`, and a repo-root `AGENTS.md`/`CLAUDE.md` | the user's own agent setup, not the product under audit; scanning it is a separate opt-in (see below) |
 | generated output | regenerated on build, so a finding there belongs to the generator |
 | vendored dependencies | owned upstream, and covered by the dependency scanners instead |
 | lockfiles, for surfaces other than infra | scanned as a manifest rather than read as code |
 | test fixtures holding deliberately malformed data | that is what they are for |
 | `.git`, build caches, `node_modules`, `target`, `.venv` | not source |
 
+MUST Resolve a whole-repo target from `git ls-files` and honor `.gitignore`, since a whole-repo scan of the working tree otherwise pulls in build output, caches, and untracked local files that are not the repo.
+MUST Exclude the agentic-tooling directories (`.claude/`, `.codex/`, `.agents/`, `.cursor/`) by default, even when the user asks for "everything". A repo audit targets the product, not the user's agent configuration, and the break-stuff skill itself is often installed there. Scanning them is a separate opt-in the user names explicitly (the agents surface, pointed at those paths).
 MUST Report an exclude that removed a large share of the target, since a user asking for a whole-repo audit needs to know what was skipped.
 NOT Never exclude the repo's own tests wholesale. A test that shells out unsafely or holds a live credential is a real finding.
 
