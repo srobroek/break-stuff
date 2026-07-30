@@ -20,8 +20,14 @@ your surface node bead. Work only from that.
 1. Read `references/harnesses.md` first for invariant selection and placement, then
    your surface doc for the attacks this surface demands. For the agents surface,
    read `references/corpora/prompt-injection.md`.
-2. Take the Brief's entry-point list as your work list. Write one harness per
-   reachable entry point.
+2. Take the Brief's entry-point list as your starting work list, and write one
+   harness per reachable entry point. The list sets the initial focus so you do not
+   sweep the whole repo; it is not a ceiling. When you find another reachable entry
+   point the list missed WITHIN your surface and its resolved file set, harness it
+   too and record it on the surface node (so the addition is tracked, not silent).
+   Stay inside your surface: a code fuzzer does not wander into infra or agents and
+   never leaves the Brief's scope globs. An entry point outside your surface is a
+   note for the orchestrator, not yours to harness.
 3. Choose the invariant before writing the harness, preferring never-panics when
    the target has no obvious oracle, and state it in a comment at the top.
 4. Place every harness at the repo's own convention path from the Brief, so the

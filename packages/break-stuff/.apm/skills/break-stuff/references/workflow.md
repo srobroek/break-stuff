@@ -165,7 +165,7 @@ MUST Mark an inline tier `by=self` and headline the missing independent pass whe
 
 ## Step 9: report
 
-Generate the structured JSON with `scripts/report-json.py --run-id run-<id> -o
+Generate the structured JSON with `scripts/report-json.py --epic <epic-id> -o
 <artifacts>/run-<id>.json`, then emit the markdown per `report-template.md` from that
 JSON rather than from the agents' replies. The script reads the finding set from the
 beads export, so the report matches the durable graph. Cite bead IDs, list every

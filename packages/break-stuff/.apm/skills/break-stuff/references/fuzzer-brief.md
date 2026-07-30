@@ -39,7 +39,11 @@ is a candidate for a repo-specific rule or a targeted harness.>
 ## Entry points to cover
 <the reachable entry points found in step 2: parse functions, CLI commands, hook
 scripts, HTTP handlers, config readers, agent definitions. One line each with a
-file:line. This is your work list.>
+file:line. This is your STARTING work list -- it sets the initial focus so you do
+not sweep the whole repo, not a ceiling. Harness a reachable entry point you find
+that this list missed WITHIN this surface and the resolved file set, and record it
+on the surface node. Do not cross into another surface or outside the scope globs;
+an entry point beyond them is a note for the orchestrator, not yours to harness.>
 
 ## Attack-vector baseline recon ranked (write these first)
 <the boundary-anchored vectors from `escalation.md`, ranked by the blast radius of
