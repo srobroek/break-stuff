@@ -15,7 +15,7 @@ and FFI boundaries.
 
 | Tool | Tier | Class | Run recipe | Catches | Overlap |
 |------|------|-------|-----------|---------|---------|
-| semgrep | default-on | local | `mise x ubi:opengrep/opengrep -- opengrep --config p/python --config p/command-injection --json <files>` (per-language pack for the detected stack) | injection, unsafe deserialization, hardcoded secrets, weak crypto, path traversal | registry packs; intra-file dataflow. `--config auto` fetches over the network, so it needs the user's agreement |
+| semgrep | default-on | local | `opengrep --config p/python --config p/command-injection --json <files>` (per-language pack for the detected stack) | injection, unsafe deserialization, hardcoded secrets, weak crypto, path traversal | registry packs; intra-file dataflow. `--config auto` fetches over the network, so it needs the user's agreement |
 | bandit | default-on | local | `bandit -f json -r <paths>` | Python: `shell=True`, `pickle`, `yaml.load`, `assert` for control flow, weak hashes | semgrep covers some, bandit is Python-specific and cheaper |
 | gosec | default-on | local | `gosec -fmt=json ./...` | Go: unhandled errors on security calls, SQL string building, weak rand, TLS config | golangci-lint bundles it; skip when that ran with gosec enabled |
 | cargo-audit | default-on | global | `cargo audit --json` | Rust: RUSTSEC advisories in the dependency tree | overlaps osv-scanner from `infra.md`; keep for Rust-specific advisories |

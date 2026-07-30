@@ -1,0 +1,15 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Keeps the break-stuff surface-image tool pins current. FROM tags are read by the dockerfile manager natively; RUN-line cargo/pip/go pins are read by the customManager below, keyed on the '# renovate:' comment above each pin. Dependabot cannot see RUN-line pins, so Renovate owns these.",
+  "enabledManagers": ["dockerfile", "custom.regex"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/Dockerfile\\.[a-z]+$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+RUN .*?(?:--version|==|@)\\s*(?<currentValue>[0-9][^\\s\"']*)"
+      ],
+      "versioningTemplate": "semver"
+    }
+  ]
+}

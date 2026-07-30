@@ -6,9 +6,9 @@ during a campaign. `fuzzer` selects the tool per target and records the choice o
 the harness wisp; `gremlin` runs what the wisp names.
 
 Each entry lists the **input shape** it fits, the **mechanism**, the invocation,
-and what it overlaps. Invocations use the ephemeral route where one exists, so most
-of this catalog needs no install; run `scripts/install-tools.sh --routes` for the
-authoritative per-tool route.
+and what it overlaps. Every invocation runs in the surface image against the target
+at `/target`, so a recipe is the bare tool call; the tool is baked into the image at
+build (`references/tooling.md`, Where tools come from), not fetched at run time.
 
 ## Choosing by input shape
 
