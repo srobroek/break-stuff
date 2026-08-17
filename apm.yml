@@ -1,6 +1,8 @@
 name: sabot
 version: 0.1.0
-description: Offensive and robustness auditing for code, scripts, hooks, and agents. Marketplace for the sabot package.
+description: >-
+  Offensive and robustness auditing for code, scripts, hooks, and agents.
+  Marketplace for the sabot package.
 author: Sjors Robroek
 license: Apache-2.0
 type: hybrid
@@ -20,7 +22,9 @@ scripts:
   check-native-plugins: uv run --script .apm/scripts/build-native-plugins.py --check
   render-docs: uv run --script .apm/scripts/render-docs.py all
   check-docs: uv run --script .apm/scripts/render-docs.py all --check
-  build-artifacts: uv run --script .apm/scripts/build-native-plugins.py && uv run --script .apm/scripts/render-docs.py all && apm run build-marketplace
+  build-artifacts: >-
+    uv run --script .apm/scripts/build-native-plugins.py && uv run --script
+    .apm/scripts/render-docs.py all && apm run build-marketplace
 compilation:
   strategy: distributed
   source_attribution: true
