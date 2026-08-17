@@ -8,10 +8,10 @@ script enumerates them from `git ls-files`, so it honors .gitignore for free, se
 every member of a workspace, and never depends on an agent globbing correctly.
 
 Usage:
-  detect-stacks.py [--repo <dir>] [--json | --bake]
+  detect-stacks.py [--repo <dir>] [--bake]
 
-  --json  (default) emit the manifest map + detected stacks as JSON. bake_units
-          carry {stack, dir, fetch}, so a caller has everything structured.
+  (default) with no --bake, emit the manifest map + detected stacks as JSON.
+          bake_units carry {stack, dir, fetch}, so a caller has everything structured.
   --bake  emit the provision command lines (`cd <dir> && <fetch>`), one per bake
           unit, for a Dockerfile RUN or an `sh -c` at image build. These are command
           content, not a standalone script: the caller runs them where Docker RUN

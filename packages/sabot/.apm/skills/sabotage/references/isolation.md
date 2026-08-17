@@ -112,8 +112,8 @@ before the fan-out, while the network is available and no target code runs.
 **Detecting the dev-deps.** Do this deterministically with
 `scripts/detect-stacks.py`, not by hand: it lists the target's tracked files
 (`git ls-files`, so `.gitignore` is honored), finds every manifest, collapses Cargo
-workspace members into the root fetch, and emits both the stack map (`--json`) and
-the exact bake commands (`--bake`). It handles the cases a single-manifest guess
+workspace members into the root fetch, and emits both the stack map (default JSON,
+`--repo <dir>`) and the exact bake commands (`--repo <dir> --bake`). It handles the cases a single-manifest guess
 misses, a workspace, a monorepo, and a multi-language target (a Tauri app is Rust
 under `src-tauri/` plus a JS frontend). The manifests and their fetch commands:
 
