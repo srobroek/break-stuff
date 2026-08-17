@@ -36,7 +36,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
-          app-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       # Checkout with the App token persisted as the push credential, so the
@@ -78,7 +78,6 @@ jobs:
 
           python3 -m pip install --quiet -r .github/requirements-ci.txt
           python3 .apm/scripts/build-native-plugins.py
-          python3 .apm/scripts/render-docs.py all
           apm run build-marketplace
 
           if git diff --quiet; then
