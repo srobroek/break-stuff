@@ -348,13 +348,16 @@ CHANGELOG_SECTIONS = [
 ]
 
 
-# Last non-Conventional web-edit commit ("Update README.md") in history; first-
-# release parsing begins after it. See the per-package bootstrap-sha below.
-BOOTSTRAP_SHA = "492d4dfc28c7ab2faa5b44147695e0fc7f3d3c95"
-
-# One-shot first-release pin (see _build_release_config). Set to None and regenerate
-# once sabot--v0.1.0 is tagged, so later releases version normally.
-RELEASE_AS = "0.1.0"
+# One-shot first-release knobs, both now spent (sabot--v0.1.0 is tagged). Kept as
+# documented, None-valued switches: with a real tag on the branch release-please
+# reads history since the tag and versions normally, so neither is needed. Re-set
+# only to bootstrap a fresh history cutoff or force a specific first version.
+#   BOOTSTRAP_SHA: skip non-Conventional pre-history (the "Update README.md" web-edit
+#     commits whose "Update " head aborts the parser). Was the last such commit.
+#   RELEASE_AS: force a specific version (was "0.1.0", to override the rename's
+#     refactor!: 1.0.0 bump when nothing had shipped).
+BOOTSTRAP_SHA = None
+RELEASE_AS = None
 
 
 def _build_release_config(pkgs: list[str]) -> dict:
@@ -370,34 +373,36 @@ def _build_release_config(pkgs: list[str]) -> dict:
     root_component = (
         f"{root_name}-marketplace" if root_name in pkgs else root_name
     )
-    # First-release parsing starts here. History carries non-Conventional web-edit
-    # commits ("Update README.md": a 6-char type + space that aborts release-please's
-    # header parser with "unexpected token ' ' at 1:7"). BOOTSTRAP_SHA is the last
-    # such commit, so parsing begins at the first release-worthy commit after it.
-    # Drop this once a real release tag exists (then history is read since the tag).
-    # One-shot: force the first release to 0.1.0. The break-stuff->sabot rename is a
-    # `refactor!:` (breaking), which release-please would bump to 1.0.0; but nothing
-    # has shipped, so it broke no consumer. REMOVE `release-as` from both entries once
-    # sabot--v0.1.0 is tagged; leaving it pins every future release to 0.1.0.
+    # BOOTSTRAP_SHA / RELEASE_AS are optional one-shot knobs (see the constants
+    # above); each key is emitted only when its constant is set, so a normal release
+    # carries neither.
+    def _pkg(entry: dict) -> dict:
+        if BOOTSTRAP_SHA:
+            entry["bootstrap-sha"] = BOOTSTRAP_SHA
+        if RELEASE_AS:
+            entry["release-as"] = RELEASE_AS
+        entry["extra-files"] = [
+            {"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}
+        ]
+        return entry
+
     packages = {}
-    packages["."] = {
-        "release-type": "simple",
-        "component": root_component,
-        "changelog-path": "CHANGELOG.md",
-        "exclude-paths": ["packages"],
-        "bootstrap-sha": BOOTSTRAP_SHA,
-        "release-as": RELEASE_AS,
-        "extra-files": [{"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}],
-    }
-    for p in pkgs:
-        packages[f"packages/{p}"] = {
+    packages["."] = _pkg(
+        {
             "release-type": "simple",
-            "component": p,
+            "component": root_component,
             "changelog-path": "CHANGELOG.md",
-            "release-as": RELEASE_AS,
-            "bootstrap-sha": BOOTSTRAP_SHA,
-            "extra-files": [{"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}],
+            "exclude-paths": ["packages"],
         }
+    )
+    for p in pkgs:
+        packages[f"packages/{p}"] = _pkg(
+            {
+                "release-type": "simple",
+                "component": p,
+                "changelog-path": "CHANGELOG.md",
+            }
+        )
     return {
         "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
         "separate-pull-requests": False,
