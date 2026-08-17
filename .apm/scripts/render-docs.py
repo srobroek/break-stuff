@@ -352,6 +352,10 @@ CHANGELOG_SECTIONS = [
 # release parsing begins after it. See the per-package bootstrap-sha below.
 BOOTSTRAP_SHA = "492d4dfc28c7ab2faa5b44147695e0fc7f3d3c95"
 
+# One-shot first-release pin (see _build_release_config). Set to None and regenerate
+# once sabot--v0.1.0 is tagged, so later releases version normally.
+RELEASE_AS = "0.1.0"
+
 
 def _build_release_config(pkgs: list[str]) -> dict:
     # Root component is derived from the repo's own apm.yml name, not a hardcoded
@@ -371,6 +375,10 @@ def _build_release_config(pkgs: list[str]) -> dict:
     # header parser with "unexpected token ' ' at 1:7"). BOOTSTRAP_SHA is the last
     # such commit, so parsing begins at the first release-worthy commit after it.
     # Drop this once a real release tag exists (then history is read since the tag).
+    # One-shot: force the first release to 0.1.0. The break-stuff->sabot rename is a
+    # `refactor!:` (breaking), which release-please would bump to 1.0.0; but nothing
+    # has shipped, so it broke no consumer. REMOVE `release-as` from both entries once
+    # sabot--v0.1.0 is tagged; leaving it pins every future release to 0.1.0.
     packages = {}
     packages["."] = {
         "release-type": "simple",
@@ -378,6 +386,7 @@ def _build_release_config(pkgs: list[str]) -> dict:
         "changelog-path": "CHANGELOG.md",
         "exclude-paths": ["packages"],
         "bootstrap-sha": BOOTSTRAP_SHA,
+        "release-as": RELEASE_AS,
         "extra-files": [{"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}],
     }
     for p in pkgs:
@@ -385,6 +394,7 @@ def _build_release_config(pkgs: list[str]) -> dict:
             "release-type": "simple",
             "component": p,
             "changelog-path": "CHANGELOG.md",
+            "release-as": RELEASE_AS,
             "bootstrap-sha": BOOTSTRAP_SHA,
             "extra-files": [{"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}],
         }
