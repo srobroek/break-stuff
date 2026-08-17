@@ -35,8 +35,8 @@ proved detection end-to-end).
 | zizmor | self-contained (offline==online) | baked | **infra-ci VERIFIED** |
 | actionlint | self-contained | baked | infra-ci |
 | pinact | fails-loud (SHA resolve needs net) | baked | infra-ci |
-| trivy | fails-loud → bake trivy-db | fragment-pending | infra/deps fixture |
-| osv-scanner | fails-loud → bake OSV DB | fragment-pending | deps fixture |
+| trivy | fails-loud → bake trivy-db | baked (DB non-empty, asserted) | infra/deps fixture |
+| osv-scanner | fails-loud → bake OSV DB | baked (4 ecosystems, asserted) | deps fixture |
 | Checkov | UNMEASURED (pip) | fragment-pending | iac fixture |
 | hadolint | UNMEASURED (binary) | fragment-pending | dockerfile fixture |
 | kube-linter | UNMEASURED (binary) | fragment-pending | k8s fixture |
@@ -58,8 +58,8 @@ proved detection end-to-end).
 | Tool | Offline req | Bake status | Fixture / test |
 |---|---|---|---|
 | clippy | needs dep graph (ok in ext) | baked | rust-parser |
-| cargo-fuzz | needs-build-dep (libfuzzer-sys+arbitrary+g++) | fragment-pending (bake PR) | **rust-parser (gated)** |
-| cargo-audit | degraded-silent → bake advisory-db | fragment-pending (bake PR) | deps fixture |
+| cargo-fuzz | needs-build-dep (libfuzzer-sys+arbitrary+g++), baked; needs `+nightly` | baked | **rust-parser VERIFIED** (built and crashed the target offline) |
+| cargo-audit | degraded-silent → bake advisory-db | baked | **deps-rust VERIFIED** (1216 advisories, RUSTSEC-2020-0071 offline) |
 | cargo-geiger | needs dep graph (ok in ext) | baked | rust-parser |
 | cargo-careful | UNMEASURED (+nightly) | fragment-pending | rust-parser |
 | cargo-deny | degraded-silent → bake advisory-db | fragment-pending | deps fixture |
@@ -79,29 +79,29 @@ proved detection end-to-end).
 | gosec | UNMEASURED (go install) | fragment-pending | go fixture |
 | golangci-lint | UNMEASURED (binary) | fragment-pending | go fixture |
 
-## python fragment (image-unbuilt)
+## python fragment
 
 | Tool | Offline req | Bake status | Fixture / test |
 |---|---|---|---|
-| Bandit | UNMEASURED | image-unbuilt | python-parser |
-| Ruff | self-contained (likely) | image-unbuilt | python-parser |
-| Semgrep | degraded-silent (same as opengrep) | image-unbuilt | python-parser |
-| atheris | UNMEASURED (build dep?) | image-unbuilt | python-parser |
-| Hypothesis | self-contained (likely) | image-unbuilt | python-parser |
+| Bandit | self-contained (rules embedded) | baked | **python-parser VERIFIED** (B307 offline) |
+| Ruff | self-contained (needs `RUFF_CACHE_DIR` off the read-only target) | baked | **python-parser VERIFIED** (offline) |
+| Semgrep | degraded-silent (same as opengrep) | baked | python-parser |
+| atheris | needs-build-dep (clang + `libclang-rt-<major>-dev` + `CXX`), baked | baked | **python-parser VERIFIED** (found seeded IndexError offline) |
+| Hypothesis | self-contained (library; assert by import) | baked | python-parser |
 | HypoFuzz | UNMEASURED (pip) | image-unbuilt | python-parser |
 | schemathesis | UNMEASURED (needs a spec) | image-unbuilt | api fixture |
 | Grammarinator | UNMEASURED (pip) | image-unbuilt | n/a |
 | dharma | UNMEASURED (pip) | image-unbuilt | n/a |
 | shrinkray | self-contained (reducer) | image-unbuilt | n/a |
 
-## node fragment (image-unbuilt)
+## node fragment
 
 | Tool | Offline req | Bake status | Fixture / test |
 |---|---|---|---|
-| Jazzer.js | UNMEASURED (build dep?) | image-unbuilt | node-parser |
-| fast-check | self-contained (likely) | image-unbuilt | node-parser |
-| retire.js | degraded-silent → bake defs + `--noupdate` | image-unbuilt | node-parser |
-| eslint-plugin-no-unsanitized | UNMEASURED (needs eslint) | image-unbuilt | node-parser |
+| Jazzer.js | self-contained (prebuilt addon; needs glibc >= 2.38, so trixie) | baked | node-parser |
+| fast-check | self-contained (library; reachable via `NODE_PATH`) | baked | node-parser |
+| retire.js | degraded-silent → bake defs + `--jsrepo` | baked | node-parser |
+| eslint-plugin-no-unsanitized | UNMEASURED (needs eslint) | fragment-pending | node-parser |
 
 ## heavy engines (own layer; large)
 

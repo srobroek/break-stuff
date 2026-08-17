@@ -1,7 +1,48 @@
 # Python surface. Base + atheris/hypothesis/bandit/ruff/semgrep.
+#
+# atheris is the coverage-guided fuzzer, and it is the only tool here that builds
+# from source: its wheel links libFuzzer, so the build needs clang, the matching
+# clang runtime archive, and a C++ driver (its setup.py rejects a compiler without
+# C++11). Debian ships libFuzzer in libclang-rt-<major>-dev, NOT in clang, so
+# without that package the build fails "Failed to find libFuzzer" -- which is how
+# this surface shipped with no fuzzer at all (bs-156).
+#
+# The installs are SPLIT and NOT masked by `|| true`. Both matter: pip resolves one
+# invocation as a single transaction, so the atheris build failure aborted the four
+# pure-python tools alongside it, and `|| true` then reported success. A failed
+# install must fail the build, because a missing fuzzer reported as present returns
+# a clean the campaign did not earn (isolation.md, "Assert the tools survived").
+#
+# Build: docker build -f Dockerfile.python -t sabot/python:1 --build-arg BASE=sabot/base:1 .
 ARG BASE=sabot/base:1
 FROM ${BASE}
 USER root
+
+# Pure-python tools first, so a toolchain problem in the atheris layer cannot take
+# the static scanners down with it.
 RUN pip3 install --no-cache-dir --break-system-packages \
-      atheris hypothesis bandit ruff semgrep 2>&1 | tail -1 || true
+      hypothesis bandit ruff semgrep
+
+# atheris and its build toolchain. LIBFUZZER_LIB names the no_main archive (atheris
+# supplies its own main). The arch suffix is resolved at build time so the layer
+# builds on arm64 and amd64 alike.
+ARG LLVM_MAJOR=19
+RUN set -eux; \
+    apt-get update -q; \
+    apt-get install -y --no-install-recommends \
+      "clang-${LLVM_MAJOR}" "libclang-rt-${LLVM_MAJOR}-dev" python3-dev; \
+    rm -rf /var/lib/apt/lists/*; \
+    ln -sf "/usr/bin/clang-${LLVM_MAJOR}" /usr/local/bin/clang; \
+    ln -sf "/usr/bin/clang++-${LLVM_MAJOR}" /usr/local/bin/clang++; \
+    arch="$(uname -m)"; \
+    fuzzer_lib="/usr/lib/llvm-${LLVM_MAJOR}/lib/clang/${LLVM_MAJOR}/lib/linux/libclang_rt.fuzzer_no_main-${arch}.a"; \
+    test -f "$fuzzer_lib"; \
+    CLANG_BIN=/usr/local/bin/clang CC=clang CXX=clang++ LIBFUZZER_LIB="$fuzzer_lib" \
+      pip3 install --no-cache-dir --break-system-packages atheris; \
+    python3 -c 'import atheris'; \
+    bandit --version; ruff --version; semgrep --version; \
+    python3 -c 'import hypothesis; print(hypothesis.__version__)'
+
 USER breaker
+WORKDIR /scratch
+VOLUME /artifacts

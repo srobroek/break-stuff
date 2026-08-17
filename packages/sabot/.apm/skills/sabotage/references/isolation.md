@@ -80,12 +80,20 @@ Assert EVERY tool the surface's campaign will invoke, not only the fuzzer. A
 missing scanner is the same silent-clean as a missing fuzzer. Pass the full
 comma-list the surface doc's Tools table names:
 
-| Surface image | Assert (all campaign tools for the surface) |
-|---|---|
-| `sabot/rust:1` | `cargo-fuzz,cargo-audit,clippy,cargo-geiger` |
-| `sabot/python:1` | `atheris,hypothesis,bandit,ruff,semgrep` |
-| `sabot/node:1` | `jazzer,fast-check,retire` |
-| `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner` |
+| Surface image | Assert (executables) | Assert (library imports) |
+|---|---|---|
+| `sabot/rust:1` | `cargo-fuzz,cargo-audit,clippy,cargo-geiger` | none |
+| `sabot/python:1` | `bandit,ruff,semgrep` | `python3 -c "import atheris, hypothesis"` |
+| `sabot/node:1` | `jazzer,retire` | `node -e 'require("fast-check")'` |
+| `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner` | none |
+
+Each column asks a different question, and conflating them hid a real gap.
+`--assert-tools` runs `<tool> --version`, which a LIBRARY can never answer: atheris,
+hypothesis, and fast-check ship no CLI, so listing them there reported them missing
+whether or not they were installed. Libraries are asserted by IMPORT instead, which
+is also the stronger check for a native addon. `sabot/node:1` once shipped a
+`jazzer` that `npm i -g` installed cleanly and that then died at dlopen against a
+too-old glibc.
 
 This table is the same manifest `scripts/install-tools.sh --probe` asserts. The base
 image carries the cross-surface and CI/supply-chain scanners (`gitleaks`,
@@ -97,6 +105,8 @@ FAILS the preflight; the campaign does not start until the image ships the full 
 Exit 0 means every tool answered `--version` inside the image; non-zero names
 the missing ones. Assert the complete set once, up front, so a campaign never
 discovers a missing scanner mid-run and reports its dimension as clean.
+
+MUST Assert a library by importing it, not by invoking it. A package that pip or npm wrote to disk can still fail to load, and a native addon linked against a newer glibc than the image carries fails only at dlopen: at fuzz time, in a phase whose failure reads as a clean.
 
 MUST Assert EVERY tool the surface's campaign will invoke inside the image up front, not only the coverage-guided fuzzer. An unconfirmed scanner or fuzzer yields a clean result the campaign did not earn; a missing scanner is as silent as a missing fuzzer.
 MUST Refuse the fuzz phase and report the surface as uncovered when the assertion fails. Do not use hand-written vectors instead and call it fuzzed. Rebuild the image from `references/containers/` and retry, or record the gap in the report headline.

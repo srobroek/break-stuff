@@ -189,6 +189,7 @@ timeout "$TMO" "$DK" run --rm \
   --env GOCACHE=/scratch/go-build \
   --env GOPATH=/scratch/go \
   --env npm_config_cache=/scratch/npm \
+  --env RUFF_CACHE_DIR=/scratch/ruff \
   --env XDG_CACHE_HOME=/scratch/cache \
   --env LANG=C.UTF-8 --env LC_ALL=C.UTF-8 \
   -v "$MOUNT_SRC:/target:ro" \
