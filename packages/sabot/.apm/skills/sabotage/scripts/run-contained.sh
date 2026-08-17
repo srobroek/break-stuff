@@ -140,7 +140,9 @@ esac
 
 VOL="bs-art-$$-$(date +%s 2>/dev/null || echo r)"
 $DK volume create "$VOL" >/dev/null
-cleanup() { $DK volume rm "$VOL" >/dev/null 2>&1 || true; [ -n "${STAGE:-}" ] && rm -rf "$STAGE"; }
+# Ends in `:` deliberately. A trap's last command sets the script's exit status, so a
+# falsy final test (no STAGE to remove) would report every run as failed.
+cleanup() { $DK volume rm "$VOL" >/dev/null 2>&1 || true; [ -n "${STAGE:-}" ] && rm -rf "$STAGE"; :; }
 trap cleanup EXIT
 
 printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
