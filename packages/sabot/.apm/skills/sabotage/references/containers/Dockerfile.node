@@ -24,7 +24,10 @@ RUN mkdir -p /tmp/retirejs && cd /tmp/retirejs && git init -q \
  && cp repository/jsrepository-v5.json /opt/sabot-db/retire/ \
  && rm -rf /tmp/retirejs
 
-RUN useradd --create-home --uid 1000 breaker && mkdir -p /artifacts /scratch && chown breaker /artifacts /scratch /opt/sabot-db/retire
-USER breaker
+# node:22-slim already ships a uid-1000 user ("node"), so reuse it rather than create
+# a colliding "breaker" (useradd --uid 1000 fails "UID not unique"). run-contained.sh
+# runs --user 1000:1000, so this uid owns the writable mounts either way.
+RUN mkdir -p /artifacts /scratch && chown 1000:1000 /artifacts /scratch /opt/sabot-db/retire
+USER 1000:1000
 WORKDIR /scratch
 VOLUME /artifacts
