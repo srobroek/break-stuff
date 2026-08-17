@@ -85,15 +85,31 @@ comma-list the surface doc's Tools table names:
 | `sabot/rust:1` | `cargo-fuzz,cargo-audit,clippy,cargo-geiger` | none |
 | `sabot/python:1` | `bandit,ruff,semgrep` | `python3 -c "import atheris, hypothesis"` |
 | `sabot/node:1` | `jazzer,retire` | `node -e 'require("fast-check")'` |
+| `sabot/go:1` | `go,gosec,golangci-lint` | none |
 | `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner` | none |
 
 Each column asks a different question, and conflating them hid a real gap.
 `--assert-tools` runs `<tool> --version`, which a LIBRARY can never answer: atheris,
-hypothesis, and fast-check ship no CLI, so listing them there reported them missing
+hypothesis, and fast-check don't ship a CLI, so listing them there reported them missing
 whether or not they were installed. Libraries are asserted by IMPORT instead, which
 is also the stronger check for a native addon. `sabot/node:1` once shipped a
 `jazzer` that `npm i -g` installed cleanly and that then died at dlopen against a
 too-old glibc.
+
+The probe tries `<tool> --version`, then `cargo <sub> --version`, then `<tool>
+version`. That last form is what `go` answers: `go --version` exits 2 on an undefined
+flag, so without it the go surface reports its toolchain missing. On the go surface the
+toolchain IS the fuzzer, because `go test -fuzz` is built in and there is no separate
+fuzz binary to assert.
+
+MUST Point `TMPDIR` at a SUBDIRECTORY of the scratch tmpfs, never at its root. Go
+refuses to read a `go.mod` that sits in the system temp root, so with
+`TMPDIR=/scratch` and a workdir of `/scratch` every contained go command failed
+"directory prefix . does not contain main module" while `go vet` still exited 0.
+
+MUST Set `GOPROXY=off` on the go surface. A build with an unresolved module otherwise
+blocks on a proxy dial that `--network none` never completes, then reports a network
+error that reads like a broken image instead of naming the missing module.
 
 This table is the same manifest `scripts/install-tools.sh --probe` asserts. The base
 image carries the cross-surface and CI/supply-chain scanners (`gitleaks`,

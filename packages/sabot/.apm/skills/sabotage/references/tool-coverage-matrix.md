@@ -72,12 +72,17 @@ proved detection end-to-end).
 | honggfuzz | needs-build-dep (apt + cargo) | fragment-pending | rust-parser |
 | weggli | self-contained (C/C++ pattern) | fragment-pending | n/a |
 
-## go fragment (NEW; no go image exists yet)
+## go fragment
 
 | Tool | Offline req | Bake status | Fixture / test |
 |---|---|---|---|
-| gosec | UNMEASURED (go install) | fragment-pending | go fixture |
-| golangci-lint | UNMEASURED (binary) | fragment-pending | go fixture |
+| `go test -fuzz` | self-contained (fuzzer is in the toolchain; no runtime crate to bake) | baked | **go-parser VERIFIED** (found seeded panic offline, crash corpus copied out) |
+| gosec | self-contained (rules compiled in) | baked | **go-parser VERIFIED** (G404 offline) |
+| golangci-lint | self-contained (linters compiled in) | baked | **go-parser VERIFIED** (ineffassign offline) |
+| go vet | self-contained (ships with the toolchain) | baked | go-parser (no vet-class defect seeded; ran clean) |
+
+The go surface needs `GOPROXY=off` and a `TMPDIR` below the scratch root; both are
+recorded as MUSTs in `isolation.md`.
 
 ## python fragment
 

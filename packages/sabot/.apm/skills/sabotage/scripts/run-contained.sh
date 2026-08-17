@@ -57,8 +57,12 @@ if [ "${1:-}" = "--assert-tools" ]; then
     case "$t" in
       *[!A-Za-z0-9._-]*|"") echo "assert-tools: illegal tool name: '$t'" >&2; exit 2 ;;
     esac
-    # try `<tool> --version` then the cargo-subcommand form `cargo <sub> --version`
-    if ! "$DK" run --rm --network none "$AT_IMAGE" sh -c "command -v $t >/dev/null 2>&1 && $t --version >/dev/null 2>&1 || ${t#cargo-} --version >/dev/null 2>&1 || cargo ${t#cargo-} --version >/dev/null 2>&1" 2>/dev/null; then
+    # try `<tool> --version`, the cargo-subcommand form `cargo <sub> --version`, then
+    # the bare `<tool> version` subcommand. The last form is not decoration: `go
+    # --version` exits 2 ("flag provided but not defined"), so without it the go
+    # surface's toolchain -- which IS its fuzzer, since `go test -fuzz` is built in --
+    # reports as missing and the preflight refuses a working image.
+    if ! "$DK" run --rm --network none "$AT_IMAGE" sh -c "command -v $t >/dev/null 2>&1 && { $t --version >/dev/null 2>&1 || $t version >/dev/null 2>&1; } || ${t#cargo-} --version >/dev/null 2>&1 || cargo ${t#cargo-} --version >/dev/null 2>&1" 2>/dev/null; then
       missing="$missing $t"
     fi
   done
@@ -174,6 +178,12 @@ set +e
 #     (`--manifest-path /target/Cargo.toml`), never writing the read-only mount.
 # CARGO_TARGET_DIR/GOCACHE/etc. point at /scratch regardless, so a build launched
 # from /target still writes its output to the writable tmpfs, not the target tree.
+#
+# TMPDIR is a SUBDIRECTORY of /scratch, never /scratch itself. Go refuses to read a
+# go.mod that sits in the temp root ("ignoring go.mod in system temp root"), so with
+# TMPDIR=/scratch every contained go command failed "directory prefix . does not
+# contain main module" -- while `go vet` still exited 0, which is the false-clean this
+# wrapper exists to prevent.
 timeout "$TMO" "$DK" run --rm \
   "${NETFLAG[@]}" \
   --memory "$MEM" --memory-swap "$MEM" --pids-limit "$PIDS" --cpus "$CPUS" \
@@ -182,7 +192,7 @@ timeout "$TMO" "$DK" run --rm \
   --user 1000:1000 \
   --workdir "$WORKDIR" \
   --env HOME=/scratch \
-  --env TMPDIR=/scratch \
+  --env TMPDIR=/scratch/tmp \
   --env CARGO_HOME=/scratch/cargo \
   --env CARGO_TARGET_DIR=/scratch/target \
   --env CARGO_NET_OFFLINE=true \

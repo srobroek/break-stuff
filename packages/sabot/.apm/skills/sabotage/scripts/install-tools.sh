@@ -32,7 +32,10 @@ IMAGE_TOOLS_base="opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,act
 IMAGE_TOOLS_rust="cargo-fuzz,cargo-audit,clippy,cargo-geiger"
 IMAGE_TOOLS_python="bandit,ruff,semgrep"
 IMAGE_TOOLS_node="jazzer,retire"
-SURFACES="base rust python node"
+# go ships NO separate fuzz binary: `go test -fuzz` is part of the toolchain, so the
+# `go` executable answering here is the fuzzer assertion for this surface.
+IMAGE_TOOLS_go="go,gosec,golangci-lint"
+SURFACES="base rust python node go"
 
 # image  :  shell test that each LIBRARY the harnesses import actually LOADS inside
 # the image. A library has no CLI, so the executable probe above cannot see it: it
@@ -55,6 +58,11 @@ IMAGE_DB_rust='test "$(ls /usr/local/advisory-db/crates 2>/dev/null | wc -l)" -g
   && ls /deps/cargo/registry/cache/*/libfuzzer-sys-*.crate >/dev/null 2>&1 \
   && ls /deps/cargo/registry/cache/*/arbitrary-*.crate >/dev/null 2>&1'
 IMAGE_DB_node='test -s /opt/sabot-db/retire/jsrepository-v5.json'
+# go bakes no vulnerability DB (gosec and golangci-lint carry their rules in the
+# binary), so the assertion is the OFFLINE CONTRACT instead: GOPROXY must be off, or a
+# build with a missing module blocks on a proxy dial that --network none never
+# completes and then reports a network error that reads like a broken image.
+IMAGE_DB_go='test "$(go env GOPROXY)" = "off" && test -d /deps/go/pkg/mod'
 
 find_runtime() {
   for c in docker finch podman nerdctl; do
