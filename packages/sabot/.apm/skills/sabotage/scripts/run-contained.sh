@@ -142,6 +142,14 @@ trap cleanup EXIT
 printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
   "$DK" "$CTX" "$IMAGE" "$NET" "$MEM" "$PIDS" >&2
 
+# CARGO_HOME is a writable tmpfs path (/scratch/cargo), but the target's baked
+# dev-deps live in the ext-image's read-only /deps/cargo/registry. Seed the writable
+# home with a symlink to that registry so `cargo ... --offline` resolves the baked
+# crates without a network fetch and without writing the read-only layer. No-op when
+# the image has no baked registry (a base image, or a non-Rust surface). The command
+# after the preamble runs via `exec "$@"` so its exit code is preserved.
+PREAMBLE='mkdir -p "$CARGO_HOME" /scratch/tmp; [ -d /deps/cargo/registry ] && [ ! -e "$CARGO_HOME/registry" ] && ln -s /deps/cargo/registry "$CARGO_HOME/registry";'
+
 set +e
 # Two cwd regimes, selected by --workdir:
 #   /target (default): a repo-aware scanner (gitleaks, osv-scanner, actionlint,
@@ -156,12 +164,13 @@ set +e
 timeout "$TMO" "$DK" run --rm \
   "${NETFLAG[@]}" \
   --memory "$MEM" --memory-swap "$MEM" --pids-limit "$PIDS" --cpus "$CPUS" \
-  --read-only --tmpfs /scratch:size=512m \
+  --read-only --tmpfs /scratch:size=512m,mode=1777,exec \
   --cap-drop ALL --security-opt no-new-privileges \
   --user 1000:1000 \
   --workdir "$WORKDIR" \
   --env HOME=/scratch \
   --env TMPDIR=/scratch \
+  --env CARGO_HOME=/scratch/cargo \
   --env CARGO_TARGET_DIR=/scratch/target \
   --env GOCACHE=/scratch/go-build \
   --env GOPATH=/scratch/go \
@@ -170,7 +179,7 @@ timeout "$TMO" "$DK" run --rm \
   -v "$MOUNT_SRC:/target:ro" \
   -v "$VOL:/artifacts" \
   "$IMAGE" \
-  "${CMD[@]}"
+  sh -c "$PREAMBLE"' exec "$@"' _ "${CMD[@]}"
 RC=$?
 set -e
 

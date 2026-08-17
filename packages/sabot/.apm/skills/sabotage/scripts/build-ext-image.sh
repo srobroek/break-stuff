@@ -103,6 +103,19 @@ for u in result["bake_units"]:
     if not present:
         continue
     lines.append(f"COPY {' '.join(present)} {dest}")
+    # Rust: `cargo fetch` parses the manifest, which resolves targets by
+    # autodiscovery (src/lib.rs, src/main.rs). With only Cargo.toml copied there
+    # are zero targets and cargo aborts ("no targets specified in the manifest").
+    # Inject an EMPTY stub lib+main so the manifest parses and every dependency
+    # resolves; the stub is not the audited source (the real tree mounts read-only
+    # at /target at run time), so no product code enters a layer. A committed
+    # Cargo.lock, when present, is copied above and makes the fetch exact anyway.
+    if u["stack"] == "rust":
+        stub_dir = os.path.join(ctx, "" if d == "." else d, "src")
+        os.makedirs(stub_dir, exist_ok=True)
+        open(os.path.join(stub_dir, "lib.rs"), "a").close()
+        src_dest = "src/" if d == "." else f"{d}/src/"
+        lines.append(f"COPY {src_dest}lib.rs {src_dest}")
     cd = "" if d == "." else f'cd "{d}" && '
     lines.append(f"RUN {cd}{u['fetch']}")
 
