@@ -86,7 +86,7 @@ comma-list the surface doc's Tools table names:
 | `sabot/python:1` | `bandit,ruff,semgrep` | `python3 -c "import atheris, hypothesis"` |
 | `sabot/node:1` | `jazzer,retire` | `node -e 'require("fast-check")'` |
 | `sabot/go:1` | `go,gosec,golangci-lint` | none |
-| `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner` | none |
+| `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner,radamsa,zzuf,creduce,hadolint,kube-linter,tflint,poutine,trufflehog` | none |
 
 Each column asks a different question, and conflating them hid a real gap.
 `--assert-tools` runs `<tool> --version`, which a LIBRARY can never answer: atheris,
@@ -106,6 +106,23 @@ MUST Point `TMPDIR` at a SUBDIRECTORY of the scratch tmpfs, never at its root. G
 refuses to read a `go.mod` that sits in the system temp root, so with
 `TMPDIR=/scratch` and a workdir of `/scratch` every contained go command failed
 "directory prefix . does not contain main module" while `go vet` still exited 0.
+
+MUST Invoke TruffleHog with `--no-update`. It checks for a new release on startup and
+tries to overwrite its own binary, which on the read-only container aborts the entire
+scan with "cannot move binary" and reports zero findings. Pair it with
+`--no-verification`, because verification calls each provider's API: offline it can
+only detect, and the summary must show `verified_secrets 0` rather than imply it
+checked.
+
+MUST Give C-Reduce an interestingness test that names the file by RELATIVE path. The
+test runs in a temp dir holding the VARIANT as `./<file>`, so an absolute path re-reads
+the unreduced original, every check passes, and the reduction stops early while still
+looking like it worked (measured: 182 bytes to 163, with the dead code intact, against
+182 to 16 when the path is relative).
+
+MUST Report a tflint run as CORE-ONLY. Provider plugins come from `tflint --init` over
+the network, which `--network none` forbids, so the terraform rules that need a provider
+never load.
 
 MUST Set `GOPROXY=off` on the go surface. A build with an unresolved module otherwise
 blocks on a proxy dial that `--network none` never completes, then reports a network

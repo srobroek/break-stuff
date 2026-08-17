@@ -75,6 +75,12 @@ RUN set -eux; \
     gitleaks version; ast-grep --version; opengrep --version; shfmt --version; \
     zizmor --version; actionlint --version; pinact --version; trivy --version; osv-scanner --version
 
+# Mutators, the reducer, and the remaining config/secret scanners. Split into its own
+# layer so a rebuild of the floor above does not re-download this set; the reason each
+# tool is present, and why Grype and Scorecard are not, lives in the fragment.
+COPY layers/base-extras.sh /tmp/base-extras.sh
+RUN bash /tmp/base-extras.sh && rm /tmp/base-extras.sh
+
 # Offline scan data baked so a `--network none` campaign scans against real data
 # instead of an empty DB or a rule pack it cannot fetch -- the exact false-clean this
 # package exists to kill (isolation.md, "Baked offline databases"). All under

@@ -38,20 +38,20 @@ proved detection end-to-end).
 | trivy | fails-loud → bake trivy-db | baked (DB non-empty, asserted) | infra/deps fixture |
 | osv-scanner | fails-loud → bake OSV DB | baked (4 ecosystems, asserted) | deps fixture |
 | Checkov | UNMEASURED (pip) | fragment-pending | iac fixture |
-| hadolint | UNMEASURED (binary) | fragment-pending | dockerfile fixture |
-| kube-linter | UNMEASURED (binary) | fragment-pending | k8s fixture |
-| tflint | UNMEASURED (binary; plugins need net) | fragment-pending | terraform fixture |
-| Grype | UNMEASURED → likely bake DB | fragment-pending | deps fixture |
-| TruffleHog | UNMEASURED (verify mode needs net) | fragment-pending | secrets fixture |
+| hadolint | self-contained (rules compiled in) | baked | **infra-extras VERIFIED** (DL3006/DL3008/DL3009/DL3015 offline) |
+| kube-linter | self-contained (checks compiled in) | baked | **infra-extras VERIFIED** (5 checks fired offline) |
+| tflint | baked-ok CORE ONLY (`--init` provider plugins need net; report must say core-only) | baked | **infra-extras VERIFIED** (2 core issues offline) |
+| Grype | baked DB DECLINED: DB measures 2.0GB (v0.117.0) and base is inherited by every surface; trivy + osv-scanner already cover the same ecosystems | declined | n/a; the coverage is already there via trivy and osv-scanner |
+| TruffleHog | baked-ok DETECTION ONLY; needs `--no-update` (self-updater aborts the scan on a read-only fs) + `--no-verification` | baked | **VERIFIED** (1 unverified AWS secret offline, verified_secrets 0) |
 | Kingfisher | UNMEASURED (live-validate needs net) | fragment-pending | secrets fixture |
 | GuardDog | UNMEASURED (pip) | fragment-pending | deps fixture |
 | OSSF-Scorecard | needs-net (GH API), likely irreducible gap | fragment-pending | doc as gap? |
-| poutine | UNMEASURED (binary) | fragment-pending | infra-ci |
+| poutine | self-contained (rules compiled in); subcommand is `analyze_local` | baked | **infra-ci VERIFIED** (injection rule fired offline) |
 | Nuclei | UNMEASURED → bake templates | fragment-pending | web fixture |
 | Bearer | UNMEASURED (binary) | fragment-pending | code fixture |
-| radamsa | self-contained (mutator) | fragment-pending | n/a |
-| zzuf | self-contained (mutator) | fragment-pending | n/a |
-| C-Reduce | self-contained (reducer) | fragment-pending | n/a |
+| radamsa | self-contained (mutator); builds from source, needs `libc6-dev` | baked | **python-parser VERIFIED** (33 crashes in 200 mutations offline) |
+| zzuf | self-contained (mutator) | baked | build asserts output differs from input |
+| C-Reduce | self-contained (reducer); test script MUST use a RELATIVE path | baked | **VERIFIED** (182 -> 16 bytes offline) |
 
 ## rust fragment
 
