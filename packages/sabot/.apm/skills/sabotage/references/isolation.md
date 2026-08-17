@@ -224,6 +224,35 @@ set per-recipe, not globally, because run-contained points it at a fresh tmpfs.
 MUST Invoke each remote-data tool with its offline flag from the table above under `--network none`. The bare recipe fetches, which fails silently to zero findings under the network-none contract.
 MUST Rebuild the surface image (not just re-tag) to refresh a rolling DB. The trivy and osv DBs carry no version pin; a stale image scans against a stale DB, which the report must not present as current.
 
+## The heavy surface: Joern and ZAP
+
+`sabot/heavy:1` is an OPTIONAL escalation image on `sabot/base:1`, reached for when a
+finding wants interprocedural dataflow (Joern) or a DAST pass (ZAP). It is separate
+because Joern alone unpacks past 1GB and base is inherited by every surface.
+
+MUST Invoke ZAP with `-dir <writable path>` on the scratch tmpfs. ZAP does NOT honour
+`$HOME`: it derives its home from the passwd entry and hardcodes `~/.ZAP`, so under the
+campaign's `--read-only` rootfs it refuses to start even with `HOME` on the tmpfs, and it
+EXITS 0 while doing so. Measured:
+
+```
+Unable to create home directory: /home/breaker/.ZAP/
+Is the path correct and there's write permission?
+```
+
+A wrapper that trusts the exit code therefore records a DAST pass that never ran.
+Measured with `-dir /scratch/zaphome`, the same invocation reports 6 alerts.
+
+MUST Report ZAP's PASSIVE half only, and say so. Its rules ship in the bundle and work
+offline, but they only see traffic. An active scan needs a live target, which under
+`--network none` means a server the campaign itself started inside the container
+(measured: `python3 -m http.server` on 127.0.0.1, scanned via `-quickurl`). A report that
+does not name which half ran implies coverage the run did not have.
+
+MUST NOT report CodeQL as available on arm64. No linux-arm64 build of it exists; see
+`tool-coverage-matrix.md`. A campaign that needs it runs on an x86_64 host, and a report
+that would have run it names the gap.
+
 ### Known coverage gaps under `--network none`
 
 The opt-in scanners below need remote data with no offline mode, so they stay off

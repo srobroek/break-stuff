@@ -113,18 +113,52 @@ recorded as MUSTs in `isolation.md`.
 
 | Tool | Offline req | Bake status | Fixture / test |
 |---|---|---|---|
-| Jazzer.js | self-contained (prebuilt addon; needs glibc >= 2.38, so trixie) | baked | node-parser |
-| fast-check | self-contained (library; reachable via `NODE_PATH`) | baked | node-parser |
+| Jazzer.js | self-contained (prebuilt addon; needs glibc >= 2.38, so trixie); MUST be installed LOCALLY, not `-g` (see below) | baked | **node-parser VERIFIED** (crash + artifact on the seeded no-colon TypeError) |
+| fast-check | self-contained (library; reachable via `NODE_PATH`) | baked | **node-parser VERIFIED** (shrunk a counterexample for SEEDED-BUG-2 in 1 test, 4.9.0) |
 | retire.js | degraded-silent → bake defs + `--jsrepo` | baked | node-parser |
 | eslint-plugin-no-unsanitized | UNMEASURED (needs eslint) | fragment-pending | node-parser |
+
+Jazzer.js must NOT be installed with `npm i -g`. Measured, `npm i -g @jazzer.js/core`
+nests the `@jazzer.js` peers (bug-detectors, fuzzer, hooking, instrumentor) under
+`core/node_modules/`, while core resolves them as SIBLINGS, so every run died before its
+first input while `jazzer --version` still answered:
+
+```
+Error: ENOENT: no such file or directory, scandir
+'/usr/local/lib/node_modules/@jazzer.js/bug-detectors/dist/internal'
+```
+
+A local install into a prefix dir (`/opt/jazzer`, symlinked onto PATH) produces the flat
+layout core expects. The build now runs a real fuzz target and requires an `Uncaught
+Exception` in the output, because this is the second time this tool has been installed,
+asserted, and unrunnable: the first was the arm64 `dlopen` failure behind a passing
+`jazzer --version` (bs-156).
+
+Jazzer.js also needs a WRITABLE `TMPDIR`. `run-contained.sh` supplies one
+(`TMPDIR=/scratch/tmp`), so the shipped path is fine, but a hand-rolled `docker run`
+without it is not: measured under `--read-only`, the fuzzer still exits 77 on a real crash
+while printing only three INFO lines, so the crash, the stack, and the artifact all vanish.
+That is a found bug reported as noise, which is worse than a false clean.
 
 ## heavy engines (own layer; large)
 
 | Tool | Offline req | Bake status | Fixture / test |
 |---|---|---|---|
-| CodeQL | needs-build-dep + query packs (~500MB) | fragment-pending | code fixture |
-| Joern | JVM + install (CPG build) | fragment-pending | code fixture |
-| OWASP-ZAP | JVM/daemon, DAST (needs a running server) | fragment-pending | web fixture |
+| CodeQL | needs-build-dep + query packs (~500MB); **NO linux-arm64 build exists** | BLOCKED on arm64, see below | code fixture (x86_64 only) |
+| Joern | self-contained once unpacked (CPG build fetches nothing) | **baked** (`sabot/heavy:1`, arm64 zip, sha512-verified) | **VERIFIED** (56813-byte CPG offline as uid 1000; query located the `exec` sink at line 3) |
+| OWASP-ZAP | baked-ok PASSIVE ONLY; MUST pass `-dir <writable>` (ignores `$HOME`, and exits 0 while refusing to start) | **baked** (`sabot/heavy:1`, Core zip, 21 bundled add-ons) | **VERIFIED** (6 alerts offline under `--read-only` against a container-local `http.server`) |
+
+CodeQL cannot be baked on this host. Release v2.26.3 of `github/codeql-cli-binaries`
+publishes `codeql-linux64.zip` (x86_64), `codeql-osx64.zip`, `codeql-win64.zip`, and the
+all-x86-64 `codeql.zip`. There is no linux-arm64 asset, and upstream declined to commit to
+one (`codeql-cli-binaries#157`, closed: "I can't make any promises on if or when";
+`#97` still open). Emulating x86_64 for a whole-program analysis engine trades a bake for
+an unusable runtime, so the arm64 surface treats CodeQL as absent rather than degraded. A
+campaign that needs it must run on an x86_64 host, and a report that would have run it must
+name the gap.
+
+Joern and ZAP are JVM tools and therefore arch-portable, but base ships no JVM today, so
+the heavy layer has to add one before either can be measured.
 
 ## Irreducible gaps (cannot work offline; document, do not pretend)
 

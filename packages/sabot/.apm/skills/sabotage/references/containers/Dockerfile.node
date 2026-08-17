@@ -20,10 +20,40 @@ USER root
 # questions -- the one this image got wrong.
 RUN apt-get update -q && apt-get install -y --no-install-recommends ripgrep git ca-certificates >/dev/null \
  && rm -rf /var/lib/apt/lists/* \
- && npm i -g @jazzer.js/core fast-check retire >/dev/null \
- && jazzer --version \
+ && npm i -g fast-check retire >/dev/null \
  && retire --version \
  && NODE_PATH=/usr/local/lib/node_modules node -e 'require("fast-check")'
+
+# Jazzer.js is installed LOCALLY into a prefix dir, not with `npm i -g`, and that is the
+# whole fix for a fuzzer that reported itself present and could not fuzz.
+#
+# `npm i -g @jazzer.js/core` nests the @jazzer.js peers (bug-detectors, fuzzer, hooking,
+# instrumentor) under core/node_modules/, while core resolves them as SIBLINGS. Measured,
+# `jazzer --version` answered and every real run died before the first input:
+#
+#   Error: ENOENT: no such file or directory, scandir
+#   '/usr/local/lib/node_modules/@jazzer.js/bug-detectors/dist/internal'
+#
+# That is the exact false-clean class this image already got wrong once with the arm64
+# dlopen (bs-156): installed, asserted, unrunnable. A local install produces the flat
+# sibling layout core expects.
+#
+# So the build ALSO runs a real fuzz target and requires a crash, not a version string.
+# The target dereferences parts[1] with no colon in the input, so libFuzzer must report an
+# uncaught TypeError and write a crash artifact; anything less means the addon loaded but
+# the instrumentation did not.
+RUN mkdir -p /opt/jazzer && cd /opt/jazzer \
+ && npm init -y >/dev/null \
+ && npm i @jazzer.js/core >/dev/null \
+ && ln -sf /opt/jazzer/node_modules/.bin/jazzer /usr/local/bin/jazzer \
+ && test -d /opt/jazzer/node_modules/@jazzer.js/bug-detectors/dist/internal \
+ && jazzer --version \
+ && mkdir -p /tmp/jzprobe && cd /tmp/jzprobe \
+ && printf 'module.exports.fuzz = function (d) { return d.toString().split(":")[1].trim(); };\n' > fuzz.js \
+ && (jazzer fuzz.js -- -runs=50000 -max_total_time=120 > out.txt 2>&1 || true) \
+ && grep -q 'Uncaught Exception' out.txt \
+ && echo "jazzer.js fuzzes and reports a crash (not just --version)" \
+ && cd / && rm -rf /tmp/jzprobe
 
 # fast-check is a LIBRARY with no CLI, so it is reachable only via NODE_PATH; a
 # harness that does `require("fast-check")` fails without this. Set for every run
