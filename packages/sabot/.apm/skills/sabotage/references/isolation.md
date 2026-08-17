@@ -103,13 +103,15 @@ MUST Refuse the fuzz phase and report the surface as uncovered when the assertio
 
 ## Baked offline databases
 
-Several scanners depend on REMOTE data fetched on first use: a vuln DB, an advisory
-dir, a rule pack, JS vuln definitions. Under `--network none` that fetch fails and
+Several scanners depend on REMOTE data fetched on first use (a vuln DB, an advisory
+dir, a rule pack, JS vuln definitions). Under `--network none` that fetch fails and
 the tool reports a clean it never earned, the exact false-clean this package exists
-to catch. Every such dependency is baked into the surface image at BUILD time, when
-the network is available, and the campaign passes the flag that reads the baked copy
-and skips the fetch. The base image holds the shared data under `/opt/sabot-db`; the
-rust surface adds the RUSTSEC advisory-db and the fuzz-crate registry.
+to catch.
+
+Each tool in the table below is baked at BUILD time, when the network is available,
+and the campaign passes the flag that reads the baked copy and skips the fetch. The
+base image holds the shared data under `/opt/sabot-db`; the rust surface adds the
+RUSTSEC advisory-db and the fuzz-crate registry.
 
 | Tool | Surface | Baked at build | Offline run flag | Pinned by |
 |---|---|---|---|---|
