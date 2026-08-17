@@ -37,18 +37,18 @@ proved detection end-to-end).
 | pinact | fails-loud (SHA resolve needs net) | baked | infra-ci |
 | trivy | fails-loud → bake trivy-db | baked (DB non-empty, asserted) | infra/deps fixture |
 | osv-scanner | fails-loud → bake OSV DB | baked (4 ecosystems, asserted) | deps fixture |
-| Checkov | UNMEASURED (pip) | fragment-pending | iac fixture |
+| Checkov | self-contained once installed (policies ship in the wheel; the pip install is the network op) | baked (`sabot/scanners:1`, pipx venv) | **iac VERIFIED** (11 failed / 7 passed offline as uid 1000, exit 1, incl. the open-port-22 SG check) |
 | hadolint | self-contained (rules compiled in) | baked | **infra-extras VERIFIED** (DL3006/DL3008/DL3009/DL3015 offline) |
 | kube-linter | self-contained (checks compiled in) | baked | **infra-extras VERIFIED** (5 checks fired offline) |
 | tflint | baked-ok CORE ONLY (`--init` provider plugins need net; report must say core-only) | baked | **infra-extras VERIFIED** (2 core issues offline) |
 | Grype | baked DB DECLINED: DB measures 2.0GB (v0.117.0) and base is inherited by every surface; trivy + osv-scanner already cover the same ecosystems | declined | n/a; the coverage is already there via trivy and osv-scanner |
 | TruffleHog | baked-ok DETECTION ONLY; needs `--no-update` (self-updater aborts the scan on a read-only fs) + `--no-verification` | baked | **secrets VERIFIED** (2 offline, AWS + Github, both `Verified: false`) |
-| Kingfisher | UNMEASURED (live-validate needs net) | fragment-pending | secrets fixture |
-| GuardDog | UNMEASURED (pip) | fragment-pending | deps fixture |
+| Kingfisher | baked-ok DETECTION ONLY; `--no-validate` is mandatory offline, and the update check fails harmlessly (`update_check_status: failed`) | baked (`sabot/scanners:1`) | **secrets MEASURED** (1061 rules applied offline; 1 finding, `kingfisher.aws.2`, `Not Attempted`). Found FEWER than gitleaks on the same fixture: it missed the RSA private key and the `ghp_` PAT |
+| GuardDog | self-contained for `scan` on a local path (heuristics ship in the wheel); `verify` queries the registry. **EXITS 0 ON A HIGH-RISK VERDICT** | baked (`sabot/scanners:1`, pipx venv) | **deps-py VERIFIED** (8.0/10 High risk offline, 2 risk categories / 7 issues on a seeded install-time exfil `setup.py`) |
 | OSSF-Scorecard | needs-net (GH API), likely irreducible gap | fragment-pending | doc as gap? |
 | poutine | self-contained (rules compiled in); subcommand is `analyze_local` | baked | **infra-ci VERIFIED** (injection rule fired offline) |
-| Nuclei | UNMEASURED → bake templates | fragment-pending | web fixture |
-| Bearer | UNMEASURED (binary) | fragment-pending | code fixture |
+| Nuclei | baked-ok, and MUST pass BOTH `-templates` and `-ud` at the baked path (see below); `-duc` to stop the updater | baked (`sabot/scanners:1`, 13575 templates, all validating) | **web VERIFIED** (14 findings offline under `--read-only` as uid 1000 against a container-local `http.server`: robots-txt, tech-detect, 10 missing-header matchers) |
+| Bearer | fails-loud without baked rules (`0 rules found ... could not be downloaded`); MUST pass `--external-rule-dir` | baked (`sabot/scanners:1`, bearer-rules pinned by SHA) | **code-py VERIFIED** (234 rules evaluated offline; `python_lang_os_command_injection` line 10 + `python_lang_weak_hash_md5` line 6) |
 | radamsa | self-contained (mutator); builds from source, needs `libc6-dev` | baked | **python-parser VERIFIED** (33 crashes in 200 mutations offline) |
 | zzuf | self-contained (mutator) | baked | build asserts output differs from input |
 | C-Reduce | self-contained (reducer); test script MUST use a RELATIVE path | baked | **VERIFIED** (182 -> 16 bytes offline) |
@@ -159,6 +159,42 @@ name the gap.
 
 Joern and ZAP are JVM tools and therefore arch-portable, but base ships no JVM today, so
 the heavy layer has to add one before either can be measured.
+
+## The scanners surface: nuclei, bearer, checkov, guarddog, kingfisher
+
+An OPTIONAL escalation image (`sabot/scanners:1`), not part of every campaign. Base is
+inherited by all four language surfaces and none of them needs a Terraform policy set, so
+these five live in their own layer, like `sabot/rust-extras:1`. Absent is a preflight note.
+
+Nuclei needs BOTH `-templates` and `-ud` pointed at the baked tree. It resolves a
+template's `helpers/` payload files against its DEFAULT template directory rather than the
+tree given to `-templates`, so with `-templates` alone roughly 5000 templates failed to
+compile:
+
+```
+[ERR] ... could not load payload file: cause="access to helper file
+/opt/sabot-db/nuclei-templates/helpers/wordlists/wp-users.txt denied"
+```
+
+`-ud` repoints that default. Every one of those failures is per-template, so nuclei still
+runs, still exits, and still reports whatever the surviving templates found.
+
+One upstream template is quarantined at the current pin. `http/cves/2026/CVE-2026-3395.yaml`
+fails to unmarshal (`line 52: cannot unmarshal !!str POST /a... into []string`), it is
+broken at upstream HEAD as well, and `-et` does not suppress it because `-validate` loads
+a template before excluding it. The layer deletes that one file, which keeps the build
+gate at zero errors instead of grepping for a success string in output that also carries
+errors.
+
+GuardDog EXITS 0 on a high-risk verdict. Measured on a seeded install-time exfiltration
+`setup.py`, it reported `High risk (8.0/10)`, 2 risk categories, 7 issues, and exit 0. Any
+wrapper gating on the exit code records that package as clean. Parse `risk_score` and
+`issues` from `--output-format json` instead.
+
+Kingfisher found LESS than gitleaks on the same fixture: 1 finding against gitleaks' 3,
+missing both the RSA private key and the `ghp_` PAT, with 1061 rules applied. It is
+additive coverage, not a replacement, and a report that runs only kingfisher on a secrets
+sweep understates what is there.
 
 ## Irreducible gaps (cannot work offline; document, do not pretend)
 
