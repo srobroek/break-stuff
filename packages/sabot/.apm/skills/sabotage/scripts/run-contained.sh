@@ -73,6 +73,8 @@ fi
 
 TARGET=""; ARTIFACTS=""; IMAGE=""; NET="none"; MEM="2g"; PIDS="512"; CPUS="2"; TMO="300"
 WORKDIR="/target"
+SCRATCH="2g"      # tmpfs size; a real cargo/npm build needs GBs, not the old 512m
+COPY_SRC=0        # --copy-src: tar the target into /scratch/src (minus target/ + .git)
 CMD=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -85,6 +87,8 @@ while [ "$#" -gt 0 ]; do
     --cpus)      CPUS="$2"; shift 2 ;;
     --timeout)   TMO="$2"; shift 2 ;;
     --workdir)   WORKDIR="$2"; shift 2 ;;
+    --scratch)   SCRATCH="$2"; shift 2 ;;
+    --copy-src)  COPY_SRC=1; shift ;;
     --)          shift; CMD=("$@"); break ;;
     *) printf 'run-contained: unknown arg: %s\n' "$1" >&2; exit 2 ;;
   esac
@@ -149,6 +153,15 @@ printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
 # the image has no baked registry (a base image, or a non-Rust surface). The command
 # after the preamble runs via `exec "$@"` so its exit code is preserved.
 PREAMBLE='mkdir -p "$CARGO_HOME" /scratch/tmp; [ -d /deps/cargo/registry ] && [ ! -e "$CARGO_HOME/registry" ] && ln -s /deps/cargo/registry "$CARGO_HOME/registry";'
+# --copy-src: a build/fuzz step needs a WRITABLE source tree (cargo writes Cargo.lock
+# and target/ beside the manifest), but /target is read-only. Copy the target into
+# /scratch/src, excluding its own build dir and .git (the space hogs that overflow
+# the tmpfs), and cd there. The audited bytes never change; this is a working copy on
+# a disposable tmpfs. The command then runs from /scratch/src.
+if [ "$COPY_SRC" -eq 1 ]; then
+  PREAMBLE="$PREAMBLE"' mkdir -p /scratch/src; tar -C /target --exclude=./target --exclude=./.git -cf - . | tar -C /scratch/src -xf -; cd /scratch/src;'
+  WORKDIR="/scratch"
+fi
 
 set +e
 # Two cwd regimes, selected by --workdir:
@@ -164,7 +177,7 @@ set +e
 timeout "$TMO" "$DK" run --rm \
   "${NETFLAG[@]}" \
   --memory "$MEM" --memory-swap "$MEM" --pids-limit "$PIDS" --cpus "$CPUS" \
-  --read-only --tmpfs /scratch:size=512m,mode=1777,exec \
+  --read-only --tmpfs "/scratch:size=$SCRATCH,mode=1777,exec" \
   --cap-drop ALL --security-opt no-new-privileges \
   --user 1000:1000 \
   --workdir "$WORKDIR" \
