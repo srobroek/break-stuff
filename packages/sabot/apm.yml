@@ -19,10 +19,10 @@ description: >-
   so a campaign survives a crash and resumes. Includes a reusable JSON-stdin and
   CLI fuzz harness plus a prompt-injection corpus. Attacks only local code the
   user owns, with live DoS and public endpoints out of scope. Every finding
-  carries two axes, evidence tier and impact, and is demoted rather than deleted.
-  Advisory by design: harnesses, rules, and regression tests are written, while
-  product code is patched only on explicit approval. Requires the beads package
-  and the bd CLI for run state.
+  carries two axes, evidence tier and impact, and is demoted rather than
+  deleted. Advisory by design: harnesses, rules, and regression tests are
+  written, while product code is patched only on explicit approval. Requires the
+  beads package and the bd CLI for run state.
 author: Sjors Robroek
 license: Apache-2.0
 type: hybrid
