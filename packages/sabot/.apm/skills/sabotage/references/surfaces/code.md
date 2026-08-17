@@ -15,18 +15,18 @@ and FFI boundaries.
 
 | Tool | Tier | Class | Run recipe | Catches | Overlap |
 |------|------|-------|-----------|---------|---------|
-| semgrep | default-on | local | `opengrep --config p/python --config p/command-injection --json <files>` (per-language pack for the detected stack) | injection, unsafe deserialization, hardcoded secrets, weak crypto, path traversal | registry packs; intra-file dataflow. `--config auto` fetches over the network, so it needs the user's agreement |
+| semgrep | default-on | local | `opengrep --config /opt/sabot-db/semgrep-rules/<lang> --json <files>` (baked rule dir for the detected stack) | injection, unsafe deserialization, hardcoded secrets, weak crypto, path traversal | baked rules; intra-file dataflow. A `p/<pack>` name or `--config auto` fetches over the network, so it needs the user's agreement |
 | bandit | default-on | local | `bandit -f json -r <paths>` | Python: `shell=True`, `pickle`, `yaml.load`, `assert` for control flow, weak hashes | semgrep covers some, bandit is Python-specific and cheaper |
 | gosec | default-on | local | `gosec -fmt=json ./...` | Go: unhandled errors on security calls, SQL string building, weak rand, TLS config | golangci-lint bundles it; skip when that ran with gosec enabled |
-| cargo-audit | default-on | global | `cargo audit --json` | Rust: RUSTSEC advisories in the dependency tree | overlaps osv-scanner from `infra.md`; keep for Rust-specific advisories |
+| cargo-audit | default-on | global | `cargo audit --no-fetch --db /usr/local/advisory-db -f /target/Cargo.lock --json` | Rust: RUSTSEC advisories in the dependency tree | overlaps osv-scanner from `infra.md`; keep for Rust-specific advisories |
 | cargo-geiger | opt-in | global | `cargo geiger --output-format Json` | Rust: `unsafe` usage census across dependencies | off by default, since it is slow and reports rather than judges |
 | clippy | default-on | local | `cargo clippy --message-format=json -- -W clippy::arithmetic_side_effects -W clippy::indexing_slicing -W clippy::unwrap_used` | Rust: panic paths, integer overflow, slicing panics | honors project config first; add these lints only when the repo pins none |
 | CodeQL | opt-in | global | `codeql database create` then `codeql database analyze --format=sarif-latest` | genuine interprocedural taint tracking | the only real interprocedural engine here, off by default because a database build costs minutes |
 | ruff | default-on | local | `ruff check --extend-select S,B,ASYNC --output-format json .` | Python: the bandit `S` ruleset plus bugbear, at ruff speed | overlaps bandit; run both, since ruff misses some bandit checks |
 | eslint security plugins | opt-in | local | `npx eslint --format json .` with `eslint-plugin-security` | JS/TS: dynamic `require`, `eval`, unsafe regex | project-local install, so it is opt-in |
 
-MUST Run `opengrep --config auto` only with the user's agreement, since it fetches rules over the network. The shipped ruleset works offline.
-MUST Name the registry pack that fits the detected language rather than `--config auto`, since auto fetches an unpredictable rule set over the network and its result is not reproducible.
+MUST Point `--config` at the baked rule dir `/opt/sabot-db/semgrep-rules/<lang>`, since it works under `--network none`. A `p/<pack>` registry name or `--config auto` fetches over the network; under the network-none contract it does not load any rule and reports a clean it did not earn. Use one only with the user's agreement and an explicit network grant.
+MUST Name the language subdir of the baked ruleset that fits the detected stack rather than `--config auto`, since auto fetches an unpredictable rule set over the network and its result is not reproducible.
 
 ## Attack checklist
 

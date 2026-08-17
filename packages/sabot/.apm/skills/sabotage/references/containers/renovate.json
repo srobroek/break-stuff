@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Keeps the sabot surface-image tool pins current. FROM tags are read by the dockerfile manager natively. RUN-line cargo/pip/go pins and the ARG or variable version pins (Dockerfile.base ARGs, layers/*.sh variables) are read by the customManager below, keyed on the '# renovate:' comment above each pin. Dependabot cannot see these, so Renovate owns them.",
+  "description": "Keeps the sabot surface-image tool pins current. FROM tags are read by the dockerfile manager natively. RUN-line cargo/pip/go pins and the ARG or variable version pins (Dockerfile.base ARGs, layers/*.sh variables) are read by the customManager below, keyed on the '# renovate:' comment above each pin. Dependabot cannot see these, so Renovate owns them. The SHA-pinned baked databases (ADVISORY_DB_SHA, SEMGREP_RULES_SHA, RETIREJS_SHA) and the date-pinned nightly carry NO renovate comment on purpose: the semver datasource cannot track a bare commit SHA or a date channel, so those are advanced by hand on an image rebuild. The trivy and osv DBs are unpinned rolling snapshots refreshed by the rebuild itself.",
   "enabledManagers": ["dockerfile", "custom.regex"],
   "customManagers": [
     {
