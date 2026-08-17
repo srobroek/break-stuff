@@ -55,6 +55,48 @@ RUN mkdir -p /opt/jazzer && cd /opt/jazzer \
  && echo "jazzer.js fuzzes and reports a crash (not just --version)" \
  && cd / && rm -rf /tmp/jzprobe
 
+# eslint + eslint-plugin-no-unsanitized, the XSS-sink linter. Installed LOCALLY into a
+# prefix dir for the same reason Jazzer.js is, and pinned because the plugin's peer range
+# is `eslint: ^9 || ^10`.
+#
+# The image SHIPS the flat config rather than leaving a campaign to write one. eslint 9
+# requires flat config, and the config is an ES module, so it imports the plugin by
+# ABSOLUTE PATH: ESM resolution ignores NODE_PATH, and a bare `import ... from
+# "no-unsanitized"` fails from any directory that is not the install prefix:
+#
+#   Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'no-unsanitized' imported from
+#   /tmp/p/eslint.config.mjs
+#
+# `--no-config-lookup` is then a MUST at run time. Without it eslint walks up from the
+# target and a config it finds in the target repo silently replaces these two rules, which
+# is a scan that reports clean because it checked something else.
+# renovate: datasource=npm depName=eslint
+ARG ESLINT_VERSION=9.39.5
+# renovate: datasource=npm depName=eslint-plugin-no-unsanitized
+ARG NO_UNSANITIZED_VERSION=4.1.5
+RUN mkdir -p /opt/eslint && cd /opt/eslint \
+ && npm init -y >/dev/null \
+ && npm i "eslint@${ESLINT_VERSION}" "eslint-plugin-no-unsanitized@${NO_UNSANITIZED_VERSION}" >/dev/null \
+ && ln -sf /opt/eslint/node_modules/.bin/eslint /usr/local/bin/eslint \
+ && printf 'import noUnsanitized from "/opt/eslint/node_modules/eslint-plugin-no-unsanitized/index.js";\nexport default [{ plugins: { "no-unsanitized": noUnsanitized },\n  rules: { "no-unsanitized/method": "error", "no-unsanitized/property": "error" } }];\n' \
+      > /opt/eslint/sabot.config.mjs \
+ && eslint --version
+
+# Assert BOTH rules report on seeded sinks, not that eslint answered --version. A plugin
+# that loads while contributing no rules leaves eslint exiting 0 on this file.
+RUN set -eux; \
+    probe=/tmp/esprobe; mkdir -p "$probe"; cd "$probe"; \
+    printf 'function render(u) {\n  document.getElementById("x").innerHTML = u;\n  document.write(u);\n}\n' > bad.js; \
+    eslint --no-config-lookup -c /opt/eslint/sabot.config.mjs bad.js > out.txt 2>&1 || true; \
+    grep -q 'no-unsanitized/property' out.txt || \
+      { echo "sabot node: no-unsanitized/property did not report the innerHTML sink" >&2; \
+        cat out.txt >&2; exit 1; }; \
+    grep -q 'no-unsanitized/method' out.txt || \
+      { echo "sabot node: no-unsanitized/method did not report document.write" >&2; \
+        cat out.txt >&2; exit 1; }; \
+    echo "eslint-plugin-no-unsanitized reports both seeded sinks"; \
+    cd /; rm -rf "$probe"
+
 # fast-check is a LIBRARY with no CLI, so it is reachable only via NODE_PATH; a
 # harness that does `require("fast-check")` fails without this. Set for every run
 # rather than in each recipe.

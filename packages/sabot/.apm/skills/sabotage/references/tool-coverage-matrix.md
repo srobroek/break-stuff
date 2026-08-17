@@ -26,7 +26,7 @@ proved detection end-to-end).
 
 | Tool | Offline req | Bake status | Fixture / test |
 |---|---|---|---|
-| opengrep | degraded-silent (forbid `--config auto`; local rules only) | baked | rust-parser (local rule) |
+| opengrep | degraded-silent (forbid `--config auto`; local rules only). It has NO `--metrics` flag (it never reports), and it EXITS 0 on an unknown option | baked | **node-parser VERIFIED** (a local rule located the seeded prototype-pollution merge at line 11 offline); rust-parser (local rule) |
 | ripgrep | self-contained | baked | n/a |
 | shellcheck | self-contained | baked | **shell VERIFIED** (SC2086/SC2045/SC2035/SC2164 offline, exit 1) |
 | shfmt | self-contained | baked | **shell VERIFIED** (`-d` reports an indentation diff offline, exit 1) |
@@ -103,11 +103,35 @@ recorded as MUSTs in `isolation.md`.
 | Semgrep | degraded-silent (same as opengrep) | baked | python-parser |
 | atheris | needs-build-dep (clang + `libclang-rt-<major>-dev` + `CXX`), baked | baked | **python-parser VERIFIED** (found seeded IndexError offline) |
 | Hypothesis | self-contained (library; assert by import) | baked | python-parser |
-| HypoFuzz | UNMEASURED (pip) | image-unbuilt | python-parser |
-| schemathesis | UNMEASURED (needs a spec) | image-unbuilt | api fixture |
-| Grammarinator | UNMEASURED (pip) | image-unbuilt | n/a |
-| dharma | UNMEASURED (pip) | image-unbuilt | n/a |
-| shrinkray | self-contained (reducer) | image-unbuilt | n/a |
+| HypoFuzz | baked-ok, and the hypothesis pin MUST be held: HypoFuzz sets only a floor, and a newer hypothesis crashes every worker while it claims a failure (see below). No `hypofuzz` binary; it registers `hypothesis fuzz` | baked (`sabot/python:1`, 25.11.1 against hypothesis 6.145.1) | **VERIFIED** (fuzzed a seeded `n != 0` property offline as uid 1000, recorded the counterexample, and `pytest` replayed it from the example database) |
+| schemathesis | self-contained; needs a spec AND a reachable base URL, so offline means serving the API inside the container | baked (`sabot/python:1`, 4.24.3) | **VERIFIED** (3 unique failures offline against a container-local `http.server`: server error, schema-violating request accepted, undocumented status code) |
+| Grammarinator | self-contained; `grammarinator-generate` MUST run with the processed grammar's directory on `PYTHONPATH`, or it fails `ModuleNotFoundError: No module named 'TGenerator'` | baked (`sabot/python:1`, 26.1) | **VERIFIED** (processed a 4-rule ANTLR grammar and generated 3 files matching it offline) |
+| dharma | self-contained; ships its own grammar tree (`json.dg`, `svg.dg`, `xss.dg`, `url.dg`, `wasm.dg`, `canvas2d.dg`) | baked (`sabot/python:1`, 1.3.2, unpinned: no release since) | **VERIFIED** (167 bytes of generated JSON offline from its bundled `json.dg`) |
+| shrinkray | self-contained (reducer); HELD at 26.7.6.1, because 26.7.7.0 takes a hard dependency on `llama-cpp-python`, which needs a C++ toolchain and a baked model to work offline | baked (`sabot/python:1`) | **VERIFIED** (60 bytes down to 11 offline against a `grep -q` interestingness predicate) |
+
+The python generator tier carries one dependency trap. HypoFuzz 25.11.1 requires only
+`hypothesis[cli,watchdog]>=6.140.2`, so a resolver takes the newest hypothesis, and against
+6.165.10 every fuzz worker died inside HypoFuzz:
+
+```
+AttributeError: 'ConjectureResult' object has no attribute 'slice_comments'.
+Did you mean: 'span_comments'?
+```
+
+`hypothesis fuzz` then printed `Found a failing input for every test!` on a test with no bug
+in it. That is a FALSE POSITIVE off a crashed worker, and it is the mirror image of the
+false-clean this matrix hunts. A campaign reading that line reports a defect that is not
+there.
+
+6.145.1, the newest hypothesis published before HypoFuzz 25.11.1, fuzzes cleanly. 25.11.1
+is the newest HypoFuzz, so the pin has to sit on the hypothesis side until upstream caps
+its own dependency.
+
+The build therefore probes HypoFuzz in BOTH directions, on an unfalsifiable property and on
+a seeded failure, because either direction alone passes on a crashed worker. The passing
+property is `isinstance(n, int)` rather than a bound like `n < 10**9`: `st.integers()` is
+unbounded and HypoFuzz does exceed any such bound, so a bounded property fails this probe
+by finding a real counterexample.
 
 ## node fragment
 
@@ -115,8 +139,8 @@ recorded as MUSTs in `isolation.md`.
 |---|---|---|---|
 | Jazzer.js | self-contained (prebuilt addon; needs glibc >= 2.38, so trixie); MUST be installed LOCALLY, not `-g` (see below) | baked | **node-parser VERIFIED** (crash + artifact on the seeded no-colon TypeError) |
 | fast-check | self-contained (library; reachable via `NODE_PATH`) | baked | **node-parser VERIFIED** (shrunk a counterexample for SEEDED-BUG-2 in 1 test, 4.9.0) |
-| retire.js | degraded-silent → bake defs + `--jsrepo` | baked | node-parser |
-| eslint-plugin-no-unsanitized | UNMEASURED (needs eslint) | fragment-pending | node-parser |
+| retire.js | degraded-silent → bake defs + `--jsrepo`; scans INSTALLED `node_modules`, NOT declared dependencies (see below) | baked | **node-deps VERIFIED** (15 vulnerable-component reports offline, exit 13, across jquery 1.6.2 / lodash 4.17.4 / handlebars 4.0.5) |
+| eslint-plugin-no-unsanitized | self-contained once installed; the shipped flat config MUST import the plugin by ABSOLUTE PATH (ESM ignores `NODE_PATH`), and every run MUST pass `--no-config-lookup` | baked (`sabot/node:1`, 4.1.5 on eslint 9.39.5, config at `/opt/eslint/sabot.config.mjs`) | **VERIFIED** (both rules report offline: `no-unsanitized/property` on `innerHTML`, `no-unsanitized/method` on `document.write`) |
 
 Jazzer.js must NOT be installed with `npm i -g`. Measured, `npm i -g @jazzer.js/core`
 nests the `@jazzer.js` peers (bug-detectors, fuzzer, hooking, instrumentor) under
@@ -139,6 +163,30 @@ Jazzer.js also needs a WRITABLE `TMPDIR`. `run-contained.sh` supplies one
 without it is not: measured under `--read-only`, the fuzzer still exits 77 on a real crash
 while printing only three INFO lines, so the crash, the stack, and the artifact all vanish.
 That is a found bug reported as noise, which is worse than a false clean.
+
+retire.js scans INSTALLED code, not declared dependencies. Measured, a `package.json`
+pinning jquery 1.6.2, lodash 4.17.4, and handlebars 4.0.5 with no `node_modules` beside it
+produced exit 0 and a single line of version banner. Nothing in that output distinguishes
+a scan that read the three packages from a scan that read nothing at all. With those three
+installed, the same command reported 15 vulnerable components and exit 13. A dependency sweep on a repo that was cloned but never
+installed is a false clean, so `npm install` (or a committed `node_modules`) has to precede
+retire, and a run that finds zero components has to be treated as zero SCANNED rather than
+zero vulnerable.
+
+eslint's plugin loading is the other trap on this surface. eslint 9 requires flat config,
+flat config is an ES module, and ESM resolution ignores `NODE_PATH`, so a bare
+`import noUnsanitized from "no-unsanitized"` fails from any directory outside the install
+prefix:
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'no-unsanitized' imported from
+/tmp/p/eslint.config.mjs
+```
+
+The image ships `/opt/eslint/sabot.config.mjs`, which imports the plugin by absolute path,
+and every run MUST add `--no-config-lookup`. Without it eslint walks up from the target and
+a config found in the target repo replaces these two rules, which is a scan that exits
+cleanly having checked something else.
 
 ## heavy engines (own layer; large)
 

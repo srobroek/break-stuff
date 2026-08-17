@@ -78,3 +78,52 @@ def test_measured_fixture_results_are_recorded():
     for tool in ("Jazzer.js", "fast-check"):
         row = next(l for l in matrix.splitlines() if l.startswith(f"| {tool} "))
         assert "VERIFIED" in row, f"{tool} ran against node-parser; record the measurement"
+
+
+def test_eslint_plugin_is_pinned_with_renovate_lines():
+    """The plugin's peer range is `eslint: ^9 || ^10`, so both sides need a pin."""
+    for pin in ("ARG ESLINT_VERSION=9.39.5", "ARG NO_UNSANITIZED_VERSION=4.1.5"):
+        assert pin in BODY, f"missing {pin}"
+    assert "# renovate: datasource=npm depName=eslint\n" in BODY
+    assert "# renovate: datasource=npm depName=eslint-plugin-no-unsanitized\n" in BODY
+
+
+def test_eslint_config_imports_the_plugin_by_absolute_path():
+    """Flat config is an ES module and ESM resolution ignores NODE_PATH, so a bare import
+    fails from any directory outside the install prefix."""
+    joined = BODY.replace("\\\n", " ")
+    assert "/opt/eslint/node_modules/eslint-plugin-no-unsanitized/index.js" in joined
+    assert "ERR_MODULE_NOT_FOUND" in BODY, \
+        "the reason for the absolute path must stay recorded"
+
+
+def test_eslint_probe_requires_both_rules_to_report():
+    """A plugin that loads while contributing no rules leaves eslint exiting 0 on a file
+    with two XSS sinks in it."""
+    joined = BODY.replace("\\\n", " ")
+    assert "grep -q 'no-unsanitized/property'" in joined
+    assert "grep -q 'no-unsanitized/method'" in joined
+    assert "innerHTML" in BODY and "document.write" in BODY
+
+
+def test_eslint_runs_with_no_config_lookup():
+    """Without it eslint walks up from the target, and a config in the target repo replaces
+    these two rules: a scan that exits cleanly having checked something else."""
+    joined = BODY.replace("\\\n", " ")
+    assert "--no-config-lookup" in joined
+    assert "sabot.config.mjs" in joined
+
+
+def test_matrix_records_retire_scans_installed_code():
+    """A `package.json` with no node_modules beside it produced exit 0 and no findings on
+    three known-vulnerable pins."""
+    matrix = MATRIX.read_text()
+    assert "scans INSTALLED `node_modules`, NOT declared dependencies" in matrix
+    assert "15 vulnerable-component reports offline" in matrix
+    assert "zero SCANNED rather than" in matrix
+
+
+def test_matrix_records_the_eslint_measurement():
+    matrix = MATRIX.read_text()
+    assert "ABSOLUTE PATH (ESM ignores `NODE_PATH`)" in matrix
+    assert "no-unsanitized/method` on `document.write`" in matrix
