@@ -185,10 +185,12 @@ timeout "$TMO" "$DK" run --rm \
   --env TMPDIR=/scratch \
   --env CARGO_HOME=/scratch/cargo \
   --env CARGO_TARGET_DIR=/scratch/target \
+  --env CARGO_NET_OFFLINE=true \
   --env GOCACHE=/scratch/go-build \
   --env GOPATH=/scratch/go \
   --env npm_config_cache=/scratch/npm \
   --env XDG_CACHE_HOME=/scratch/cache \
+  --env LANG=C.UTF-8 --env LC_ALL=C.UTF-8 \
   -v "$MOUNT_SRC:/target:ro" \
   -v "$VOL:/artifacts" \
   "$IMAGE" \

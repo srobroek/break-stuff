@@ -34,6 +34,19 @@ IMAGE_TOOLS_python="atheris,hypothesis,bandit,ruff,semgrep"
 IMAGE_TOOLS_node="jazzer,fast-check,retire"
 SURFACES="base rust python node"
 
+# image  :  shell test, run inside the image, that a baked offline DB is PRESENT and
+# NON-EMPTY. A present-but-empty DB is the exact false-clean this asserts against: a
+# tool that answers --version but scans against zero records returns a meaningless
+# clean under --network none. Each expression exits 0 only when the DB has content.
+# The count thresholds are lower bounds, not exact, so a DB refresh does not trip them.
+IMAGE_DB_base='test "$(find /opt/sabot-db/trivy -name trivy.db | wc -l)" -ge 1 \
+  && test "$(ls /opt/sabot-db/osv/osv-scanner 2>/dev/null | wc -l)" -ge 1 \
+  && test "$(find /opt/sabot-db/semgrep-rules -name "*.yaml" | head -100 | wc -l)" -ge 50'
+IMAGE_DB_rust='test "$(ls /usr/local/advisory-db/crates 2>/dev/null | wc -l)" -ge 100 \
+  && ls /deps/cargo/registry/cache/*/libfuzzer-sys-*.crate >/dev/null 2>&1 \
+  && ls /deps/cargo/registry/cache/*/arbitrary-*.crate >/dev/null 2>&1'
+IMAGE_DB_node='test -s /opt/sabot-db/retire/jsrepository-v5.json'
+
 find_runtime() {
   for c in docker finch podman nerdctl; do
     command -v "$c" >/dev/null 2>&1 && { echo "$c"; return 0; }
@@ -79,6 +92,19 @@ probe() {
       else
         echo "    $img  FAIL -- $out"
         fail=1
+      fi
+      # Baked-DB assertion: a present tool with an EMPTY DB is a false-clean under
+      # --network none (isolation.md, Baked offline databases). Prove the DB has
+      # records, not just that the tool answers.
+      local dbtest=""
+      eval "dbtest=\"\${IMAGE_DB_$s:-}\""
+      if [ -n "$dbtest" ]; then
+        if "$rt" run --rm --network none "$img" sh -c "$dbtest" >/dev/null 2>&1; then
+          echo "    $img  DB OK (baked offline data non-empty)"
+        else
+          echo "    $img  DB FAIL -- a baked offline DB is missing or empty; rebuild from references/containers/Dockerfile.$s"
+          fail=1
+        fi
       fi
     done
   fi

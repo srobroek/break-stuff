@@ -101,6 +101,42 @@ discovers a missing scanner mid-run and reports its dimension as clean.
 MUST Assert EVERY tool the surface's campaign will invoke inside the image up front, not only the coverage-guided fuzzer. An unconfirmed scanner or fuzzer yields a clean result the campaign did not earn; a missing scanner is as silent as a missing fuzzer.
 MUST Refuse the fuzz phase and report the surface as uncovered when the assertion fails. Do not use hand-written vectors instead and call it fuzzed. Rebuild the image from `references/containers/` and retry, or record the gap in the report headline.
 
+## Baked offline databases
+
+Several scanners depend on REMOTE data fetched on first use: a vuln DB, an advisory
+dir, a rule pack, JS vuln definitions. Under `--network none` that fetch fails and
+the tool reports a clean it never earned, the exact false-clean this package exists
+to catch. Every such dependency is baked into the surface image at BUILD time, when
+the network is available, and the campaign passes the flag that reads the baked copy
+and skips the fetch. The base image holds the shared data under `/opt/sabot-db`; the
+rust surface adds the RUSTSEC advisory-db and the fuzz-crate registry.
+
+| Tool | Surface | Baked at build | Offline run flag | Pinned by |
+|---|---|---|---|---|
+| trivy | base | `/opt/sabot-db/trivy` (`--download-db-only`; Java index skipped) | `--cache-dir /opt/sabot-db/trivy --skip-db-update` | image tag (rolling DB) |
+| osv-scanner | base | `/opt/sabot-db/osv` (crates.io, npm, PyPI, Go ecosystems) | `XDG_CACHE_HOME=/opt/sabot-db/osv … --offline-vulnerabilities` | image tag (rolling DB) |
+| opengrep / semgrep | base | `/opt/sabot-db/semgrep-rules` (semgrep registry source) | `--config /opt/sabot-db/semgrep-rules/<lang>` | `SEMGREP_RULES_SHA` |
+| cargo-audit | rust | `/usr/local/advisory-db` (RUSTSEC) | `--no-fetch --db /usr/local/advisory-db` | `ADVISORY_DB_SHA` |
+| cargo-fuzz | rust | `libfuzzer-sys`+`arbitrary` in `/deps/cargo` registry, g++, `nightly` alias | `CARGO_NET_OFFLINE=true cargo +nightly fuzz build` | crate `=` pins |
+| retire | node | `/opt/sabot-db/retire/jsrepository-v5.json` | `--jsrepo /opt/sabot-db/retire/jsrepository-v5.json` | `RETIREJS_SHA` |
+
+`run-contained.sh` sets `CARGO_NET_OFFLINE=true` (so cargo resolves the baked
+registry instead of the crates.io index it cannot reach) and a UTF-8 locale (opengrep
+aborts decoding a non-ASCII source file without one). The XDG_CACHE_HOME osv needs is
+set per-recipe, not globally, because run-contained points it at a fresh tmpfs.
+
+MUST Invoke each remote-data tool with its offline flag from the table above under `--network none`. The bare recipe fetches, which fails silently to zero findings under the network-none contract.
+MUST Rebuild the surface image (not just re-tag) to refresh a rolling DB. The trivy and osv DBs carry no version pin; a stale image scans against a stale DB, which the report must not present as current.
+
+### Known coverage gaps under `--network none`
+
+The opt-in scanners below need remote data with no offline mode, so they stay off
+under the network-none contract. An operator who wants one grants network explicitly,
+and the report then states that exposure was scanned with network.
+
+- **checkov, hadolint, kube-linter, tflint, grype, conftest** (infra.md, opt-in IaC scanners not baked): each ships or fetches its own policy/DB. Only trivy and osv are baked, so these fill what trivy misses when the operator opts in with network.
+- **nuclei, ZAP** (web.md, dynamic): templates and rules fetched on use. Dynamic DAST already needs the operator to stand up the dev server, so it sits outside the default offline path.
+
 ## Provisioning and extending the image
 
 Every target-touching tool runs in the container, so the image must already hold
