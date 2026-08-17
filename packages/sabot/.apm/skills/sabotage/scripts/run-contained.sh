@@ -156,7 +156,30 @@ printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
 # crates without a network fetch and without writing the read-only layer. No-op when
 # the image has no baked registry (a base image, or a non-Rust surface). The command
 # after the preamble runs via `exec "$@"` so its exit code is preserved.
-PREAMBLE='mkdir -p "$CARGO_HOME" /scratch/tmp; [ -d /deps/cargo/registry ] && [ ! -e "$CARGO_HOME/registry" ] && ln -s /deps/cargo/registry "$CARGO_HOME/registry";'
+#
+# The same problem, and the same fix, for the baked TOOL CACHES under /deps/cache:
+# cargo-careful and Miri each keep a prebuilt sysroot there, but XDG_CACHE_HOME below
+# points at the empty tmpfs. Without the link each one decides no sysroot exists and
+# rebuilds it, which needs crates.io and dies under --network none on a fetch unrelated
+# to the finding being investigated -- measured, `cargo miri test` failed "no matching
+# package named hashbrown". Every entry is linked rather than a named list, so a cache
+# baked by a later fragment is picked up without touching this wrapper.
+#
+# The advisory-db is COPIED, not linked, and only for cargo-deny's sake. Three measured
+# constraints shape the destination path, and missing any one makes cargo-deny report a
+# db it cannot read (which reads as an image problem, not a config one):
+#   1. WRITABLE. cargo-deny takes an exclusive lock on db.lock inside db-path before
+#      reading; against the read-only image that fails "attempted to take an exclusive
+#      lock on a read-only path", and --offline does NOT skip the lock.
+#   2. NESTED under a dir named advisory-db-<hash-of-url>. db-path is a parent holding
+#      one directory per db-url, not the db itself. Point it at a flat copy and cargo-deny
+#      tries to CLONE the missing child, which under --network none dies on DNS.
+#   3. CARRYING .git. See layers/rust.sh -- the staleness check reads HEAD's timestamp.
+# The hash is cargo-deny's own for the rustsec URL; it is derived from the url string, so
+# it is stable as long as db-urls in /opt/sabot-db/deny.toml is unchanged.
+# cargo-audit needs none of this: it reads the baked path directly, read-only and flat.
+ADB_NEST="advisory-db-3157b0e258782691"
+PREAMBLE='mkdir -p "$CARGO_HOME" /scratch/tmp "$XDG_CACHE_HOME"; [ -d /deps/cargo/registry ] && [ ! -e "$CARGO_HOME/registry" ] && ln -s /deps/cargo/registry "$CARGO_HOME/registry"; for c in /deps/cache/*; do [ -e "$c" ] || continue; [ -e "$XDG_CACHE_HOME/${c##*/}" ] || ln -s "$c" "$XDG_CACHE_HOME/${c##*/}"; done; [ -d /usr/local/advisory-db ] && [ ! -e "/scratch/advisory-db/'"$ADB_NEST"'" ] && mkdir -p /scratch/advisory-db && cp -r /usr/local/advisory-db "/scratch/advisory-db/'"$ADB_NEST"'";'
 # --copy-src: a build/fuzz step needs a WRITABLE source tree (cargo writes Cargo.lock
 # and target/ beside the manifest), but /target is read-only. Copy the target into
 # /scratch/src, excluding its own build dir and .git (the space hogs that overflow

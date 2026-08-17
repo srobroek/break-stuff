@@ -61,16 +61,26 @@ proved detection end-to-end).
 | cargo-fuzz | needs-build-dep (libfuzzer-sys+arbitrary+g++), baked; needs `+nightly` | baked | **rust-parser VERIFIED** (built and crashed the target offline) |
 | cargo-audit | degraded-silent → bake advisory-db | baked | **deps-rust VERIFIED** (1216 advisories, RUSTSEC-2020-0071 offline) |
 | cargo-geiger | needs dep graph (ok in ext) | baked | rust-parser |
-| cargo-careful | UNMEASURED (+nightly) | fragment-pending | rust-parser |
-| cargo-deny | degraded-silent → bake advisory-db | fragment-pending | deps fixture |
-| cargo-semver-checks | UNMEASURED (needs baseline) | fragment-pending | rust-parser |
-| cargo-vet | UNMEASURED | fragment-pending | deps fixture |
-| Miri | needs-build-dep (+nightly component) | fragment-pending | rust-parser |
-| proptest | crate, no binary (dev-dep) | fragment-pending | rust-parser |
-| CASR | UNMEASURED (crash triage) | fragment-pending | rust-parser crash |
 | AFL++ | needs-build-dep (apt + cargo-afl) | fragment-pending | rust-parser |
 | honggfuzz | needs-build-dep (apt + cargo) | fragment-pending | rust-parser |
-| weggli | self-contained (C/C++ pattern) | fragment-pending | n/a |
+
+## rust-extras fragment
+
+An OPTIONAL escalation image (`sabot/rust-extras:1`), not part of every campaign: a
+rust run starts on `sabot/rust:1` and escalates here when a finding needs a license
+view, a UB interpreter, or a semver-break check. Absent is a note in the preflight, not
+a failure.
+
+| Tool | Offline req | Bake status | Fixture / test |
+|---|---|---|---|
+| cargo-deny | degraded-silent → baked advisory-db, and `db-path` must be a WRITABLE PARENT holding the db under `advisory-db-<hash>` with its `.git` intact; `--offline` goes before the subcommand | baked (wrapper copies the db into that shape on tmpfs) | **deps-rust VERIFIED** offline (RUSTSEC-2020-0071; `bans ok, licenses FAILED`) |
+| cargo-careful | needs-build-dep: sysroot MUST be baked, and to a uid-1000-readable path (the default `~/.cache` put it in `/root`) | baked (`/deps/cache/cargo-careful`) | **rust-parser VERIFIED** (2 tests pass offline off the baked sysroot). **NOT a substitute for Miri**: on `ub-rust` it reported the seeded out-of-bounds read as passing. It hardens std's debug assertions; it does not interpret UB |
+| Miri | needs-build-dep: builds its OWN sysroot from rust-src at first use, which needs crates.io. `miri --version` answers while that sysroot is absent | baked (`/deps/cache/miri`) | **rust-parser VERIFIED** offline after the bake; failed `no matching package named hashbrown` before it. **ub-rust VERIFIED**: `cargo test` reports 1 passed on a read past the end of an allocation, Miri reports `Undefined Behavior: ... at or beyond the end of the allocation of size 3 bytes` |
+| cargo-semver-checks | needs a baseline; `--baseline-rev` needs `.git` (stripped by `--copy-src`) and the default resolves through crates.io. `--baseline-root` is the offline form | baked | **rust-parser VERIFIED** (196 checks, 58 skip, via `--baseline-root /target`) |
+| cargo-vet | fails-loud offline: needs a `supply-chain/` store, and imports its audits over the network | baked | **deps-rust MEASURED**: `must run 'cargo vet init'`: honest, not a false clean |
+| weggli | self-contained (C/C++ pattern; patterns come from the campaign) | baked | 0.2.4 answers; no C/C++ in the rust fixtures |
+| proptest | crate, no binary (a dev-dep, baked per-target by build-ext-image.sh) | declined | n/a; installing it globally installs nothing usable |
+| CASR | needs gdb, and duplicates what libFuzzer already prints for a rust panic | declined | n/a |
 
 ## go fragment
 

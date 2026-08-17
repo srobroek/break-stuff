@@ -75,13 +75,36 @@ cargo install cargo-fuzz --locked --version "$CARGO_FUZZ_VERSION"
 cargo install cargo-audit --locked --version "$CARGO_AUDIT_VERSION"
 cargo install cargo-geiger --locked --version "$CARGO_GEIGER_VERSION"
 
-# Bake the RUSTSEC advisory-db `cargo audit --no-fetch --db` reads offline. --depth 1
-# on the pinned SHA, then drop .git to shed history weight. The campaign points
-# --db here; without it `cargo audit` loads 0 advisories and reports a clean it did
-# not earn.
-git clone https://github.com/rustsec/advisory-db /usr/local/advisory-db
-git -C /usr/local/advisory-db checkout -q "$ADVISORY_DB_SHA"
-rm -rf /usr/local/advisory-db/.git
+# Bake the RUSTSEC advisory-db `cargo audit --no-fetch --db` reads offline. The
+# campaign points --db here; without it `cargo audit` loads 0 advisories and reports a
+# clean it did not earn.
+#
+# .git is KEPT rather than deleted. cargo-audit needs only the markdown tree, but
+# cargo-deny reads HEAD's commit timestamp to judge whether the db is stale, and against
+# a .git-less copy it aborts:
+#
+#   failed to get 'FETCH_HEAD' metadata: failed to get HEAD timestamp
+#   fatal: not a git repository
+#
+# A SHALLOW fetch of the pinned SHA, not a full clone reduced afterwards. Measured, a
+# full clone leaves 3147 reachable commits and 48MB (40MB of it .git) even after
+# `gc --prune=now`, because every ref's history is still reachable from the pinned
+# commit itself. Fetching one commit gives 6.0MB total with the same 901 crate
+# directories and the same HEAD timestamp -- and the wrapper COPIES this tree into a 2g
+# tmpfs on every run, so the 8x is per-run cost, not just image size.
+git init -q /usr/local/advisory-db
+git -C /usr/local/advisory-db remote add origin https://github.com/rustsec/advisory-db
+git -C /usr/local/advisory-db fetch -q --depth 1 origin "$ADVISORY_DB_SHA"
+git -C /usr/local/advisory-db checkout -q FETCH_HEAD
+# The campaign runs as uid 1000 against a repo owned by root, and git refuses "dubious
+# ownership" on a repo it does not own -- which cargo-deny surfaces as a missing db
+# rather than a permissions problem. The wildcard rather than this one path because
+# run-contained.sh copies the db to a tmpfs before cargo-deny reads it (the tool takes
+# an exclusive lock, which the read-only image refuses), and the target repo mounted at
+# /target is root-owned too. Scoped to a single-purpose audit container that holds no
+# repo a campaign should distrust: the target is mounted read-only and never built from
+# its own git metadata.
+git config --system --add safe.directory '*'
 
 # Bake the cargo-fuzz runtime crates into the /deps/cargo registry so a generated
 # fuzz/ target links under --network none. This is the SAME /deps prefix

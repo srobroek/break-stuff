@@ -37,6 +37,18 @@ IMAGE_TOOLS_node="jazzer,retire"
 IMAGE_TOOLS_go="go,gosec,golangci-lint"
 SURFACES="base rust python node go"
 
+# OPTIONAL surfaces: escalation images a campaign reaches for by FINDING, not every run.
+# Absent is a NOTE, not a failure -- a rust campaign starts on sabot/rust:1 and only
+# needs rust-extras once a finding wants cargo-deny's license view, Miri's UB
+# interpreter, or a semver-break check. Present-but-broken is still a failure, because
+# escalating to an image whose cargo-deny loads zero advisories returns a false clean.
+# A dash is not legal in a shell variable name, so the lookup below mangles it to _.
+# cargo-careful is asserted below, not here: it forwards every argument to cargo, so
+# `cargo careful --version` exits 1 listing its subcommands and the probe reads it as
+# missing.
+IMAGE_TOOLS_rust_extras="cargo-deny,cargo-vet,cargo-semver-checks,weggli"
+OPTIONAL_SURFACES="rust-extras"
+
 # image  :  shell test that each LIBRARY the harnesses import actually LOADS inside
 # the image. A library has no CLI, so the executable probe above cannot see it: it
 # reports `atheris --version` missing whether or not the package is installed, which
@@ -63,12 +75,78 @@ IMAGE_DB_node='test -s /opt/sabot-db/retire/jsrepository-v5.json'
 # build with a missing module blocks on a proxy dial that --network none never
 # completes and then reports a network error that reads like a broken image.
 IMAGE_DB_go='test "$(go env GOPROXY)" = "off" && test -d /deps/go/pkg/mod'
+# rust-extras adds no DB of its own: it READS the advisory-db baked by the rust surface,
+# and cargo-deny only finds it through db-path in the config, so assert the config too.
+# Miri and cargo-careful are asserted here rather than in IMAGE_TOOLS. Miri is a nightly
+# rustup component, so `miri --version` is not on PATH and only the +nightly form
+# answers. cargo-careful has no --version at all, and its sysroot must already exist:
+# rebuilding one needs crates.io, which the campaign does not have. Assert the baked
+# sysroot is both PRESENT and READABLE as uid 1000, because the first bake wrote it to
+# /root/.cache where the campaign user could not read it.
+IMAGE_DB_rust_extras='grep -q "^db-path = \"/scratch/advisory-db\"" /opt/sabot-db/deny.toml \
+  && test "$(ls /usr/local/advisory-db/crates 2>/dev/null | wc -l)" -ge 100 \
+  && cargo +nightly miri --version >/dev/null 2>&1 \
+  && ls /deps/cache/cargo-careful >/dev/null 2>&1'
 
 find_runtime() {
   for c in docker finch podman nerdctl; do
     command -v "$c" >/dev/null 2>&1 && { echo "$c"; return 0; }
   done
   return 1
+}
+
+# assert_surface <surface> <required|optional> <runtime>
+# Prints one block per surface and returns non-zero on a real failure. An ABSENT
+# optional image returns 0: escalation images are built on demand. A PRESENT one is
+# held to the same bar as a required surface, since a half-built escalation image is
+# worse than none -- the campaign trusts it and gets a clean it did not earn.
+assert_surface() {
+  local s="$1" mode="$2" rt="$3"
+  local img="sabot/$s:1" fail=0
+  # A dash is not legal in a variable name; IMAGE_TOOLS_rust_extras holds rust-extras.
+  local key="${s//-/_}"
+  local tools="" libtest="" dbtest="" out=""
+  eval "tools=\"\${IMAGE_TOOLS_$key}\""
+  if ! "$rt" image inspect "$img" >/dev/null 2>&1; then
+    if [ "$mode" = optional ]; then
+      echo "    $img  absent (optional escalation image; build from references/containers/Dockerfile.$s when a finding needs it)"
+      return 0
+    fi
+    echo "    $img  ABSENT -- build from references/containers/Dockerfile.$s (then re-run --probe)"
+    return 1
+  fi
+  # --assert-tools exits 0 only when every named tool answers inside the image;
+  # non-zero names the missing ones. This is the authoritative check.
+  if out="$(bash "$RUN_CONTAINED" --assert-tools "$img" "$tools" 2>&1)"; then
+    echo "    $img  OK ($tools)"
+  else
+    echo "    $img  FAIL -- $out"
+    fail=1
+  fi
+  # Library assertion: prove each imported package LOADS, not merely that pip or
+  # npm wrote it to disk. A native addon can install and still fail at dlopen.
+  eval "libtest=\"\${IMAGE_LIBS_$key:-}\""
+  if [ -n "$libtest" ]; then
+    if "$rt" run --rm --network none "$img" sh -c "$libtest" >/dev/null 2>&1; then
+      echo "    $img  LIBS OK (harness imports load)"
+    else
+      echo "    $img  LIBS FAIL -- a harness library is missing or fails to load ($libtest); rebuild from references/containers/Dockerfile.$s"
+      fail=1
+    fi
+  fi
+  # Baked-DB assertion: a present tool with an EMPTY DB is a false-clean under
+  # --network none (isolation.md, Baked offline databases). Prove the DB has
+  # records, not just that the tool answers.
+  eval "dbtest=\"\${IMAGE_DB_$key:-}\""
+  if [ -n "$dbtest" ]; then
+    if "$rt" run --rm --network none "$img" sh -c "$dbtest" >/dev/null 2>&1; then
+      echo "    $img  DB OK (baked offline data non-empty)"
+    else
+      echo "    $img  DB FAIL -- a baked offline DB is missing or empty; rebuild from references/containers/Dockerfile.$s"
+      fail=1
+    fi
+  fi
+  return "$fail"
 }
 
 probe() {
@@ -93,48 +171,12 @@ probe() {
   # inside it. A missing image or a missing tool is a FAIL, not a footnote.
   if [ -n "$rt" ]; then
     echo "  images (asserting every expected tool answers inside each):"
-    local s img tools
+    local s
     for s in $SURFACES; do
-      img="sabot/$s:1"
-      eval "tools=\"\${IMAGE_TOOLS_$s}\""
-      if ! "$rt" image inspect "$img" >/dev/null 2>&1; then
-        echo "    $img  ABSENT -- build from references/containers/Dockerfile.$s (then re-run --probe)"
-        fail=1
-        continue
-      fi
-      # --assert-tools exits 0 only when every named tool answers inside the image;
-      # non-zero names the missing ones. This is the authoritative check.
-      if out="$(bash "$RUN_CONTAINED" --assert-tools "$img" "$tools" 2>&1)"; then
-        echo "    $img  OK ($tools)"
-      else
-        echo "    $img  FAIL -- $out"
-        fail=1
-      fi
-      # Library assertion: prove each imported package LOADS, not merely that pip or
-      # npm wrote it to disk. A native addon can install and still fail at dlopen.
-      local libtest=""
-      eval "libtest=\"\${IMAGE_LIBS_$s:-}\""
-      if [ -n "$libtest" ]; then
-        if "$rt" run --rm --network none "$img" sh -c "$libtest" >/dev/null 2>&1; then
-          echo "    $img  LIBS OK (harness imports load)"
-        else
-          echo "    $img  LIBS FAIL -- a harness library is missing or fails to load ($libtest); rebuild from references/containers/Dockerfile.$s"
-          fail=1
-        fi
-      fi
-      # Baked-DB assertion: a present tool with an EMPTY DB is a false-clean under
-      # --network none (isolation.md, Baked offline databases). Prove the DB has
-      # records, not just that the tool answers.
-      local dbtest=""
-      eval "dbtest=\"\${IMAGE_DB_$s:-}\""
-      if [ -n "$dbtest" ]; then
-        if "$rt" run --rm --network none "$img" sh -c "$dbtest" >/dev/null 2>&1; then
-          echo "    $img  DB OK (baked offline data non-empty)"
-        else
-          echo "    $img  DB FAIL -- a baked offline DB is missing or empty; rebuild from references/containers/Dockerfile.$s"
-          fail=1
-        fi
-      fi
+      assert_surface "$s" required "$rt" || fail=1
+    done
+    for s in $OPTIONAL_SURFACES; do
+      assert_surface "$s" optional "$rt" || fail=1
     done
   fi
 

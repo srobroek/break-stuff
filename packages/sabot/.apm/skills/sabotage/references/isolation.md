@@ -87,6 +87,7 @@ comma-list the surface doc's Tools table names:
 | `sabot/node:1` | `jazzer,retire` | `node -e 'require("fast-check")'` |
 | `sabot/go:1` | `go,gosec,golangci-lint` | none |
 | `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner,radamsa,zzuf,creduce,hadolint,kube-linter,tflint,poutine,trufflehog` | none |
+| `sabot/rust-extras:1` (optional) | `cargo-deny,cargo-vet,cargo-semver-checks,weggli` | none (cargo-careful and Miri are asserted by their baked sysroots, below) |
 
 Each column asks a different question, and conflating them hid a real gap.
 `--assert-tools` runs `<tool> --version`, which a LIBRARY can never answer: atheris,
@@ -123,6 +124,56 @@ looking like it worked (measured: 182 bytes to 163, with the dead code intact, a
 MUST Report a tflint run as CORE-ONLY. Provider plugins come from `tflint --init` over
 the network, which `--network none` forbids, so the terraform rules that need a provider
 never load.
+
+MUST Pass `--config /opt/sabot-db/deny.toml` to cargo-deny unless the target ships its
+own `deny.toml`. Without a `db-path`, `cargo deny check advisories` tries to clone the
+advisory-db and, on the partial clone `--network none` leaves behind, loads zero
+advisories and reports a clean.
+
+MUST Pass `--offline` to cargo-deny BEFORE the subcommand: `cargo deny --offline check
+advisories`. It is a top-level flag, and after `check` it is rejected as an unknown
+argument. Without it cargo-deny attempts a fetch even with a valid local db.
+
+MUST Point cargo-deny's `db-path` at a WRITABLE PARENT DIRECTORY holding the db under
+cargo-deny's own child name, `advisory-db-3157b0e258782691`. Miss any one of these and a
+working bake looks like a missing db:
+
+- Writable, because it takes an exclusive lock on `db.lock` inside `db-path` before
+  reading and has no flag to skip it. Against the read-only image: "attempted to take an
+  exclusive lock on a read-only path". `--offline` does NOT skip the lock.
+- Nested, because `db-path` holds one directory per `db-url` rather than the db itself.
+  Pointed at a flat copy, cargo-deny tries to clone the child it cannot find and dies on
+  DNS under `--network none`.
+- Carrying `.git`, because the staleness check reads HEAD's commit timestamp.
+
+`run-contained.sh` copies the 6MB baked db into that shape on the scratch tmpfs.
+cargo-audit needs none of it: it reads the baked path directly, read-only and flat.
+
+MUST NOT report cargo-careful as a UB check. It hardens std's debug assertions; it does
+not interpret UB. Measured on the `ub-rust` fixture, a read one byte past the end of an
+allocation: `cargo careful test` reported it PASSING, while Miri named it. A finding that
+needs a UB verdict needs Miri, and a clean careful run is not evidence of its absence.
+
+MUST Invoke Miri as `cargo +nightly miri`. It is a rustup COMPONENT of the pinned dated
+nightly, not a binary on `PATH`: `miri --version` reports missing, and `cargo miri` on
+the default stable toolchain does too.
+
+MUST Bake the Miri and cargo-careful sysroots at BUILD time, to a path uid 1000 can
+read. Each builds a sysroot from `rust-src` at first use, which pulls std's registry
+deps and so needs crates.io. `miri --version` answers whether or not that sysroot
+exists, which hid the gap until a real run failed "no matching package named
+`hashbrown`". At the default `~/.cache` the careful sysroot went to `/root/.cache`,
+which the campaign user cannot read, so both are baked under `/deps/cache` and linked into
+the container's `XDG_CACHE_HOME`.
+
+MUST Give cargo-semver-checks a `--baseline-root`, not a `--baseline-rev`. The default
+resolves the baseline through crates.io, and `--baseline-rev` needs a `.git` that
+`--copy-src` strips. Pointed at the read-only `/target`, it runs offline (measured: 196
+checks, 58 skipped).
+
+MUST Report cargo-vet's offline result as the limit it is. Without the network it can
+only say "you must run `cargo vet init`" or that no audits were imported. That is honest,
+but recorded as a bare "no findings" it misreads as a pass.
 
 MUST Set `GOPROXY=off` on the go surface. A build with an unresolved module otherwise
 blocks on a proxy dial that `--network none` never completes, then reports a network

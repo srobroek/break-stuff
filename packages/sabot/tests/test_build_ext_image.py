@@ -107,6 +107,20 @@ def test_copy_precedes_its_run_so_layer_caches_on_lock(tmp_path):
     assert copy_idx < run_idx
 
 
+def test_every_copy_chowns_to_the_build_uid(tmp_path):
+    """A fetch REWRITES the lock it was copied, and COPY writes root-owned files.
+
+    Measured: without --chown, `cargo fetch` as uid 1000 aborted the ext build with
+    "failed to write /scratch/Cargo.lock: Permission denied".
+    """
+    make_repo(tmp_path, {"Cargo.toml": "[package]\nname='x'\n", "Cargo.lock": ""})
+    df = dry_run(tmp_path)
+    copies = [l for l in df.splitlines() if l.startswith("COPY")]
+    assert copies
+    for l in copies:
+        assert l.startswith("COPY --chown=1000:1000 "), f"unowned copy: {l}"
+
+
 def test_dep_cache_is_persistent_not_scratch(tmp_path):
     # /scratch is a fresh tmpfs per run (run-contained.sh); baking there is masked.
     make_repo(tmp_path, {"Cargo.toml": "[package]\nname='x'\n", "Cargo.lock": ""})
