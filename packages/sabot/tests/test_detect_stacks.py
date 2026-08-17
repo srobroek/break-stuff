@@ -33,8 +33,11 @@ def make_repo(root: Path, files: dict[str, str]):
         p.write_text(content)
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    # --no-gpg-sign: see test_build_ext_image.py. A global `commit.gpgsign=true` with an
+    # agent-backed signer hangs here forever, and pytest shows nothing while it does.
     subprocess.run(
-        ["git", "-c", "user.email=t@t.co", "-c", "user.name=t", "commit", "-qm", "init"],
+        ["git", "-c", "user.email=t@t.co", "-c", "user.name=t",
+         "commit", "--no-gpg-sign", "-qm", "init"],
         cwd=root, check=True,
     )
 

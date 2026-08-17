@@ -28,10 +28,10 @@ proved detection end-to-end).
 |---|---|---|---|
 | opengrep | degraded-silent (forbid `--config auto`; local rules only) | baked | rust-parser (local rule) |
 | ripgrep | self-contained | baked | n/a |
-| shellcheck | self-contained | baked | shell fixture (pending) |
-| shfmt | self-contained | baked | shell fixture (pending) |
+| shellcheck | self-contained | baked | **shell VERIFIED** (SC2086/SC2045/SC2035/SC2164 offline, exit 1) |
+| shfmt | self-contained | baked | **shell VERIFIED** (`-d` reports an indentation diff offline, exit 1) |
 | ast-grep | self-contained | baked | rust-parser rule |
-| gitleaks | self-contained (rules embedded) | baked | secrets fixture (pending) |
+| gitleaks | self-contained (rules embedded); `gitleaks dir` scans a non-git tree | baked | **secrets VERIFIED** (3 offline: private-key, generic-api-key, github-pat) |
 | zizmor | self-contained (offline==online) | baked | **infra-ci VERIFIED** |
 | actionlint | self-contained | baked | infra-ci |
 | pinact | fails-loud (SHA resolve needs net) | baked | infra-ci |
@@ -42,7 +42,7 @@ proved detection end-to-end).
 | kube-linter | self-contained (checks compiled in) | baked | **infra-extras VERIFIED** (5 checks fired offline) |
 | tflint | baked-ok CORE ONLY (`--init` provider plugins need net; report must say core-only) | baked | **infra-extras VERIFIED** (2 core issues offline) |
 | Grype | baked DB DECLINED: DB measures 2.0GB (v0.117.0) and base is inherited by every surface; trivy + osv-scanner already cover the same ecosystems | declined | n/a; the coverage is already there via trivy and osv-scanner |
-| TruffleHog | baked-ok DETECTION ONLY; needs `--no-update` (self-updater aborts the scan on a read-only fs) + `--no-verification` | baked | **VERIFIED** (1 unverified AWS secret offline, verified_secrets 0) |
+| TruffleHog | baked-ok DETECTION ONLY; needs `--no-update` (self-updater aborts the scan on a read-only fs) + `--no-verification` | baked | **secrets VERIFIED** (2 offline, AWS + Github, both `Verified: false`) |
 | Kingfisher | UNMEASURED (live-validate needs net) | fragment-pending | secrets fixture |
 | GuardDog | UNMEASURED (pip) | fragment-pending | deps fixture |
 | OSSF-Scorecard | needs-net (GH API), likely irreducible gap | fragment-pending | doc as gap? |
@@ -130,3 +130,20 @@ recorded as MUSTs in `isolation.md`.
 
 - **OSSF-Scorecard**: scores a repo via the GitHub API; no offline mode. Record as a coverage gap in any report that would run it.
 - Any tool whose ONLY value is a live network probe (ZAP active scan against a remote, Kingfisher/TruffleHog live-credential validation): offline runs the static half only; the report must say which half ran.
+
+## Seeding a secrets fixture
+
+A secret detector's fixture MUST carry high-entropy synthetic values. Measured on the
+`secrets` fixture, the textbook placeholders produce a near-empty result that reads as a
+broken detector:
+
+| Seeded value | gitleaks |
+|---|---|
+| `AKIAIOSFODNN7EXAMPLE` + the matching `wJalrXUt…` secret | no finding (AWS's own doc keys are allowlisted) |
+| `ghp_` + 36 repeated `a` | no finding (fails the entropy check) |
+| An RSA private-key header | `private-key` |
+| `AKIA` + 16 random uppercase, 40 random alphanumerics, `ghp_` + 36 random | `generic-api-key`, `github-pat`, `private-key` |
+
+Generate the values rather than copying them, and keep the fixture OUTSIDE the repo: a
+credential-shaped literal in a tracked file trips the commit-time secret scanner, which is
+the same class of tool the fixture exists to exercise.
