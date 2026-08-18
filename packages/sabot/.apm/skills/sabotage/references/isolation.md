@@ -125,6 +125,28 @@ MUST Report a tflint run as CORE-ONLY. Provider plugins come from `tflint --init
 the network, which `--network none` forbids, so the terraform rules that need a provider
 never load.
 
+MUST Pass `--cache-dir /opt/sabot-db/trivy` to trivy. Without it the bake is ignored and
+trivy tries to pull `mirror.gcr.io/aquasec/trivy-db:2`, which fails on DNS and aborts the
+run. The `misconfig` scanner reads a SECOND bundle that is not baked, so add
+`--skip-check-update` as well: without it the run stalls about 4.3 seconds on a failed
+download before falling back to checks compiled into the binary. That fallback is complete
+(measured: the same 12 findings on the `iac` fixture either way), so the flag buys latency,
+not coverage.
+
+MUST Pass the db location to osv-scanner as `XDG_CACHE_HOME=/opt/sabot-db/osv`, or as
+`OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY`. `--offline` alone is the false-clean in this family:
+it finds every lockfile, reports the package count it parsed, loads NO database, and says
+zero vulnerabilities. The giveaway is on stderr, not stdout (`could not load db for npm
+ecosystem: ... no offline version of the OSV database is available`), and the exit code is
+127. With the db passed, the same fixture yields 130 advisories, and stderr says `Loaded npm
+local db from ...`. Treat the absence of a `Loaded ... local db` line as an INVALID run.
+
+MUST Point semgrep's `--config` at a `<lang>` SUBDIR of `/opt/sabot-db/semgrep-rules`, not
+at the rules parent. The bake is the upstream repo checkout, which carries files that are
+not rule files, and ONE invalid config aborts the entire scan: pointed at the parent, semgrep
+exits 7 having scanned 0 files, on `.pre-commit-config.yaml is missing 'rules' as top-level
+key`. A registry name (`p/python`, `--config auto`) fails on DNS instead.
+
 MUST Pass `--config /opt/sabot-db/deny.toml` to cargo-deny unless the target ships its
 own `deny.toml`. Without a `db-path`, `cargo deny check advisories` tries to clone the
 advisory-db and, on the partial clone `--network none` leaves behind, loads zero

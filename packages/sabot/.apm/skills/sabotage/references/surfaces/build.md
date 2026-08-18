@@ -23,7 +23,7 @@ build invokes.
 | `cargo metadata` | default-on | local | `cargo metadata --format-version 1` | every build-dependency and proc-macro crate that runs at compile time | enumerates the compile-time code surface |
 | npm dry-run | default-on | local | `npm install --ignore-scripts --dry-run` then diff against a normal install | which packages want to run install scripts | shows the install-time execution set |
 | pinact | default-on | local | `pinact run --check` | a pre-commit repo or action pinned to a mutable ref | shared with `infra.md` |
-| osv-scanner | default-on | global | `XDG_CACHE_HOME=/opt/sabot-db/osv osv-scanner scan source --offline-vulnerabilities --format json -r .` | a known-malicious build-dependency | shared with `infra.md`; prefer the `dep-audit` package |
+| osv-scanner | default-on | global | `XDG_CACHE_HOME=/opt/sabot-db/osv osv-scanner scan source --offline-vulnerabilities --format json -r .` (the env var is MANDATORY; `--offline*` alone loads no db and reports 0) | a known-malicious build-dependency | shared with `infra.md`; prefer the `dep-audit` package |
 
 MUST Read `build.rs`, proc-macro crates, and every install script, since a scanner enumerates none of them and the whole surface is code that runs before a test could catch it.
 NOT Never run a build or install to observe it without the isolation below. Observing build-time execution by performing it is running the payload.

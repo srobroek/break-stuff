@@ -16,12 +16,12 @@ lockfiles (`Cargo.lock` `package-lock.json` `pnpm-lock.yaml` `uv.lock` `go.sum`
 
 | Tool | Tier | Class | Run recipe | Catches | Overlap |
 |------|------|-------|-----------|---------|---------|
-| trivy | default-on | local | `trivy --cache-dir /opt/sabot-db/trivy fs --skip-db-update --scanners misconfig,vuln,secret --format json .` | IaC misconfig, CVEs, secrets across Terraform, Docker, and k8s in one pass | broad; subsumes much of checkov for common rules |
+| trivy | default-on | local | `trivy --cache-dir /opt/sabot-db/trivy fs --skip-db-update --skip-check-update --scanners misconfig,vuln,secret --format json .` | IaC misconfig, CVEs, secrets across Terraform, Docker, and k8s in one pass | broad; subsumes much of checkov for common rules |
 | checkov | default-on | local | `checkov -d . -o json` | deeper IaC policy checks, including custom policies | overlaps trivy, and catches policy classes trivy misses |
 | zizmor | default-on | local | `zizmor --format json .github/workflows/` | CI workflow injection: `pull_request_target` with untrusted checkout, template injection into `run:`, over-broad `GITHUB_TOKEN` | unique; no other tool does workflow dataflow |
 | actionlint | default-on | local | `actionlint -format '{{json .}}'` | workflow syntax, shell inside `run:` through embedded shellcheck | complements zizmor, which judges security rather than validity |
 | pinact | default-on | local | `pinact run --check` | actions referenced by tag rather than SHA | mechanical and unique |
-| osv-scanner | default-on | global | `XDG_CACHE_HOME=/opt/sabot-db/osv osv-scanner scan source --offline-vulnerabilities --format json -r .` | CVEs across every lockfile ecosystem | overlaps the repo's `dep-audit` package, which is preferred when present |
+| osv-scanner | default-on | global | `XDG_CACHE_HOME=/opt/sabot-db/osv osv-scanner scan source --offline-vulnerabilities --format json -r .` (the env var is MANDATORY; `--offline*` alone loads no db and reports 0) | CVEs across every lockfile ecosystem | overlaps the repo's `dep-audit` package, which is preferred when present |
 | hadolint | default-on | local | `hadolint -f json <Dockerfile>` | root user, unpinned base image, unsafe `RUN`, missing `HEALTHCHECK` | embeds shellcheck for `RUN` bodies |
 | kube-linter | default-on | local | `kube-linter lint --format json <path>` | missing limits, privileged containers, `runAsNonRoot`, host mounts | k8s only |
 | tflint | default-on | local | `tflint -f json` | provider-aware Terraform errors | complements the policy scanners |

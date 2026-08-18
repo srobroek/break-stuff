@@ -27,16 +27,16 @@ proved detection end-to-end).
 | Tool | Offline req | Bake status | Fixture / test |
 |---|---|---|---|
 | opengrep | degraded-silent (forbid `--config auto`; local rules only). It has NO `--metrics` flag (it never reports), and it EXITS 0 on an unknown option | baked | **node-parser VERIFIED** (a local rule located the seeded prototype-pollution merge at line 11 offline); rust-parser (local rule) |
-| ripgrep | self-contained | baked | n/a |
+| ripgrep | self-contained | baked | **ub-rust VERIFIED** (14.1.1; matched offline; a search primitive that the campaign drives, with no ruleset of its own) |
 | shellcheck | self-contained | baked | **shell VERIFIED** (SC2086/SC2045/SC2035/SC2164 offline, exit 1) |
 | shfmt | self-contained | baked | **shell VERIFIED** (`-d` reports an indentation diff offline, exit 1) |
-| ast-grep | self-contained | baked | rust-parser rule |
+| ast-grep | self-contained | baked | **ub-rust VERIFIED** (0.45.0; `unsafe { $$$BODY }` matched `src/lib.rs:3` offline, JSON out) |
 | gitleaks | self-contained (rules embedded); `gitleaks dir` scans a non-git tree | baked | **secrets VERIFIED** (3 offline: private-key, generic-api-key, github-pat) |
 | zizmor | self-contained (offline==online) | baked | **infra-ci VERIFIED** |
-| actionlint | self-contained | baked | infra-ci |
-| pinact | fails-loud (SHA resolve needs net) | baked | infra-ci |
-| trivy | fails-loud → bake trivy-db | baked (DB non-empty, asserted) | infra/deps fixture |
-| osv-scanner | fails-loud → bake OSV DB | baked (4 ecosystems, asserted) | deps fixture |
+| actionlint | self-contained (rules compiled in; the shellcheck integration needs the BINARY, present in base, not the network) | baked | **infra-ci VERIFIED** (untrusted-input script-injection on `github.event.pull_request.title`, `[expression]`, exit 1) |
+| pinact | fails-loud (SHA resolve needs net); the verb is `pinact run --check` | baked | **infra-ci VERIFIED honest offline**: names the unpinnable ref (`action can't be pinned`, `actions/checkout@main`) and exits 2 rather than reporting a clean |
+| trivy | **fails-loud ONLY with `--cache-dir /opt/sabot-db/trivy`**; the bare `trivy fs` ignores the bake and dies trying to pull `mirror.gcr.io/aquasec/trivy-db:2`. `misconfig` uses a SECOND bundle that is not baked: without `--skip-check-update` it stalls ~4.3s on a failed download, then falls back to checks embedded in the binary (same 12 findings) | baked (vuln DB; misconfig checks come from the binary) | **deps-vuln + iac + secrets VERIFIED** (77 vulns incl. CVE-2019-14234 Django==2.2.0 and CVE-2019-10744 lodash==4.17.4; 12 misconfigs AWS-0086/0087/0089/0090; 4 secrets) |
+| osv-scanner | fails-loud → bake OSV DB, and the db location MUST be passed: `XDG_CACHE_HOME=/opt/sabot-db/osv` (or `OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY`). Bare `--offline` finds the lockfiles, loads NO db, and reports 0 (`no offline version of the OSV database is available`, exit 127) | baked (4 ecosystems) | **deps-vuln VERIFIED** (130 advisories over 7 packages: 70 on django==2.2.0, 24 urllib3, 10 lodash, incl. PYSEC-2019-10 and GHSA-vh95-rmgr-6w4m) |
 | Checkov | self-contained once installed (policies ship in the wheel; the pip install is the network op) | baked (`sabot/scanners:1`, pipx venv) | **iac VERIFIED** (11 failed / 7 passed offline as uid 1000, exit 1, incl. the open-port-22 SG check) |
 | hadolint | self-contained (rules compiled in) | baked | **infra-extras VERIFIED** (DL3006/DL3008/DL3009/DL3015 offline) |
 | kube-linter | self-contained (checks compiled in) | baked | **infra-extras VERIFIED** (5 checks fired offline) |
@@ -50,7 +50,7 @@ proved detection end-to-end).
 | Nuclei | baked-ok, and MUST pass BOTH `-templates` and `-ud` at the baked path (see below); `-duc` to stop the updater | baked (`sabot/scanners:1`, 13575 templates, all validating) | **web VERIFIED** (14 findings offline under `--read-only` as uid 1000 against a container-local `http.server`: robots-txt, tech-detect, 10 missing-header matchers) |
 | Bearer | fails-loud without baked rules (`0 rules found ... could not be downloaded`); MUST pass `--external-rule-dir` | baked (`sabot/scanners:1`, bearer-rules pinned by SHA) | **code-py VERIFIED** (234 rules evaluated offline; `python_lang_os_command_injection` line 10 + `python_lang_weak_hash_md5` line 6) |
 | radamsa | self-contained (mutator); builds from source, needs `libc6-dev` | baked | **python-parser VERIFIED** (33 crashes in 200 mutations offline) |
-| zzuf | self-contained (mutator) | baked | build asserts output differs from input |
+| zzuf | self-contained (mutator) | baked | **VERIFIED offline** (`-r 0.05 -s 42`: 13 of 40 bytes changed, length preserved) |
 | C-Reduce | self-contained (reducer); test script MUST use a RELATIVE path | baked | **VERIFIED** (182 -> 16 bytes offline) |
 
 ## rust fragment
@@ -60,7 +60,7 @@ proved detection end-to-end).
 | clippy | needs dep graph (ok in ext); a target's `rust-toolchain.toml` MUST be overridden by `RUSTUP_TOOLCHAIN` (see below) | baked | **rust-parser + fits-header VERIFIED** (clean under `-D warnings` offline on a real crate) |
 | cargo-fuzz | needs-build-dep (libfuzzer-sys+arbitrary+g++), baked; needs `+nightly`, and `--offline` is NOT accepted (`cargo fuzz build --offline` → `unexpected argument`; the wrapper's `CARGO_NET_OFFLINE` covers it) | baked | **rust-parser + fits-header VERIFIED** (`init` + `build` + `run` offline on a real crate; found a panic in 2 execs) |
 | cargo-audit | degraded-silent → bake advisory-db; the db path is `/usr/local/advisory-db`, read flat and read-only | baked | **deps-rust + fits-header VERIFIED** (1216 advisories, RUSTSEC-2020-0071 offline; 56 deps scanned clean on the real crate) |
-| cargo-geiger | needs dep graph (ok in ext) | baked | rust-parser |
+| cargo-geiger | needs dep graph (ok in ext) | baked | **ub-rust VERIFIED** (4/4 unsafe expressions, `!` verdict, offline, exit 0) |
 | AFL++ | needs-build-dep (apt + cargo-afl) | fragment-pending | rust-parser |
 | honggfuzz | needs-build-dep (apt + cargo) | fragment-pending | rust-parser |
 
@@ -106,7 +106,7 @@ a failure.
 | Miri | needs-build-dep: builds its OWN sysroot from rust-src at first use, which needs crates.io. `miri --version` answers while that sysroot is absent | baked (`/deps/cache/miri`) | **rust-parser VERIFIED** offline after the bake; failed `no matching package named hashbrown` before it. **ub-rust VERIFIED**: `cargo test` reports 1 passed on a read past the end of an allocation, Miri reports `Undefined Behavior: ... at or beyond the end of the allocation of size 3 bytes` |
 | cargo-semver-checks | needs a baseline; `--baseline-rev` needs `.git` (stripped by `--copy-src`) and the default resolves through crates.io. `--baseline-root` is the offline form | baked | **rust-parser VERIFIED** (196 checks, 58 skip, via `--baseline-root /target`) |
 | cargo-vet | fails-loud offline: needs a `supply-chain/` store, and imports its audits over the network | baked | **deps-rust MEASURED**: `must run 'cargo vet init'`: honest, not a false clean |
-| weggli | self-contained (C/C++ pattern; patterns come from the campaign) | baked | 0.2.4 answers; no C/C++ in the rust fixtures |
+| weggli | self-contained (C/C++ pattern; patterns come from the campaign) | baked | **VERIFIED offline** on a seeded `strcpy` into a 16-byte stack buffer: both `{strcpy(_,_);}` and the `{char $b[_]; strcpy($b,$s);}` shape matched |
 | proptest | crate, no binary (a dev-dep, baked per-target by build-ext-image.sh) | declined | n/a; installing it globally installs nothing usable |
 | CASR | needs gdb, and duplicates what libFuzzer already prints for a rust panic | declined | n/a |
 
@@ -117,7 +117,7 @@ a failure.
 | `go test -fuzz` | self-contained (fuzzer is in the toolchain; no runtime crate to bake) | baked | **go-parser VERIFIED** (found seeded panic offline, crash corpus copied out) |
 | gosec | self-contained (rules compiled in) | baked | **go-parser VERIFIED** (G404 offline) |
 | golangci-lint | self-contained (linters compiled in) | baked | **go-parser VERIFIED** (ineffassign offline) |
-| go vet | self-contained (ships with the toolchain) | baked | go-parser (no vet-class defect seeded; ran clean) |
+| go vet | self-contained (ships with the toolchain) | baked | **go-parser VERIFIED** on a seeded format mismatch: `fmt.Printf format %d has arg "not-an-int" of wrong type string`, exit 1 |
 
 The go surface needs `GOPROXY=off` and a `TMPDIR` below the scratch root; both are
 recorded as MUSTs in `isolation.md`.
@@ -128,9 +128,9 @@ recorded as MUSTs in `isolation.md`.
 |---|---|---|---|
 | Bandit | self-contained (rules embedded) | baked | **python-parser VERIFIED** (B307 offline) |
 | Ruff | self-contained (needs `RUFF_CACHE_DIR` off the read-only target) | baked | **python-parser VERIFIED** (offline) |
-| Semgrep | degraded-silent (same as opengrep) | baked | python-parser |
+| Semgrep | degraded-silent (same as opengrep), and `--config` MUST name a `<lang>` SUBDIR. The registry form (`p/python`, `--config auto`) dies on DNS. Pointed at the rules PARENT it aborts the whole scan on one invalid file (`.pre-commit-config.yaml is missing 'rules'`, exit 7, 0 files scanned) | baked (2156 rule files) | **code-py VERIFIED** via `/opt/sabot-db/semgrep-rules/python`: 3 findings, 3 unique rules, 0 errors (`insecure-hash-algorithm-md5`, `dangerous-subprocess-use-audit`, `subprocess-shell-true`) |
 | atheris | needs-build-dep (clang + `libclang-rt-<major>-dev` + `CXX`), baked | baked | **python-parser VERIFIED** (found seeded IndexError offline) |
-| Hypothesis | self-contained (library; assert by import) | baked | python-parser |
+| Hypothesis | self-contained (library; assert by import) | baked | **VERIFIED** (6.145.1 imports offline; the pin is asserted by the HypoFuzz probe, see the generator tier) |
 | HypoFuzz | baked-ok, and the hypothesis pin MUST be held: HypoFuzz sets only a floor, and a newer hypothesis crashes every worker while it claims a failure (see below). No `hypofuzz` binary; it registers `hypothesis fuzz` | baked (`sabot/python:1`, 25.11.1 against hypothesis 6.145.1) | **VERIFIED** (fuzzed a seeded `n != 0` property offline as uid 1000, recorded the counterexample, and `pytest` replayed it from the example database) |
 | schemathesis | self-contained; needs a spec AND a reachable base URL, so offline means serving the API inside the container | baked (`sabot/python:1`, 4.24.3) | **VERIFIED** (3 unique failures offline against a container-local `http.server`: server error, schema-violating request accepted, undocumented status code) |
 | Grammarinator | self-contained; `grammarinator-generate` MUST run with the processed grammar's directory on `PYTHONPATH`, or it fails `ModuleNotFoundError: No module named 'TGenerator'` | baked (`sabot/python:1`, 26.1) | **VERIFIED** (processed a 4-rule ANTLR grammar and generated 3 files matching it offline) |

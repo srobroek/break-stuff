@@ -63,9 +63,26 @@ IMAGE_LIBS_node='node -e "require(\"fast-check\")"'
 # tool that answers --version but scans against zero records returns a meaningless
 # clean under --network none. Each expression exits 0 only when the DB has content.
 # The count thresholds are lower bounds, not exact, so a DB refresh does not trip them.
+#
+# For trivy and osv-scanner the file check is NOT sufficient, and this is measured. Both
+# shipped a correct, non-empty DB that the tool then did not read: trivy ignores the bake
+# unless --cache-dir names it, and osv-scanner's `--offline` loads nothing unless the cache
+# dir is passed in the environment, reporting the package count it parsed and zero
+# vulnerabilities. Both passed the old file-presence test. So each one now SCANS a probe
+# lockfile pinned to a known-vulnerable version and the advisory count must be non-zero --
+# the same "assert the work, not the version string" rule the tool probes follow.
 IMAGE_DB_base='test "$(find /opt/sabot-db/trivy -name trivy.db | wc -l)" -ge 1 \
   && test "$(ls /opt/sabot-db/osv/osv-scanner 2>/dev/null | wc -l)" -ge 1 \
-  && test "$(find /opt/sabot-db/semgrep-rules -name "*.yaml" | head -100 | wc -l)" -ge 50'
+  && test "$(find /opt/sabot-db/semgrep-rules -name "*.yaml" | head -100 | wc -l)" -ge 50 \
+  && p="$(mktemp -d)" && printf "Django==2.2.0\n" > "$p/requirements.txt" \
+  && trivy --cache-dir /opt/sabot-db/trivy fs --skip-db-update --skip-check-update \
+       --scanners vuln --format json -o "$p/t.json" "$p" >/dev/null 2>&1 \
+  && test "$(grep -c VulnerabilityID "$p/t.json")" -ge 1 \
+  && XDG_CACHE_HOME=/opt/sabot-db/osv osv-scanner scan source \
+       --offline-vulnerabilities --format json --output "$p/o.json" "$p" >/dev/null 2>&1; \
+     test "$(grep -c PYSEC "$p/o.json" 2>/dev/null)" -ge 1 \
+  && test "$(ls /opt/sabot-db/semgrep-rules/python 2>/dev/null | wc -l)" -ge 5 \
+  && rm -rf "$p"'
 IMAGE_DB_rust='test "$(ls /usr/local/advisory-db/crates 2>/dev/null | wc -l)" -ge 100 \
   && ls /deps/cargo/registry/cache/*/libfuzzer-sys-*.crate >/dev/null 2>&1 \
   && ls /deps/cargo/registry/cache/*/arbitrary-*.crate >/dev/null 2>&1'

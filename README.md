@@ -1,4 +1,6 @@
-# Sabot
+<p align="center">
+  <img src="docs/assets/sabot-logo.png" alt="Sabot" width="640">
+</p>
 
 Let your agents attack your own repos: they drive security and fuzzing tools to find holes in your code, application, and prompts. It combines deterministic scanners with agent-driven exploration, hammers your own codebase until something breaks, then reports each finding with a reproducing input or a traced path.
 
