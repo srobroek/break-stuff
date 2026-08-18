@@ -30,7 +30,10 @@ RUN_CONTAINED="$SKILL_DIR/scripts/run-contained.sh"
 # Kept in sync with isolation.md's assert table and each surface's Tools table.
 IMAGE_TOOLS_base="opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner,radamsa,zzuf,creduce,hadolint,kube-linter,tflint,poutine,trufflehog"
 IMAGE_TOOLS_rust="cargo-fuzz,cargo-audit,clippy,cargo-geiger"
-IMAGE_TOOLS_python="bandit,ruff,semgrep"
+# semgrep is NOT here: opengrep in base reads the same baked semgrep-rules and
+# measured identical output (5 findings, same 3 rules, 0 errors) on the same
+# fixture under --network none, so shipping both bought nothing.
+IMAGE_TOOLS_python="bandit,ruff"
 IMAGE_TOOLS_node="jazzer,retire"
 # go ships NO separate fuzz binary: `go test -fuzz` is part of the toolchain, so the
 # `go` executable answering here is the fuzzer assertion for this surface.
@@ -82,6 +85,10 @@ IMAGE_DB_base='test "$(find /opt/sabot-db/trivy -name trivy.db | wc -l)" -ge 1 \
        --offline-vulnerabilities --format json --output "$p/o.json" "$p" >/dev/null 2>&1; \
      test "$(grep -c PYSEC "$p/o.json" 2>/dev/null)" -ge 1 \
   && test "$(ls /opt/sabot-db/semgrep-rules/python 2>/dev/null | wc -l)" -ge 5 \
+  && printf "import hashlib\nh = hashlib.md5(b\"x\").hexdigest()\n" > "$p/probe.py" \
+  && LC_ALL=C.UTF-8 LANG=C.UTF-8 opengrep scan --quiet --json \
+       --config /opt/sabot-db/semgrep-rules/python "$p" > "$p/g.json" 2>/dev/null \
+  && test "$(grep -c insecure-hash-algorithm-md5 "$p/g.json")" -ge 1 \
   && rm -rf "$p"'
 IMAGE_DB_rust='test "$(ls /usr/local/advisory-db/crates 2>/dev/null | wc -l)" -ge 100 \
   && ls /deps/cargo/registry/cache/*/libfuzzer-sys-*.crate >/dev/null 2>&1 \

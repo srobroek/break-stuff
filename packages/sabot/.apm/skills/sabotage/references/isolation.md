@@ -308,7 +308,14 @@ The opt-in scanners below need remote data with no offline mode, so they stay of
 under the network-none contract. An operator who wants one grants network explicitly,
 and the report then states that exposure was scanned with network.
 
-- **checkov, hadolint, kube-linter, tflint, grype, conftest** (infra.md, opt-in IaC scanners not baked): each ships or fetches its own policy/DB. Only trivy and osv are baked, so these fill what trivy misses when the operator opts in with network.
+- **grype, conftest** (infra.md, opt-in, not baked): each fetches its own DB or policy bundle. grype's is 2.0GB and base is inherited by every surface, so the bake was declined and trivy plus osv-scanner cover the same ecosystems.
+- **checkov, hadolint, kube-linter, tflint are NOT gaps** and were wrongly listed here. Each is baked, and each was MEASURED offline under `--network none` on a seeded Terraform and Dockerfile fixture:
+  - checkov: 3 failed / 4 passed on an open-port-22 security group (`sabot/scanners:1`, exit 1).
+  - hadolint: 3 DL findings, exit 1.
+  - tflint: 2 core issues, exit 2. Core only, since `--init` provider plugins do need the network.
+  - kube-linter: loads its compiled-in checks, exit 0.
+
+  See the base and infra rows of `tool-coverage-matrix.md`, which is the measured record.
 - **nuclei, ZAP** (web.md, dynamic): templates and rules fetched on use. Dynamic DAST already needs the operator to stand up the dev server, so it sits outside the default offline path.
 
 ## Provisioning and extending the image
