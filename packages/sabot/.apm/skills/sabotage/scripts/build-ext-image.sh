@@ -27,9 +27,12 @@ set -euo pipefail
 # cargo bake is resolvable offline; the other cache vars it does override at run
 # time are set here for the build-time fetch (see the report/caveat in isolation.md).
 
+usage() { sed -n '4,28p' "$0" | sed 's/^# \{0,1\}//'; }
+
 TARGET=""; BASE=""; TAG=""; DRYRUN=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -h|--help) usage; exit 0 ;;
     --target)  TARGET="$2"; shift 2 ;;
     --base)    BASE="$2"; shift 2 ;;
     --tag)     TAG="$2"; shift 2 ;;

@@ -174,3 +174,18 @@ def test_missing_target_exits_2(tmp_path):
         capture_output=True, text=True,
     )
     assert r.returncode == 2
+
+
+def test_help_prints_usage_and_exits_zero():
+    """The provisioning agent reached for --help, got exit 2, and read the comment
+    header instead. An unknown-arg rejection on --help reads as a broken script."""
+    r = subprocess.run(["bash", str(SCRIPT), "--help"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    for flag in ("--target", "--base", "--tag", "--dry-run"):
+        assert flag in r.stdout, f"usage omits {flag}"
+    assert not r.stdout.lstrip().startswith("#"), "usage still carries comment markers"
+
+
+def test_unknown_arg_still_exits_2():
+    r = subprocess.run(["bash", str(SCRIPT), "--bogus"], capture_output=True, text=True)
+    assert r.returncode == 2
