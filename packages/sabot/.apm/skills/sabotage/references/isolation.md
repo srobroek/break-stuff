@@ -149,6 +149,28 @@ working bake looks like a missing db:
 `run-contained.sh` copies the 6MB baked db into that shape on the scratch tmpfs.
 cargo-audit needs none of it: it reads the baked path directly, read-only and flat.
 
+MUST Override a target's `rust-toolchain.toml` with `RUSTUP_TOOLCHAIN`. The images install
+their stable BY VERSION (`1.97.1-<triple>`) and never under the literal name `stable`, so
+a pin as ordinary as `channel = "stable"` matches nothing locally and rustup tries to
+install it, which needs the network and a writable `/usr/local/rustup` and has neither.
+Measured on a real crate, every cargo invocation died before doing any work:
+
+```
+info: syncing channel updates for stable-aarch64-unknown-linux-gnu
+error: could not create temp file /usr/local/rustup/tmp/...: Read-only file system
+```
+
+`run-contained.sh` exports the image's own default toolchain in the preamble, so no recipe
+has to:
+
+- The value is read from `/usr/local/rustup/settings.toml`, not from `rustup toolchain
+  list`. `list` honours the pin too and re-triggers the same sync.
+- It is exported only when unset, and `+nightly` on the command line outranks the variable
+  regardless, so cargo-fuzz and Miri still resolve the nightly.
+
+This one aborts with a message rather than reporting a clean, but it stops a campaign on
+any repo that pins a toolchain, which is most of them.
+
 MUST NOT report cargo-careful as a UB check. It hardens std's debug assertions; it does
 not interpret UB. Measured on the `ub-rust` fixture, a read one byte past the end of an
 allocation: `cargo careful test` reported it PASSING, while Miri named it. A finding that

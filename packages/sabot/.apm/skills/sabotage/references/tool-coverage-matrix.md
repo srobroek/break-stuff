@@ -57,12 +57,40 @@ proved detection end-to-end).
 
 | Tool | Offline req | Bake status | Fixture / test |
 |---|---|---|---|
-| clippy | needs dep graph (ok in ext) | baked | rust-parser |
-| cargo-fuzz | needs-build-dep (libfuzzer-sys+arbitrary+g++), baked; needs `+nightly` | baked | **rust-parser VERIFIED** (built and crashed the target offline) |
-| cargo-audit | degraded-silent → bake advisory-db | baked | **deps-rust VERIFIED** (1216 advisories, RUSTSEC-2020-0071 offline) |
+| clippy | needs dep graph (ok in ext); a target's `rust-toolchain.toml` MUST be overridden by `RUSTUP_TOOLCHAIN` (see below) | baked | **rust-parser + fits-header VERIFIED** (clean under `-D warnings` offline on a real crate) |
+| cargo-fuzz | needs-build-dep (libfuzzer-sys+arbitrary+g++), baked; needs `+nightly`, and `--offline` is NOT accepted (`cargo fuzz build --offline` → `unexpected argument`; the wrapper's `CARGO_NET_OFFLINE` covers it) | baked | **rust-parser + fits-header VERIFIED** (`init` + `build` + `run` offline on a real crate; found a panic in 2 execs) |
+| cargo-audit | degraded-silent → bake advisory-db; the db path is `/usr/local/advisory-db`, read flat and read-only | baked | **deps-rust + fits-header VERIFIED** (1216 advisories, RUSTSEC-2020-0071 offline; 56 deps scanned clean on the real crate) |
 | cargo-geiger | needs dep graph (ok in ext) | baked | rust-parser |
 | AFL++ | needs-build-dep (apt + cargo-afl) | fragment-pending | rust-parser |
 | honggfuzz | needs-build-dep (apt + cargo) | fragment-pending | rust-parser |
+
+### The toolchain pin, and what a real crate proved
+
+Every rust row above was measured on a fixture built to be measured. `fits-header` v0.4.2
+was not: a published MPL-2.0 crate, taken as-is, run end to end offline. It surfaced a
+blocker and a bug that no fixture had shown.
+
+The blocker is `rust-toolchain.toml`. The images install
+their stable by version and never under the name `stable`, so the commonest pin in the
+ecosystem resolves to nothing local and rustup reaches for the network it does not have on
+a filesystem it cannot write. `run-contained.sh` now exports the image's default toolchain
+in the preamble (isolation.md, "Override a target's `rust-toolchain.toml`"). A recipe
+setting the variable itself still wins, and so does `+nightly`, so cargo-fuzz and Miri are
+unaffected.
+
+The bug is the result. Against a crate whose own suite passes 152 tests and whose clippy
+is clean under `-D warnings`, cargo-fuzz needed 2 executions to panic the parser:
+
+```
+thread '<unnamed>' panicked at src/parse.rs:38:31:
+end byte index 8 is not a char boundary; it is inside '\u{fffd}' (bytes 6..9 of string)
+```
+
+`from_utf8_lossy` maps an invalid byte to a 3-byte replacement character, so the slice
+`card_str[..8]` that assumes 8 bytes is 8 characters lands mid-character and panics. This is
+what the surface exists to find, and it is the class that reading the code, running the
+tests, and linting all miss: 53 unit tests, 8 doctests, 1216 advisories, and 954KB of
+secret-scanning all reported clean on the same commit.
 
 ## rust-extras fragment
 

@@ -180,6 +180,26 @@ printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
 # cargo-audit needs none of this: it reads the baked path directly, read-only and flat.
 ADB_NEST="advisory-db-3157b0e258782691"
 PREAMBLE='mkdir -p "$CARGO_HOME" /scratch/tmp "$XDG_CACHE_HOME"; [ -d /deps/cargo/registry ] && [ ! -e "$CARGO_HOME/registry" ] && ln -s /deps/cargo/registry "$CARGO_HOME/registry"; for c in /deps/cache/*; do [ -e "$c" ] || continue; [ -e "$XDG_CACHE_HOME/${c##*/}" ] || ln -s "$c" "$XDG_CACHE_HOME/${c##*/}"; done; [ -d /usr/local/advisory-db ] && [ ! -e "/scratch/advisory-db/'"$ADB_NEST"'" ] && mkdir -p /scratch/advisory-db && cp -r /usr/local/advisory-db "/scratch/advisory-db/'"$ADB_NEST"'";'
+
+# A target carrying rust-toolchain.toml overrides the image's toolchain BY NAME, and the
+# image installs its stable by version (1.97.1-<triple>), never under the literal name
+# `stable`. So a pin as ordinary as `channel = "stable"` finds no local match and rustup
+# tries to install one -- which needs the network and a writable /usr/local/rustup, and
+# has neither. Measured on a real crate, every cargo invocation died before doing any
+# work:
+#
+#   info: syncing channel updates for stable-aarch64-unknown-linux-gnu
+#   error: could not create temp file /usr/local/rustup/tmp/...: Read-only file system
+#
+# That is a fails-loud, not a false-clean, but it stops the campaign on any repo that
+# pins a toolchain -- which is most of them. RUSTUP_TOOLCHAIN outranks the file, so the
+# preamble exports the image's own default and the pin is ignored.
+#
+# The value is READ FROM settings.toml, not from `rustup toolchain list`: list itself
+# honours the pin and re-triggers the same sync. It is exported only when unset, so a
+# recipe may still pick a toolchain, and `+nightly` on the command line outranks the
+# variable either way (measured: cargo-fuzz and Miri still resolve the nightly).
+PREAMBLE="$PREAMBLE"' if [ -z "${RUSTUP_TOOLCHAIN:-}" ] && [ -r /usr/local/rustup/settings.toml ]; then t="$(sed -n '"'"'s/^default_toolchain = "\(.*\)"$/\1/p'"'"' /usr/local/rustup/settings.toml)"; [ -n "$t" ] && export RUSTUP_TOOLCHAIN="$t"; fi;'
 # --copy-src: a build/fuzz step needs a WRITABLE source tree (cargo writes Cargo.lock
 # and target/ beside the manifest), but /target is read-only. Copy the target into
 # /scratch/src, excluding its own build dir and .git (the space hogs that overflow
