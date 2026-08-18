@@ -151,7 +151,12 @@ esac
 
 VOL="bs-art-$$-$(date +%s 2>/dev/null || echo r)"
 $DK volume create "$VOL" >/dev/null
-cleanup() { $DK volume rm "$VOL" >/dev/null 2>&1 || true; [ -n "${STAGE:-}" ] && rm -rf "$STAGE"; }
+# The trailing `:` is load-bearing. Under `set -e` an EXIT trap's final status
+# REPLACES the script's exit code, and the STAGE test returns 1 whenever the target
+# is already under $HOME (no staging copy) -- collapsing every run, pass or fail, to
+# exit 1. A caller keying on the exit code then cannot tell a clean run from a broken
+# one.
+cleanup() { $DK volume rm "$VOL" >/dev/null 2>&1 || true; [ -n "${STAGE:-}" ] && rm -rf "$STAGE"; :; }
 trap cleanup EXIT
 
 printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
