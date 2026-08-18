@@ -188,7 +188,12 @@ has to:
 - The value is read from `/usr/local/rustup/settings.toml`, not from `rustup toolchain
   list`. `list` honours the pin too and re-triggers the same sync.
 - It is exported only when unset, and `+nightly` on the command line outranks the variable
-  regardless, so cargo-fuzz and Miri still resolve the nightly.
+  regardless, so cargo-fuzz and Miri still resolve the nightly. **`+nightly` is not
+  optional for cargo-fuzz**: `-Zsanitizer=address` is nightly-only, so a bare `cargo fuzz
+  build` under the exported stable fails, and the failure reads as the preamble's fault. A
+  gremlin diagnosed it that way and exported `RUSTUP_TOOLCHAIN=nightly` per run to work
+  around it; re-measured with `+nightly` and the preamble's stable left in place, the build
+  finished in 15.8s. Spell the `+nightly`.
 
 This one aborts with a message rather than reporting a clean, but it stops a campaign on
 any repo that pins a toolchain, which is most of them.
@@ -379,6 +384,7 @@ MUST Detect dev-deps from the target's manifest and lockfile, never a hardcoded 
 MUST Discover every manifest in the resolved target scope, not just a repo-root one. A workspace, monorepo, or multi-language target (a Tauri app is Rust plus a JS frontend) has several, and baking only the root manifest leaves a member crate or the frontend unprovisioned.
 MUST Extend the image with a toolchain per detected stack for a multi-language target, and state every stack provisioned in the report. The surface-to-image map is not 1:1 when one target needs both cargo and npm.
 MUST Bake the deps as their own layer keyed on the lockfile (copy manifest+lock, fetch, stop), so a source change reuses the cached deps rather than re-fetching every run.
+MUST Re-resolve a lockfile the fuzzer created AFTER the bake, inside the container, with `cargo generate-lockfile --offline` (or the stack's equivalent) into the disposable source copy. Provisioning bakes what the target's manifests declared at step 3, and step 5 then writes a `fuzz/` crate whose lockfile the authoring host resolved with network. Measured on `fits-header`: the new `fuzz/Cargo.lock` pinned `proc-macro2 1.0.107` against the image's baked `1.0.106`, and every `cargo fuzz build` died with `attempting to make an HTTP request, but --offline was specified`, which is a provisioned image failing on a dep it holds a different patch of. Re-resolving against the baked registry costs one offline pass; discovering it per gremlin costs one rebuild each.
 NOT Never COPY the target source into the image. The target is mounted read-only at run time; copying it into a build layer both defeats the read-only guarantee and persists the audited code in the image.
 
 ## No container runtime: fail the whole run, loudly
