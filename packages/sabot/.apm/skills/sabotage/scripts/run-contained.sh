@@ -27,7 +27,14 @@ set -euo pipefail
 #
 #   run-contained.sh --target <dir> --artifacts <dir> --image <img>
 #                    [--net none|loopback] [--mem 2g] [--pids 512] [--cpus 2]
-#                    [--timeout 300] [--workdir /target|/scratch] -- <command inside>
+#                    [--timeout 300] [--workdir /target|/scratch]
+#                    [--scratch 2g] [--copy-src] -- <command inside>
+#
+# --scratch takes a SIZE, not a path: it is the tmpfs size for /scratch (default 2g).
+# Passing it bare consumes the next argument as the size, and docker then rejects the
+# tmpfs mount and kills the container -- a run that failed to start, which reads like a
+# tool that found nothing. --copy-src tars the target into /scratch/src (minus target/
+# and .git) so a build may write in-tree without touching the read-only mount.
 #
 # cwd defaults to /target (the repo), because a repo-aware scanner (gitleaks,
 # osv-scanner, actionlint, trivy) auto-detects .git and .github/workflows from cwd:

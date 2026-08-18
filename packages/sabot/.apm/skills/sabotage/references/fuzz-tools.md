@@ -73,6 +73,7 @@ DEFAULT Prefer the language's native coverage-guided fuzzer when one exists, and
 |---|---|---|
 | CASR | crash triage: dedup by stack; severity classification; report generation | `casr-san -o <out>.casrep -- <bin> <input>` then `casr-cluster -d <indir> -o <outdir>` (resident: `mise use cargo:casr`) |
 | afl-tmin | input minimization for AFL++ targets | `afl-tmin -i <crash> -o <min> -- <bin> @@` |
+| `cargo fuzz tmin` | input minimization for a libFuzzer target | `cargo +nightly fuzz tmin <target> <input>` (rejects `-j`) |
 | afl-cmin | corpus minimization before a campaign | `afl-cmin -i <in> -o <out> -- <bin> @@` |
 | shrinkray | generic test-case reducer, any input shape | `uvx shrinkray <interestingness-test> <input>` |
 | creduce | C and C++ source reduction | `creduce <interestingness-test> <input>` (resident: `brew install creduce`; cvise is not on PyPI) |
@@ -82,6 +83,7 @@ DEFAULT Prefer the language's native coverage-guided fuzzer when one exists, and
 
 MUST Use CASR or the runner's own dedup rather than eyeballing stacks, since a fuzzer finds one bug many times and a hand count inflates the finding total.
 MUST Use afl-tmin, shrinkray, or the property runner's shrinker; a tool-minimized input is reproducible, where a hand-trimmed one is an unverified assertion.
+MUST Give the minimizer a SITE-PRESERVING oracle on any harness that can fail more than one way, then re-verify the minimized input still fails at the original `file:line`. A stock minimizer's oracle is "the process died", so on a multi-assertion harness it happily converges on whichever bug is cheapest to reach. Measured on `fits-header`: `cargo fuzz tmin` shrank three separate crash classes to 1-5 bytes that each panicked at a DIFFERENT line than the class they were minimizing, which reads as a spectacular reduction and is a different bug. Discard such a result and re-minimize under an oracle that greps for the target frame.
 MUST Verify a minimized input still crashes, since a minimizer that shrank past the bug yields a finding nobody can reproduce.
 
 ## Coverage measurement
