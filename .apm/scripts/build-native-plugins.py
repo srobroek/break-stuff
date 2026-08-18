@@ -60,7 +60,21 @@ _GENERATED_DIRS = ("skills", "agents", "hooks", ".claude-plugin", ".codex-plugin
 _GENERATED_FILES = (".mcp.json", ".codex.mcp.json")
 
 # A first-party dependency reference -> the member package name (for bundles).
-_FIRST_PARTY = re.compile(r"srobroek/agentic-packages/packages/([\w-]+)(?:#(.+))?$")
+# "First-party" means a package THIS repo's marketplace also ships, since a native
+# `dependencies` entry resolves by plugin id within the installed marketplace set.
+# The pattern is built from packages/ below rather than hardcoding a repo slug: the
+# hardcoded `srobroek/agentic-packages` survived the extract into this standalone
+# repo and kept emitting `beads` as a dependency of a marketplace that does not
+# ship it, so `claude plugin install sabot@sabot` installed and then refused to
+# enable ("Dependency \"beads@sabot\" is not installed").
+_DEP_REF = re.compile(r"([\w-]+)/packages/([\w-]+)(?:#(.+))?$")
+
+
+def _first_party_names() -> frozenset[str]:
+    """Package names this repo's own marketplace ships."""
+    if not PACKAGES_DIR.is_dir():
+        return frozenset()
+    return frozenset(p.name for p in PACKAGES_DIR.iterdir() if p.is_dir())
 
 
 def _load_inventory():
@@ -91,7 +105,7 @@ def _plugin_manifest(
     defaults: tuple,
     *,
     target: str,
-    deps: list[dict] | None = None,
+    deps: list[str] | None = None,
     has_skills: bool = False,
     has_mcp: bool = False,
     hook_path: str | None = None,
@@ -127,7 +141,7 @@ def _plugin_manifest(
 # --------------------------------------------------------------------------- #
 
 
-def _bundle_dependencies(deps: list[object], *, target: str) -> list[dict]:
+def _bundle_dependencies(deps: list[object], *, target: str) -> list[str]:
     """Map a bundle's first-party apm deps to native plugin `dependencies`.
 
     Only first-party members (this repo's own packages) are emitted -- they
@@ -135,14 +149,17 @@ def _bundle_dependencies(deps: list[object], *, target: str) -> list[dict]:
     `wshobson/*`) need a cross-marketplace allowlist and are intentionally NOT
     auto-added here (a native install would fail to resolve them otherwise).
 
-    Entries use the object form ``{git, path}`` (no ``ref``) so they keep
-    tracking whatever version the marketplace provides while remaining a valid
-    APM dependency reference. A bare ``{name: ...}`` object is rejected by
-    apm's ``DependencyReference.parse_from_dict`` ("Object-style dependency
-    must have a 'git', 'path', or 'registry' field"), which broke transitive
-    resolution for every bundle.
+    Entries are the bare PLUGIN NAME. Both consumers of this field take a plugin
+    id: Claude Code accepts a string or `{name, version}` and rejects anything
+    else, and apm's own `Plugin` model types the field `list[str]`. An earlier
+    version emitted apm's `{git, path}` source-locator form here, which is the
+    shape of an apm.yml dependency REFERENCE rather than of a resolved plugin id;
+    `claude plugin validate` failed the whole manifest on it
+    ("dependencies.0: Invalid input"), so `claude plugin install` could not
+    install the package at all.
     """
-    out: list[dict] = []
+    first_party = _first_party_names()
+    out: list[str] = []
     for dep in deps:
         if isinstance(dep, dict):
             targets = {str(value) for value in dep.get("targets") or []}
@@ -153,10 +170,44 @@ def _bundle_dependencies(deps: list[object], *, target: str) -> list[dict]:
             locator = "/".join(part for part in (git, path) if part)
         else:
             locator = str(dep)
-        m = _FIRST_PARTY.search(locator)
-        if m:
-            out.append({"git": "srobroek/agentic-packages", "path": f"packages/{m.group(1)}"})
+        m = _DEP_REF.search(locator)
+        name = m.group(2) if m else locator
+        if name in first_party and name not in out:
+            out.append(name)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# agents
+# --------------------------------------------------------------------------- #
+
+# Frontmatter keys Claude Code refuses on a PLUGIN-shipped agent, as opposed to a
+# user-level one under ~/.claude/agents. Each grants the child authority the
+# installing user never reviewed, so the loader drops it rather than honoring a
+# plugin's self-declared escalation.
+_CLAUDE_AGENT_DROP = ("permissionMode", "hooks", "mcpServers")
+
+
+def _claude_agent(path: Path) -> bytes:
+    """An `.apm` agent source rewritten for the Claude plugin agent contract.
+
+    The APM source is shared across runtimes and carries `permissionMode`, which
+    APM honors and Claude Code does not accept from a plugin. Stripping it here
+    keeps one source of truth while emitting a loadable agent.
+    """
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return text.encode("utf-8")
+    end = text.find("\n---", 4)
+    if end == -1:
+        return text.encode("utf-8")
+    front, rest = text[4:end], text[end:]
+    kept = [
+        line
+        for line in front.splitlines()
+        if not any(line.startswith(f"{key}:") for key in _CLAUDE_AGENT_DROP)
+    ]
+    return ("---\n" + "\n".join(kept) + rest).encode("utf-8")
 
 
 # --------------------------------------------------------------------------- #
@@ -286,10 +337,10 @@ def _plan_package(pkg: dict, manifest: dict, defaults: tuple) -> dict[str, objec
     agents_src = pkg_dir / ".apm" / "agents"
     if "claude" in targets and agents_src.is_dir():
         for f in sorted(agents_src.glob("*.agent.md")):
-            plan[f"agents/{f.name[: -len('.agent.md')]}.md"] = f.read_bytes()
+            plan[f"agents/{f.name[: -len('.agent.md')]}.md"] = _claude_agent(f)
         for f in sorted(agents_src.glob("*.md")):
             if not f.name.endswith(".agent.md"):
-                plan[f"agents/{f.name}"] = f.read_bytes()
+                plan[f"agents/{f.name}"] = _claude_agent(f)
 
     # MCP servers declared in the apm.yml dependencies.mcp block -> .mcp.json.
     mcp = _mcp_servers(manifest)

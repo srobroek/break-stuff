@@ -92,16 +92,28 @@ dir. Note the directory holding this `SKILL.md` once as `$SABOT_SKILL_DIR` and
 reference every shipped asset by an absolute path beneath it. A skill-relative
 path silently matches nothing, and a run that matched nothing looks clean.
 
-**When these agent types are unavailable.** The package ships `scout`, `fuzzer`,
-`gremlin`, `triager`, `challenger`, and `hardener` under `.apm/agents/`, which
-`apm install` deploys to the runtime's agent directory. When a run finds those types
-absent (a skill-only copy, a runtime that does not load them), it does NOT abort or
-skip the agent step: it spawns a generic agent (`general-purpose`, or the runtime's
-default) with the SAME Brief, since every Brief in `references/*-brief.md` is
-self-contained and names its own return format. The agent definition sharpens the
-role; the Brief carries the work. Record "ran with generic agents, definitions
-absent" as a gap so the report states the posture. A run that stalls because a named
-type is missing is a run that failed on packaging, not on the target.
+**When these agent types are unavailable, DIAGNOSE THE INSTALL FIRST.** The package
+ships `scout`, `fuzzer`, `gremlin`, `triager`, `challenger`, and `hardener` under
+`.apm/agents/`, materialised to `agents/*.md` for Claude and deployed by
+`apm install` or `claude plugin install`. Absent types are almost always a broken or
+missing install rather than a runtime that cannot load them, so before falling back:
+
+1. Confirm the plugin is installed AND enabled (`claude plugin list`). An install
+   that succeeded can still refuse to enable on an unresolvable dependency.
+2. Run `claude plugin validate --strict <package-dir>`. A manifest error fails the
+   whole plugin, so the skill may be reachable while the agents are not.
+3. Check the agent frontmatter. Claude Code drops a plugin-shipped agent that
+   declares `permissionMode`, `hooks`, or `mcpServers`.
+4. Install or repair, then note that the registry is snapshotted at session start:
+   a freshly installed type needs a new session before it can be spawned.
+
+Fall back to a generic agent (`general-purpose`, or the runtime's default) with the
+SAME Brief ONLY once those four have been checked and the types are still absent,
+since every Brief in `references/*-brief.md` is self-contained and names its own
+return format. The agent definition sharpens the role; the Brief carries the work.
+Then record BOTH "ran with generic agents" AND the install-diagnosis result as gaps,
+naming which of the four checks failed. Reporting the fallback without the diagnosis
+is what lets a packaging defect read as a runtime limitation for an entire release.
 
 ## Division of labour
 
