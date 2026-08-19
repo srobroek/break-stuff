@@ -217,8 +217,36 @@ PREAMBLE="$PREAMBLE"' if [ -z "${RUSTUP_TOOLCHAIN:-}" ] && [ -r /usr/local/rustu
 # /scratch/src, excluding its own build dir and .git (the space hogs that overflow
 # the tmpfs), and cd there. The audited bytes never change; this is a working copy on
 # a disposable tmpfs. The command then runs from /scratch/src.
+#
+# `pipefail` + the explicit `|| exit 5` are load-bearing. GNU tar exits 1 on "file
+# changed as we read it" -- which the host writing into the target during a run
+# (another agent, a `.sabot/` artifact write) triggers routinely, measured 26 times in
+# one campaign. The creating tar is the LEFT side of a pipe, so without pipefail the
+# preamble's status comes from the EXTRACTING tar, which succeeded on whatever bytes it
+# got. `cd /scratch/src` then works and the build proceeds against a possibly
+# incomplete source tree: a scan of a partial repo that reports as a clean result.
+# Measured in sabot/base:1 (tar 1.35): SRC_RC=1 while the pipeline reported 0.
+#
+# `.sabot` and `.beads` are excluded for the same reason, not as tidiness: they hold the
+# run's OWN artifacts dir and its bead store (a live sqlite WAL). A concurrent agent
+# writing a finding or claiming a wisp churns them under tar and trips the check above.
+# Measured on the fits-header target mid-campaign: 1 in 6 runs failed with `.beads`
+# included, 0 in 6 with it excluded. That churn is self-inflicted and says nothing about
+# the audited bytes.
+#
+# The retry is the other half. GNU tar reports the SAME exit 1 whether a file it was
+# copying changed mid-read or merely an unrelated sibling entry appeared at the repo root
+# (which bumps `.`'s mtime, and tar compares that at the end). Measured after the two
+# excludes: 1 in 20 runs against a live repo still failed, always on `.` and never on a
+# file, while a static tree failed 0 in 40 -- so the residual is benign root churn, and
+# hard-failing on it would abort a campaign for nothing. Retrying separates the two: a
+# one-off root bump passes on the next attempt, while a source that is genuinely being
+# rewritten keeps failing and still exits 5. Verified both ways -- 20 clean runs against
+# the live target, and a file rewritten in a loop under tar still detected.
+# exit 5 is distinct from the wrapper's own 2/3/4 so a caller can tell "staging failed"
+# from "the contained command failed".
 if [ "$COPY_SRC" -eq 1 ]; then
-  PREAMBLE="$PREAMBLE"' mkdir -p /scratch/src; tar -C /target --exclude=./target --exclude=./.git -cf - . | tar -C /scratch/src -xf -; cd /scratch/src;'
+  PREAMBLE="$PREAMBLE"' mkdir -p /scratch/src; SRC_OK=0; for _try in 1 2 3; do rm -rf /scratch/src; mkdir -p /scratch/src; if ( set -o pipefail; tar -C /target --exclude=./target --exclude=./.git --exclude=./.sabot --exclude=./.beads -cf - . | tar -C /scratch/src -xf - ); then SRC_OK=1; break; fi; echo "run-contained: --copy-src staging tar attempt $_try failed, retrying" >&2; done; [ "$SRC_OK" -eq 1 ] || { echo "run-contained: ERROR --copy-src staging tar failed 3 times; the source is changing under us and the copy may be incomplete (treat this run as INVALID, not clean)" >&2; exit 5; }; cd /scratch/src;'
   WORKDIR="/scratch"
 fi
 

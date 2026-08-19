@@ -64,6 +64,26 @@ MUST Run as a non-root user with `--cap-drop ALL` and `--security-opt no-new-pri
 MUST Write findings only to the `/artifacts` bind mount, the single writable path that survives the container.
 MUST Direct every build and test toolchain to write under `/scratch`, never the read-only target: `run-contained.sh` sets `--workdir /scratch` and `CARGO_TARGET_DIR`/`GOCACHE`/`TMPDIR`/`HOME` there, and the command after `--` reads the target at `/target` (e.g. `cargo test --manifest-path /target/Cargo.toml`). A `cargo test` left to write `target/` in the read-only mount fails, which reads as a broken harness rather than the isolation working.
 
+### The wrapper's own exit codes
+
+`run-contained.sh` reserves the low codes for its own failures, so a caller can tell
+"the campaign command failed" from "the run never happened". Every one of these is an
+INVALID run to be reported as a coverage gap, never as zero findings.
+
+| Code | Meaning |
+|---|---|
+| 2 | usage error (a missing flag, a bad `--workdir`, an illegal tool name) |
+| 3 | no container runtime, or the image is absent |
+| 4 | the findings copy-out failed; output is stranded in the volume |
+| 5 | `--copy-src` staging failed 3 times; the source copy may be incomplete |
+| other | the contained command's own exit code, passed through |
+
+Code 5 exists because the staging tar is the LEFT side of a pipe. Without `pipefail`
+the preamble's status came from the EXTRACTING tar, which succeeds on whatever bytes it
+received, so `cd /scratch/src` worked and the build scanned a partial repo. It retries
+3 times first: GNU tar returns the same exit 1 whether a file changed mid-read or an
+unrelated sibling appeared at the repo root, and only the former persists.
+
 ## Assert the tools survived the build
 
 Containerization guarantees a coverage-guided fuzzer is PRESENT (baked into the
