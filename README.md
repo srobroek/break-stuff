@@ -4,6 +4,11 @@
 
 Let your agents attack your own repos: they drive security and fuzzing tools to find holes in your code, application, and prompts. It combines deterministic scanners with agent-driven exploration, hammers your own codebase until something breaks, then reports each finding with a reproducing input or a traced path.
 
+> **Pre-release.** This is an early release and still needs wider testing. It is
+> built to be non-destructive: it runs in a container against a read-only copy of
+> your target, and it does not touch product code without your explicit approval.
+> Expect rough edges in the campaign itself rather than damage to your repo.
+
 ## Quick Start
 
 
@@ -75,10 +80,13 @@ patches product code only on explicit approval.
 
 ## Why "sabot"?
 
-A sabot is the shoe a saboteur jams into the machine. The package is `sabot` (the
-tool and repo); the skill you invoke is `sabotage` (the verb). You trigger it by
-asking to harden, red-team, fuzz, attack, or break something, or by naming the
-`/sabotage` skill directly.
+A *sabot* is a wooden shoe, the French clog worn by peasants and later by factory
+workers. "Sabotage" comes from the legend of striking workers throwing a wooden shoe
+into the machines to jam them.
+
+The package is `sabot` (the tool and repo); the skill you invoke is `sabotage` (the
+verb). You trigger it by asking to harden, red-team, fuzz, attack, or break
+something, or by naming the `/sabotage` skill directly.
 
 
 
@@ -109,6 +117,43 @@ It runs a five-agent campaign per surface:
 
 A sixth agent, hardener, applies an approved fix and re-verifies, only after you
 say so.
+
+### End to end
+
+Every handoff is a bead, so a campaign that dies mid-run resumes from the graph
+rather than restarting. The interview blocks before anything is touched, and the
+approval blocks before product code is patched. Nothing else waits on you.
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 460, "nodeSpacing": 30, "rankSpacing": 34}}}%%
+flowchart TB
+    Q["🛑 <b>Interview</b><br/>target · what you fear · surfaces · tools · budget"]
+    Q --> OPEN["<b>Open the run</b> · epic + one node per surface<br/>provision images, read the repo's security config, pre-pass"]
+
+    OPEN --> SCOUT["<b>scout</b> · trust map, invariants, repo-specific rules"]
+    SCOUT --> FUZZER["<b>fuzzer</b> · harnesses, corpora, vectors · <i>executes nothing</i>"]
+    FUZZER --> GREMLIN["<b>gremlin</b> · runs it all in a container, reads for the rest · <i>edits nothing</i>"]
+
+    GREMLIN -->|crashes| TRIAGER["<b>triager</b> · dedup, minimize,<br/>memory-safety vs robustness"]
+    GREMLIN -->|findings| CHAL
+    TRIAGER --> CHAL["<b>challenger</b> · sets the evidence tier<br/><i>demotes, never deletes</i>"]
+
+    CHAL --> REPORT["<b>Report</b> · tier + impact + file:line, citing bead ids"]
+    SKIP["missing tool · crashed scanner · budget cap"] -.->|"a coverage gap,<br/>never a clean result"| REPORT
+
+    REPORT --> HARD["🛑 <b>Approval</b> → <b>hardener</b> patches product code"]
+    HARD --> REVERIFY["re-run gremlin + triager to verify"]
+    REVERIFY -.->|regression| HARD
+
+    style Q fill:#4a1010,stroke:#ff6b6b,stroke-width:2px,color:#fff
+    style HARD fill:#4a1010,stroke:#ff6b6b,stroke-width:2px,color:#fff
+    style SKIP fill:#3a2d0a,stroke:#d4a017,color:#fff
+    style REPORT fill:#0f3320,stroke:#4caf50,stroke-width:2px,color:#fff
+```
+
+The roles are split so nothing grades its own work. `fuzzer` writes harnesses it
+never runs. `gremlin` runs harnesses it cannot edit. `challenger`, which found
+nothing itself, decides what each finding proves.
 
 ### Scope modes
 
