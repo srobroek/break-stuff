@@ -64,6 +64,26 @@ MUST Run as a non-root user with `--cap-drop ALL` and `--security-opt no-new-pri
 MUST Write findings only to the `/artifacts` bind mount, the single writable path that survives the container.
 MUST Direct every build and test toolchain to write under `/scratch`, never the read-only target: `run-contained.sh` sets `--workdir /scratch` and `CARGO_TARGET_DIR`/`GOCACHE`/`TMPDIR`/`HOME` there, and the command after `--` reads the target at `/target` (e.g. `cargo test --manifest-path /target/Cargo.toml`). A `cargo test` left to write `target/` in the read-only mount fails, which reads as a broken harness rather than the isolation working.
 
+### The wrapper's own exit codes
+
+`run-contained.sh` reserves the low codes for its own failures, so a caller can tell
+"the campaign command failed" from "the run never happened". Every one of these is an
+INVALID run to be reported as a coverage gap, never as zero findings.
+
+| Code | Meaning |
+|---|---|
+| 2 | usage error (a missing flag, a bad `--workdir`, an illegal tool name) |
+| 3 | no container runtime, or the image is absent |
+| 4 | the findings copy-out failed; output is stranded in the volume |
+| 5 | `--copy-src` staging failed 3 times; the source copy may be incomplete |
+| other | the contained command's own exit code, passed through |
+
+Code 5 exists because the staging tar is the LEFT side of a pipe. Without `pipefail`
+the preamble's status came from the EXTRACTING tar, which succeeds on whatever bytes it
+received, so `cd /scratch/src` worked and the build scanned a partial repo. It retries
+3 times first: GNU tar returns the same exit 1 whether a file changed mid-read or an
+unrelated sibling appeared at the repo root, and only the former persists.
+
 ## Assert the tools survived the build
 
 Containerization guarantees a coverage-guided fuzzer is PRESENT (baked into the
@@ -85,15 +105,148 @@ comma-list the surface doc's Tools table names:
 | `sabot/rust:1` | `cargo-fuzz,cargo-audit,clippy,cargo-geiger` | none |
 | `sabot/python:1` | `bandit,ruff,semgrep` | `python3 -c "import atheris, hypothesis"` |
 | `sabot/node:1` | `jazzer,retire` | `node -e 'require("fast-check")'` |
-| `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner` | none |
+| `sabot/go:1` | `go,gosec,golangci-lint` | none |
+| `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner,radamsa,zzuf,creduce,hadolint,kube-linter,tflint,poutine,trufflehog` | none |
+| `sabot/rust-extras:1` (optional) | `cargo-deny,cargo-vet,cargo-semver-checks,weggli` | none (cargo-careful and Miri are asserted by their baked sysroots, below) |
 
 Each column asks a different question, and conflating them hid a real gap.
 `--assert-tools` runs `<tool> --version`, which a LIBRARY can never answer: atheris,
-hypothesis, and fast-check ship no CLI, so listing them there reported them missing
+hypothesis, and fast-check don't ship a CLI, so listing them there reported them missing
 whether or not they were installed. Libraries are asserted by IMPORT instead, which
 is also the stronger check for a native addon. `sabot/node:1` once shipped a
 `jazzer` that `npm i -g` installed cleanly and that then died at dlopen against a
 too-old glibc.
+
+The probe tries `<tool> --version`, then `cargo <sub> --version`, then `<tool>
+version`. That last form is what `go` answers: `go --version` exits 2 on an undefined
+flag, so without it the go surface reports its toolchain missing. On the go surface the
+toolchain IS the fuzzer, because `go test -fuzz` is built in and there is no separate
+fuzz binary to assert.
+
+MUST Point `TMPDIR` at a SUBDIRECTORY of the scratch tmpfs, never at its root. Go
+refuses to read a `go.mod` that sits in the system temp root, so with
+`TMPDIR=/scratch` and a workdir of `/scratch` every contained go command failed
+"directory prefix . does not contain main module" while `go vet` still exited 0.
+
+MUST Invoke TruffleHog with `--no-update`. It checks for a new release on startup and
+tries to overwrite its own binary, which on the read-only container aborts the entire
+scan with "cannot move binary" and reports zero findings. Pair it with
+`--no-verification`, because verification calls each provider's API: offline it can
+only detect, and the summary must show `verified_secrets 0` rather than imply it
+checked.
+
+MUST Give C-Reduce an interestingness test that names the file by RELATIVE path. The
+test runs in a temp dir holding the VARIANT as `./<file>`, so an absolute path re-reads
+the unreduced original, every check passes, and the reduction stops early while still
+looking like it worked (measured: 182 bytes to 163, with the dead code intact, against
+182 to 16 when the path is relative).
+
+MUST Report a tflint run as CORE-ONLY. Provider plugins come from `tflint --init` over
+the network, which `--network none` forbids, so the terraform rules that need a provider
+never load.
+
+MUST Pass `--cache-dir /opt/sabot-db/trivy` to trivy. Without it the bake is ignored and
+trivy tries to pull `mirror.gcr.io/aquasec/trivy-db:2`, which fails on DNS and aborts the
+run. The `misconfig` scanner reads a SECOND bundle that is not baked, so add
+`--skip-check-update` as well: without it the run stalls about 4.3 seconds on a failed
+download before falling back to checks compiled into the binary. That fallback is complete
+(measured: the same 12 findings on the `iac` fixture either way), so the flag buys latency,
+not coverage.
+
+MUST Pass the db location to osv-scanner as `XDG_CACHE_HOME=/opt/sabot-db/osv`, or as
+`OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY`. `--offline` alone is the false-clean in this family:
+it finds every lockfile, reports the package count it parsed, loads NO database, and says
+zero vulnerabilities. The giveaway is on stderr, not stdout (`could not load db for npm
+ecosystem: ... no offline version of the OSV database is available`), and the exit code is
+127. With the db passed, the same fixture yields 130 advisories, and stderr says `Loaded npm
+local db from ...`. Treat the absence of a `Loaded ... local db` line as an INVALID run.
+
+MUST Point semgrep's `--config` at a `<lang>` SUBDIR of `/opt/sabot-db/semgrep-rules`, not
+at the rules parent. The bake is the upstream repo checkout, which carries files that are
+not rule files, and ONE invalid config aborts the entire scan: pointed at the parent, semgrep
+exits 7 having scanned 0 files, on `.pre-commit-config.yaml is missing 'rules' as top-level
+key`. A registry name (`p/python`, `--config auto`) fails on DNS instead.
+
+MUST Pass `--config /opt/sabot-db/deny.toml` to cargo-deny unless the target ships its
+own `deny.toml`. Without a `db-path`, `cargo deny check advisories` tries to clone the
+advisory-db and, on the partial clone `--network none` leaves behind, loads zero
+advisories and reports a clean.
+
+MUST Pass `--offline` to cargo-deny BEFORE the subcommand: `cargo deny --offline check
+advisories`. It is a top-level flag, and after `check` it is rejected as an unknown
+argument. Without it cargo-deny attempts a fetch even with a valid local db.
+
+MUST Point cargo-deny's `db-path` at a WRITABLE PARENT DIRECTORY holding the db under
+cargo-deny's own child name, `advisory-db-3157b0e258782691`. Miss any one of these and a
+working bake looks like a missing db:
+
+- Writable, because it takes an exclusive lock on `db.lock` inside `db-path` before
+  reading and has no flag to skip it. Against the read-only image: "attempted to take an
+  exclusive lock on a read-only path". `--offline` does NOT skip the lock.
+- Nested, because `db-path` holds one directory per `db-url` rather than the db itself.
+  Pointed at a flat copy, cargo-deny tries to clone the child it cannot find and dies on
+  DNS under `--network none`.
+- Carrying `.git`, because the staleness check reads HEAD's commit timestamp.
+
+`run-contained.sh` copies the 6MB baked db into that shape on the scratch tmpfs.
+cargo-audit needs none of it: it reads the baked path directly, read-only and flat.
+
+MUST Override a target's `rust-toolchain.toml` with `RUSTUP_TOOLCHAIN`. The images install
+their stable BY VERSION (`1.97.1-<triple>`) and never under the literal name `stable`, so
+a pin as ordinary as `channel = "stable"` matches nothing locally and rustup tries to
+install it, which needs the network and a writable `/usr/local/rustup` and has neither.
+Measured on a real crate, every cargo invocation died before doing any work:
+
+```
+info: syncing channel updates for stable-aarch64-unknown-linux-gnu
+error: could not create temp file /usr/local/rustup/tmp/...: Read-only file system
+```
+
+`run-contained.sh` exports the image's own default toolchain in the preamble, so no recipe
+has to:
+
+- The value is read from `/usr/local/rustup/settings.toml`, not from `rustup toolchain
+  list`. `list` honours the pin too and re-triggers the same sync.
+- It is exported only when unset, and `+nightly` on the command line outranks the variable
+  regardless, so cargo-fuzz and Miri still resolve the nightly. **`+nightly` is not
+  optional for cargo-fuzz**: `-Zsanitizer=address` is nightly-only, so a bare `cargo fuzz
+  build` under the exported stable fails, and the failure reads as the preamble's fault. A
+  gremlin diagnosed it that way and exported `RUSTUP_TOOLCHAIN=nightly` per run to work
+  around it; re-measured with `+nightly` and the preamble's stable left in place, the build
+  finished in 15.8s. Spell the `+nightly`.
+
+This one aborts with a message rather than reporting a clean, but it stops a campaign on
+any repo that pins a toolchain, which is most of them.
+
+MUST NOT report cargo-careful as a UB check. It hardens std's debug assertions; it does
+not interpret UB. Measured on the `ub-rust` fixture, a read one byte past the end of an
+allocation: `cargo careful test` reported it PASSING, while Miri named it. A finding that
+needs a UB verdict needs Miri, and a clean careful run is not evidence of its absence.
+
+MUST Invoke Miri as `cargo +nightly miri`. It is a rustup COMPONENT of the pinned dated
+nightly, not a binary on `PATH`: `miri --version` reports missing, and `cargo miri` on
+the default stable toolchain does too.
+
+MUST Bake the Miri and cargo-careful sysroots at BUILD time, to a path uid 1000 can
+read. Each builds a sysroot from `rust-src` at first use, which pulls std's registry
+deps and so needs crates.io. `miri --version` answers whether or not that sysroot
+exists, which hid the gap until a real run failed "no matching package named
+`hashbrown`". At the default `~/.cache` the careful sysroot went to `/root/.cache`,
+which the campaign user cannot read, so both are baked under `/deps/cache` and linked into
+the container's `XDG_CACHE_HOME`.
+
+MUST Give cargo-semver-checks a `--baseline-root`, not a `--baseline-rev`. The default
+resolves the baseline through crates.io, and `--baseline-rev` needs a `.git` that
+`--copy-src` strips. Pointed at the read-only `/target`, it runs offline (measured: 196
+checks, 58 skipped).
+
+MUST Report cargo-vet's offline result as the limit it is. Without the network it can
+only say "you must run `cargo vet init`" or that no audits were imported. That is honest,
+but recorded as a bare "no findings" it misreads as a pass.
+
+MUST Set `GOPROXY=off` on the go surface. A build with an unresolved module otherwise
+blocks on a proxy dial that `--network none` never completes, then reports a network
+error that reads like a broken image instead of naming the missing module.
 
 This table is the same manifest `scripts/install-tools.sh --probe` asserts. The base
 image carries the cross-surface and CI/supply-chain scanners (`gitleaks`,
@@ -140,13 +293,49 @@ set per-recipe, not globally, because run-contained points it at a fresh tmpfs.
 MUST Invoke each remote-data tool with its offline flag from the table above under `--network none`. The bare recipe fetches, which fails silently to zero findings under the network-none contract.
 MUST Rebuild the surface image (not just re-tag) to refresh a rolling DB. The trivy and osv DBs carry no version pin; a stale image scans against a stale DB, which the report must not present as current.
 
+## The heavy surface: Joern and ZAP
+
+`sabot/heavy:1` is an OPTIONAL escalation image on `sabot/base:1`, reached for when a
+finding wants interprocedural dataflow (Joern) or a DAST pass (ZAP). It is separate
+because Joern alone unpacks past 1GB and base is inherited by every surface.
+
+MUST Invoke ZAP with `-dir <writable path>` on the scratch tmpfs. ZAP does NOT honour
+`$HOME`: it derives its home from the passwd entry and hardcodes `~/.ZAP`, so under the
+campaign's `--read-only` rootfs it refuses to start even with `HOME` on the tmpfs, and it
+EXITS 0 while doing so. Measured:
+
+```
+Unable to create home directory: /home/breaker/.ZAP/
+Is the path correct and there's write permission?
+```
+
+A wrapper that trusts the exit code therefore records a DAST pass that never ran.
+Measured with `-dir /scratch/zaphome`, the same invocation reports 6 alerts.
+
+MUST Report ZAP's PASSIVE half only, and say so. Its rules ship in the bundle and work
+offline, but they only see traffic. An active scan needs a live target, which under
+`--network none` means a server the campaign itself started inside the container
+(measured: `python3 -m http.server` on 127.0.0.1, scanned via `-quickurl`). A report that
+does not name which half ran implies coverage the run did not have.
+
+MUST NOT report CodeQL as available on arm64. No linux-arm64 build of it exists; see
+`tool-coverage-matrix.md`. A campaign that needs it runs on an x86_64 host, and a report
+that would have run it names the gap.
+
 ### Known coverage gaps under `--network none`
 
 The opt-in scanners below need remote data with no offline mode, so they stay off
 under the network-none contract. An operator who wants one grants network explicitly,
 and the report then states that exposure was scanned with network.
 
-- **checkov, hadolint, kube-linter, tflint, grype, conftest** (infra.md, opt-in IaC scanners not baked): each ships or fetches its own policy/DB. Only trivy and osv are baked, so these fill what trivy misses when the operator opts in with network.
+- **grype, conftest** (infra.md, opt-in, not baked): each fetches its own DB or policy bundle. grype's is 2.0GB and base is inherited by every surface, so the bake was declined and trivy plus osv-scanner cover the same ecosystems.
+- **checkov, hadolint, kube-linter, tflint are NOT gaps** and were wrongly listed here. Each is baked, and each was MEASURED offline under `--network none` on a seeded Terraform and Dockerfile fixture:
+  - checkov: 3 failed / 4 passed on an open-port-22 security group (`sabot/scanners:1`, exit 1).
+  - hadolint: 3 DL findings, exit 1.
+  - tflint: 2 core issues, exit 2. Core only, since `--init` provider plugins do need the network.
+  - kube-linter: loads its compiled-in checks, exit 0.
+
+  See the base and infra rows of `tool-coverage-matrix.md`, which is the measured record.
 - **nuclei, ZAP** (web.md, dynamic): templates and rules fetched on use. Dynamic DAST already needs the operator to stand up the dev server, so it sits outside the default offline path.
 
 ## Provisioning and extending the image
@@ -222,6 +411,7 @@ MUST Detect dev-deps from the target's manifest and lockfile, never a hardcoded 
 MUST Discover every manifest in the resolved target scope, not just a repo-root one. A workspace, monorepo, or multi-language target (a Tauri app is Rust plus a JS frontend) has several, and baking only the root manifest leaves a member crate or the frontend unprovisioned.
 MUST Extend the image with a toolchain per detected stack for a multi-language target, and state every stack provisioned in the report. The surface-to-image map is not 1:1 when one target needs both cargo and npm.
 MUST Bake the deps as their own layer keyed on the lockfile (copy manifest+lock, fetch, stop), so a source change reuses the cached deps rather than re-fetching every run.
+MUST Re-resolve a lockfile the fuzzer created AFTER the bake, inside the container, with `cargo generate-lockfile --offline` (or the stack's equivalent) into the disposable source copy. Provisioning bakes what the target's manifests declared at step 3, and step 5 then writes a `fuzz/` crate whose lockfile the authoring host resolved with network. Measured on `fits-header`: the new `fuzz/Cargo.lock` pinned `proc-macro2 1.0.107` against the image's baked `1.0.106`, and every `cargo fuzz build` died with `attempting to make an HTTP request, but --offline was specified`, which is a provisioned image failing on a dep it holds a different patch of. Re-resolving against the baked registry costs one offline pass; discovering it per gremlin costs one rebuild each.
 NOT Never COPY the target source into the image. The target is mounted read-only at run time; copying it into a build layer both defeats the read-only guarantee and persists the audited code in the image.
 
 ## No container runtime: fail the whole run, loudly

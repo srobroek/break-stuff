@@ -27,9 +27,12 @@ set -euo pipefail
 # cargo bake is resolvable offline; the other cache vars it does override at run
 # time are set here for the build-time fetch (see the report/caveat in isolation.md).
 
+usage() { sed -n '4,28p' "$0" | sed 's/^# \{0,1\}//'; }
+
 TARGET=""; BASE=""; TAG=""; DRYRUN=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -h|--help) usage; exit 0 ;;
     --target)  TARGET="$2"; shift 2 ;;
     --base)    BASE="$2"; shift 2 ;;
     --tag)     TAG="$2"; shift 2 ;;
@@ -102,7 +105,11 @@ for u in result["bake_units"]:
     present = [rel for rel in copy_rel if os.path.exists(os.path.join(ctx, rel))]
     if not present:
         continue
-    lines.append(f"COPY {' '.join(present)} {dest}")
+    # --chown is not cosmetic: COPY writes root-owned files whatever USER is in
+    # effect, and a fetch REWRITES the lock it was given -- `cargo fetch` failed
+    # "failed to write /scratch/Cargo.lock: Permission denied" as uid 1000, aborting
+    # the whole ext build. npm and pip rewrite their locks the same way.
+    lines.append(f"COPY --chown=1000:1000 {' '.join(present)} {dest}")
     # Rust: `cargo fetch` parses the manifest, which resolves targets by
     # autodiscovery (src/lib.rs, src/main.rs). With only Cargo.toml copied there
     # are zero targets and cargo aborts ("no targets specified in the manifest").
@@ -115,7 +122,7 @@ for u in result["bake_units"]:
         os.makedirs(stub_dir, exist_ok=True)
         open(os.path.join(stub_dir, "lib.rs"), "a").close()
         src_dest = "src/" if d == "." else f"{d}/src/"
-        lines.append(f"COPY {src_dest}lib.rs {src_dest}")
+        lines.append(f"COPY --chown=1000:1000 {src_dest}lib.rs {src_dest}")
     cd = "" if d == "." else f'cd "{d}" && '
     lines.append(f"RUN {cd}{u['fetch']}")
 

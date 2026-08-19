@@ -20,10 +20,82 @@ USER root
 # questions -- the one this image got wrong.
 RUN apt-get update -q && apt-get install -y --no-install-recommends ripgrep git ca-certificates >/dev/null \
  && rm -rf /var/lib/apt/lists/* \
- && npm i -g @jazzer.js/core fast-check retire >/dev/null \
- && jazzer --version \
+ && npm i -g fast-check retire >/dev/null \
  && retire --version \
  && NODE_PATH=/usr/local/lib/node_modules node -e 'require("fast-check")'
+
+# Jazzer.js is installed LOCALLY into a prefix dir, not with `npm i -g`, and that is the
+# whole fix for a fuzzer that reported itself present and could not fuzz.
+#
+# `npm i -g @jazzer.js/core` nests the @jazzer.js peers (bug-detectors, fuzzer, hooking,
+# instrumentor) under core/node_modules/, while core resolves them as SIBLINGS. Measured,
+# `jazzer --version` answered and every real run died before the first input:
+#
+#   Error: ENOENT: no such file or directory, scandir
+#   '/usr/local/lib/node_modules/@jazzer.js/bug-detectors/dist/internal'
+#
+# That is the exact false-clean class this image already got wrong once with the arm64
+# dlopen (bs-156): installed, asserted, unrunnable. A local install produces the flat
+# sibling layout core expects.
+#
+# So the build ALSO runs a real fuzz target and requires a crash, not a version string.
+# The target dereferences parts[1] with no colon in the input, so libFuzzer must report an
+# uncaught TypeError and write a crash artifact; anything less means the addon loaded but
+# the instrumentation did not.
+RUN mkdir -p /opt/jazzer && cd /opt/jazzer \
+ && npm init -y >/dev/null \
+ && npm i @jazzer.js/core >/dev/null \
+ && ln -sf /opt/jazzer/node_modules/.bin/jazzer /usr/local/bin/jazzer \
+ && test -d /opt/jazzer/node_modules/@jazzer.js/bug-detectors/dist/internal \
+ && jazzer --version \
+ && mkdir -p /tmp/jzprobe && cd /tmp/jzprobe \
+ && printf 'module.exports.fuzz = function (d) { return d.toString().split(":")[1].trim(); };\n' > fuzz.js \
+ && (jazzer fuzz.js -- -runs=50000 -max_total_time=120 > out.txt 2>&1 || true) \
+ && grep -q 'Uncaught Exception' out.txt \
+ && echo "jazzer.js fuzzes and reports a crash (not just --version)" \
+ && cd / && rm -rf /tmp/jzprobe
+
+# eslint + eslint-plugin-no-unsanitized, the XSS-sink linter. Installed LOCALLY into a
+# prefix dir for the same reason Jazzer.js is, and pinned because the plugin's peer range
+# is `eslint: ^9 || ^10`.
+#
+# The image SHIPS the flat config rather than leaving a campaign to write one. eslint 9
+# requires flat config, and the config is an ES module, so it imports the plugin by
+# ABSOLUTE PATH: ESM resolution ignores NODE_PATH, and a bare `import ... from
+# "no-unsanitized"` fails from any directory that is not the install prefix:
+#
+#   Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'no-unsanitized' imported from
+#   /tmp/p/eslint.config.mjs
+#
+# `--no-config-lookup` is then a MUST at run time. Without it eslint walks up from the
+# target and a config it finds in the target repo silently replaces these two rules, which
+# is a scan that reports clean because it checked something else.
+# renovate: datasource=npm depName=eslint
+ARG ESLINT_VERSION=9.39.5
+# renovate: datasource=npm depName=eslint-plugin-no-unsanitized
+ARG NO_UNSANITIZED_VERSION=4.1.5
+RUN mkdir -p /opt/eslint && cd /opt/eslint \
+ && npm init -y >/dev/null \
+ && npm i "eslint@${ESLINT_VERSION}" "eslint-plugin-no-unsanitized@${NO_UNSANITIZED_VERSION}" >/dev/null \
+ && ln -sf /opt/eslint/node_modules/.bin/eslint /usr/local/bin/eslint \
+ && printf 'import noUnsanitized from "/opt/eslint/node_modules/eslint-plugin-no-unsanitized/index.js";\nexport default [{ plugins: { "no-unsanitized": noUnsanitized },\n  rules: { "no-unsanitized/method": "error", "no-unsanitized/property": "error" } }];\n' \
+      > /opt/eslint/sabot.config.mjs \
+ && eslint --version
+
+# Assert BOTH rules report on seeded sinks, not that eslint answered --version. A plugin
+# that loads while contributing no rules leaves eslint exiting 0 on this file.
+RUN set -eux; \
+    probe=/tmp/esprobe; mkdir -p "$probe"; cd "$probe"; \
+    printf 'function render(u) {\n  document.getElementById("x").innerHTML = u;\n  document.write(u);\n}\n' > bad.js; \
+    eslint --no-config-lookup -c /opt/eslint/sabot.config.mjs bad.js > out.txt 2>&1 || true; \
+    grep -q 'no-unsanitized/property' out.txt || \
+      { echo "sabot node: no-unsanitized/property did not report the innerHTML sink" >&2; \
+        cat out.txt >&2; exit 1; }; \
+    grep -q 'no-unsanitized/method' out.txt || \
+      { echo "sabot node: no-unsanitized/method did not report document.write" >&2; \
+        cat out.txt >&2; exit 1; }; \
+    echo "eslint-plugin-no-unsanitized reports both seeded sinks"; \
+    cd /; rm -rf "$probe"
 
 # fast-check is a LIBRARY with no CLI, so it is reachable only via NODE_PATH; a
 # harness that does `require("fast-check")` fails without this. Set for every run

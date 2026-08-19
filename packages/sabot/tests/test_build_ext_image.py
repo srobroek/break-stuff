@@ -37,8 +37,12 @@ def make_repo(root: Path, files: dict[str, str]):
         p.write_text(content)
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    # --no-gpg-sign, not just an identity override: a global `commit.gpgsign=true` with an
+    # agent-backed signer (1Password's op-ssh-sign) blocks on an interactive approval that
+    # never comes under pytest, and the whole suite hangs at this line with no output.
     subprocess.run(
-        ["git", "-c", "user.email=t@t.co", "-c", "user.name=t", "commit", "-qm", "init"],
+        ["git", "-c", "user.email=t@t.co", "-c", "user.name=t",
+         "commit", "--no-gpg-sign", "-qm", "init"],
         cwd=root, check=True,
     )
 
@@ -107,6 +111,20 @@ def test_copy_precedes_its_run_so_layer_caches_on_lock(tmp_path):
     assert copy_idx < run_idx
 
 
+def test_every_copy_chowns_to_the_build_uid(tmp_path):
+    """A fetch REWRITES the lock it was copied, and COPY writes root-owned files.
+
+    Measured: without --chown, `cargo fetch` as uid 1000 aborted the ext build with
+    "failed to write /scratch/Cargo.lock: Permission denied".
+    """
+    make_repo(tmp_path, {"Cargo.toml": "[package]\nname='x'\n", "Cargo.lock": ""})
+    df = dry_run(tmp_path)
+    copies = [l for l in df.splitlines() if l.startswith("COPY")]
+    assert copies
+    for l in copies:
+        assert l.startswith("COPY --chown=1000:1000 "), f"unowned copy: {l}"
+
+
 def test_dep_cache_is_persistent_not_scratch(tmp_path):
     # /scratch is a fresh tmpfs per run (run-contained.sh); baking there is masked.
     make_repo(tmp_path, {"Cargo.toml": "[package]\nname='x'\n", "Cargo.lock": ""})
@@ -155,4 +173,19 @@ def test_missing_target_exits_2(tmp_path):
         ["bash", str(SCRIPT), "--base", "b", "--tag", "t"],
         capture_output=True, text=True,
     )
+    assert r.returncode == 2
+
+
+def test_help_prints_usage_and_exits_zero():
+    """The provisioning agent reached for --help, got exit 2, and read the comment
+    header instead. An unknown-arg rejection on --help reads as a broken script."""
+    r = subprocess.run(["bash", str(SCRIPT), "--help"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    for flag in ("--target", "--base", "--tag", "--dry-run"):
+        assert flag in r.stdout, f"usage omits {flag}"
+    assert not r.stdout.lstrip().startswith("#"), "usage still carries comment markers"
+
+
+def test_unknown_arg_still_exits_2():
+    r = subprocess.run(["bash", str(SCRIPT), "--bogus"], capture_output=True, text=True)
     assert r.returncode == 2

@@ -6,11 +6,5 @@
     "name": "Sjors Robroek"
   },
   "license": "Apache-2.0",
-  "skills": "./.apm/skills",
-  "dependencies": [
-    {
-      "git": "srobroek/agentic-packages",
-      "path": "packages/beads"
-    }
-  ]
+  "skills": "./.apm/skills"
 }

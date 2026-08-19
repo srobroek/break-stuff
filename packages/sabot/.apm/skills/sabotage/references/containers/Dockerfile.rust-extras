@@ -1,0 +1,16 @@
+# Rust extras surface. sabot/rust:1 + the second tier of robustness tools.
+#
+# A SEPARATE image, not more layers on sabot/rust:1, because these tools are slow to
+# build and reached for by finding rather than run every campaign. A rust campaign
+# starts on sabot/rust:1; the triager or hardener escalates to this image when a finding
+# needs cargo-deny's license view, Miri's UB interpreter, or a semver-break check.
+#
+# Build: docker build -f Dockerfile.rust-extras -t sabot/rust-extras:1 --build-arg BASE=sabot/rust:1 .
+ARG BASE=sabot/rust:1
+FROM ${BASE}
+USER root
+COPY layers/rust-extras.sh /tmp/rust-extras.sh
+RUN bash /tmp/rust-extras.sh && rm /tmp/rust-extras.sh
+USER breaker
+WORKDIR /scratch
+VOLUME /artifacts

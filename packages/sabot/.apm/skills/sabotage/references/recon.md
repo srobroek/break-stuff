@@ -151,6 +151,7 @@ MUST Pair a graduated rule with the regression test for the same finding. The te
 MUST Leave a graduated rule uncommitted and list it in the report, because committing is the user's call.
 MUST Keep a rule that matched nothing when its invariant is real, since its value is catching the day someone breaks the invariant.
 NOT Never graduate a rule that failed its own fixture test. A rule nobody proved works becomes a permanent false sense of coverage in CI.
+MUST Validate a rule by the invocation the gremlin will actually use, over the target tree, and record that exact command beside the fixture counts. A fixture proving the PATTERN matches proves nothing about the rule as shipped, because a scoping key can suppress every match while the pattern stays correct. Measured on `fits-header`: three infra rules were reported fixture-validated at 6/2/1 positives, and the gremlin's mandatory re-verification got zero from all three, including on those same fixtures. A `paths: include: "*.github/workflows/*.yml"` glob was eating every match; stripping it restored exactly recon's counts. The rules were sound and shipped inert, and only the re-verification rule stopped that reading as a clean surface.
 
 ## Handing recon forward
 

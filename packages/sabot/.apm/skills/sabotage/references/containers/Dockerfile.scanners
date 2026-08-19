@@ -1,0 +1,19 @@
+# Scanner escalation surface. sabot/base:1 + the scanners that carry baked remote data.
+#
+# A SEPARATE image because base is inherited by all four language surfaces, and none of
+# them needs a Terraform policy set or a web-template tree. This layer adds two pipx
+# virtualenvs (checkov, guarddog) and two checked-out data trees (nuclei-templates,
+# bearer-rules); on base it would be paid for four times.
+#
+# A campaign escalates here when a target carries IaC, a dependency manifest worth a
+# malicious-package pass, or a reachable HTTP surface. Absent is a preflight note; see
+# OPTIONAL_SURFACES in the assertion script.
+#
+# Build: docker build -f Dockerfile.scanners -t sabot/scanners:1 --build-arg BASE=sabot/base:1 .
+ARG BASE=sabot/base:1
+FROM ${BASE}
+USER root
+COPY layers/scanners.sh /tmp/scanners.sh
+RUN bash /tmp/scanners.sh && rm /tmp/scanners.sh
+USER breaker
+WORKDIR /scratch

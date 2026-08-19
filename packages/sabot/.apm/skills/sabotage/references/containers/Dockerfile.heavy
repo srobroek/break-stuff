@@ -1,0 +1,17 @@
+# Heavy analysis surface. sabot/base:1 + the JVM engines.
+#
+# A SEPARATE image because Joern alone unpacks past 1GB and base is inherited by every
+# other surface. A campaign starts on its language surface; the triager escalates here
+# when a finding needs interprocedural dataflow (Joern) or a DAST pass (ZAP).
+#
+# On base rather than a language surface: neither engine reads a language toolchain, and
+# stacking on rust or python would duplicate the payload per surface.
+#
+# Build: docker build -f Dockerfile.heavy -t sabot/heavy:1 --build-arg BASE=sabot/base:1 .
+ARG BASE=sabot/base:1
+FROM ${BASE}
+USER root
+COPY layers/heavy.sh /tmp/heavy.sh
+RUN bash /tmp/heavy.sh && rm /tmp/heavy.sh
+USER breaker
+WORKDIR /scratch

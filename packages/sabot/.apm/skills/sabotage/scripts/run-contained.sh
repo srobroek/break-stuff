@@ -27,7 +27,14 @@ set -euo pipefail
 #
 #   run-contained.sh --target <dir> --artifacts <dir> --image <img>
 #                    [--net none|loopback] [--mem 2g] [--pids 512] [--cpus 2]
-#                    [--timeout 300] [--workdir /target|/scratch] -- <command inside>
+#                    [--timeout 300] [--workdir /target|/scratch]
+#                    [--scratch 2g] [--copy-src] -- <command inside>
+#
+# --scratch takes a SIZE, not a path: it is the tmpfs size for /scratch (default 2g).
+# Passing it bare consumes the next argument as the size, and docker then rejects the
+# tmpfs mount and kills the container -- a run that failed to start, which reads like a
+# tool that found nothing. --copy-src tars the target into /scratch/src (minus target/
+# and .git) so a build may write in-tree without touching the read-only mount.
 #
 # cwd defaults to /target (the repo), because a repo-aware scanner (gitleaks,
 # osv-scanner, actionlint, trivy) auto-detects .git and .github/workflows from cwd:
@@ -57,8 +64,12 @@ if [ "${1:-}" = "--assert-tools" ]; then
     case "$t" in
       *[!A-Za-z0-9._-]*|"") echo "assert-tools: illegal tool name: '$t'" >&2; exit 2 ;;
     esac
-    # try `<tool> --version` then the cargo-subcommand form `cargo <sub> --version`
-    if ! "$DK" run --rm --network none "$AT_IMAGE" sh -c "command -v $t >/dev/null 2>&1 && $t --version >/dev/null 2>&1 || ${t#cargo-} --version >/dev/null 2>&1 || cargo ${t#cargo-} --version >/dev/null 2>&1" 2>/dev/null; then
+    # try `<tool> --version`, the cargo-subcommand form `cargo <sub> --version`, then
+    # the bare `<tool> version` subcommand. The last form is not decoration: `go
+    # --version` exits 2 ("flag provided but not defined"), so without it the go
+    # surface's toolchain -- which IS its fuzzer, since `go test -fuzz` is built in --
+    # reports as missing and the preflight refuses a working image.
+    if ! "$DK" run --rm --network none "$AT_IMAGE" sh -c "command -v $t >/dev/null 2>&1 && { $t --version >/dev/null 2>&1 || $t version >/dev/null 2>&1; } || ${t#cargo-} --version >/dev/null 2>&1 || cargo ${t#cargo-} --version >/dev/null 2>&1" 2>/dev/null; then
       missing="$missing $t"
     fi
   done
@@ -140,7 +151,12 @@ esac
 
 VOL="bs-art-$$-$(date +%s 2>/dev/null || echo r)"
 $DK volume create "$VOL" >/dev/null
-cleanup() { $DK volume rm "$VOL" >/dev/null 2>&1 || true; [ -n "${STAGE:-}" ] && rm -rf "$STAGE"; }
+# The trailing `:` is load-bearing. Under `set -e` an EXIT trap's final status
+# REPLACES the script's exit code, and the STAGE test returns 1 whenever the target
+# is already under $HOME (no staging copy) -- collapsing every run, pass or fail, to
+# exit 1. A caller keying on the exit code then cannot tell a clean run from a broken
+# one.
+cleanup() { $DK volume rm "$VOL" >/dev/null 2>&1 || true; [ -n "${STAGE:-}" ] && rm -rf "$STAGE"; :; }
 trap cleanup EXIT
 
 printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
@@ -152,14 +168,85 @@ printf 'run-contained: runtime=%s[%s] image=%s net=%s mem=%s pids=%s\n' \
 # crates without a network fetch and without writing the read-only layer. No-op when
 # the image has no baked registry (a base image, or a non-Rust surface). The command
 # after the preamble runs via `exec "$@"` so its exit code is preserved.
-PREAMBLE='mkdir -p "$CARGO_HOME" /scratch/tmp; [ -d /deps/cargo/registry ] && [ ! -e "$CARGO_HOME/registry" ] && ln -s /deps/cargo/registry "$CARGO_HOME/registry";'
+#
+# The same problem, and the same fix, for the baked TOOL CACHES under /deps/cache:
+# cargo-careful and Miri each keep a prebuilt sysroot there, but XDG_CACHE_HOME below
+# points at the empty tmpfs. Without the link each one decides no sysroot exists and
+# rebuilds it, which needs crates.io and dies under --network none on a fetch unrelated
+# to the finding being investigated -- measured, `cargo miri test` failed "no matching
+# package named hashbrown". Every entry is linked rather than a named list, so a cache
+# baked by a later fragment is picked up without touching this wrapper.
+#
+# The advisory-db is COPIED, not linked, and only for cargo-deny's sake. Three measured
+# constraints shape the destination path, and missing any one makes cargo-deny report a
+# db it cannot read (which reads as an image problem, not a config one):
+#   1. WRITABLE. cargo-deny takes an exclusive lock on db.lock inside db-path before
+#      reading; against the read-only image that fails "attempted to take an exclusive
+#      lock on a read-only path", and --offline does NOT skip the lock.
+#   2. NESTED under a dir named advisory-db-<hash-of-url>. db-path is a parent holding
+#      one directory per db-url, not the db itself. Point it at a flat copy and cargo-deny
+#      tries to CLONE the missing child, which under --network none dies on DNS.
+#   3. CARRYING .git. See layers/rust.sh -- the staleness check reads HEAD's timestamp.
+# The hash is cargo-deny's own for the rustsec URL; it is derived from the url string, so
+# it is stable as long as db-urls in /opt/sabot-db/deny.toml is unchanged.
+# cargo-audit needs none of this: it reads the baked path directly, read-only and flat.
+ADB_NEST="advisory-db-3157b0e258782691"
+PREAMBLE='mkdir -p "$CARGO_HOME" /scratch/tmp "$XDG_CACHE_HOME"; [ -d /deps/cargo/registry ] && [ ! -e "$CARGO_HOME/registry" ] && ln -s /deps/cargo/registry "$CARGO_HOME/registry"; for c in /deps/cache/*; do [ -e "$c" ] || continue; [ -e "$XDG_CACHE_HOME/${c##*/}" ] || ln -s "$c" "$XDG_CACHE_HOME/${c##*/}"; done; [ -d /usr/local/advisory-db ] && [ ! -e "/scratch/advisory-db/'"$ADB_NEST"'" ] && mkdir -p /scratch/advisory-db && cp -r /usr/local/advisory-db "/scratch/advisory-db/'"$ADB_NEST"'";'
+
+# A target carrying rust-toolchain.toml overrides the image's toolchain BY NAME, and the
+# image installs its stable by version (1.97.1-<triple>), never under the literal name
+# `stable`. So a pin as ordinary as `channel = "stable"` finds no local match and rustup
+# tries to install one -- which needs the network and a writable /usr/local/rustup, and
+# has neither. Measured on a real crate, every cargo invocation died before doing any
+# work:
+#
+#   info: syncing channel updates for stable-aarch64-unknown-linux-gnu
+#   error: could not create temp file /usr/local/rustup/tmp/...: Read-only file system
+#
+# That is a fails-loud, not a false-clean, but it stops the campaign on any repo that
+# pins a toolchain -- which is most of them. RUSTUP_TOOLCHAIN outranks the file, so the
+# preamble exports the image's own default and the pin is ignored.
+#
+# The value is READ FROM settings.toml, not from `rustup toolchain list`: list itself
+# honours the pin and re-triggers the same sync. It is exported only when unset, so a
+# recipe may still pick a toolchain, and `+nightly` on the command line outranks the
+# variable either way (measured: cargo-fuzz and Miri still resolve the nightly).
+PREAMBLE="$PREAMBLE"' if [ -z "${RUSTUP_TOOLCHAIN:-}" ] && [ -r /usr/local/rustup/settings.toml ]; then t="$(sed -n '"'"'s/^default_toolchain = "\(.*\)"$/\1/p'"'"' /usr/local/rustup/settings.toml)"; [ -n "$t" ] && export RUSTUP_TOOLCHAIN="$t"; fi;'
 # --copy-src: a build/fuzz step needs a WRITABLE source tree (cargo writes Cargo.lock
 # and target/ beside the manifest), but /target is read-only. Copy the target into
 # /scratch/src, excluding its own build dir and .git (the space hogs that overflow
 # the tmpfs), and cd there. The audited bytes never change; this is a working copy on
 # a disposable tmpfs. The command then runs from /scratch/src.
+#
+# `pipefail` + the explicit `|| exit 5` are load-bearing. GNU tar exits 1 on "file
+# changed as we read it" -- which the host writing into the target during a run
+# (another agent, a `.sabot/` artifact write) triggers routinely, measured 26 times in
+# one campaign. The creating tar is the LEFT side of a pipe, so without pipefail the
+# preamble's status comes from the EXTRACTING tar, which succeeded on whatever bytes it
+# got. `cd /scratch/src` then works and the build proceeds against a possibly
+# incomplete source tree: a scan of a partial repo that reports as a clean result.
+# Measured in sabot/base:1 (tar 1.35): SRC_RC=1 while the pipeline reported 0.
+#
+# `.sabot` and `.beads` are excluded for the same reason, not as tidiness: they hold the
+# run's OWN artifacts dir and its bead store (a live sqlite WAL). A concurrent agent
+# writing a finding or claiming a wisp churns them under tar and trips the check above.
+# Measured on the fits-header target mid-campaign: 1 in 6 runs failed with `.beads`
+# included, 0 in 6 with it excluded. That churn is self-inflicted and says nothing about
+# the audited bytes.
+#
+# The retry is the other half. GNU tar reports the SAME exit 1 whether a file it was
+# copying changed mid-read or merely an unrelated sibling entry appeared at the repo root
+# (which bumps `.`'s mtime, and tar compares that at the end). Measured after the two
+# excludes: 1 in 20 runs against a live repo still failed, always on `.` and never on a
+# file, while a static tree failed 0 in 40 -- so the residual is benign root churn, and
+# hard-failing on it would abort a campaign for nothing. Retrying separates the two: a
+# one-off root bump passes on the next attempt, while a source that is genuinely being
+# rewritten keeps failing and still exits 5. Verified both ways -- 20 clean runs against
+# the live target, and a file rewritten in a loop under tar still detected.
+# exit 5 is distinct from the wrapper's own 2/3/4 so a caller can tell "staging failed"
+# from "the contained command failed".
 if [ "$COPY_SRC" -eq 1 ]; then
-  PREAMBLE="$PREAMBLE"' mkdir -p /scratch/src; tar -C /target --exclude=./target --exclude=./.git -cf - . | tar -C /scratch/src -xf -; cd /scratch/src;'
+  PREAMBLE="$PREAMBLE"' mkdir -p /scratch/src; SRC_OK=0; for _try in 1 2 3; do rm -rf /scratch/src; mkdir -p /scratch/src; if ( set -o pipefail; tar -C /target --exclude=./target --exclude=./.git --exclude=./.sabot --exclude=./.beads -cf - . | tar -C /scratch/src -xf - ); then SRC_OK=1; break; fi; echo "run-contained: --copy-src staging tar attempt $_try failed, retrying" >&2; done; [ "$SRC_OK" -eq 1 ] || { echo "run-contained: ERROR --copy-src staging tar failed 3 times; the source is changing under us and the copy may be incomplete (treat this run as INVALID, not clean)" >&2; exit 5; }; cd /scratch/src;'
   WORKDIR="/scratch"
 fi
 
@@ -174,6 +261,12 @@ set +e
 #     (`--manifest-path /target/Cargo.toml`), never writing the read-only mount.
 # CARGO_TARGET_DIR/GOCACHE/etc. point at /scratch regardless, so a build launched
 # from /target still writes its output to the writable tmpfs, not the target tree.
+#
+# TMPDIR is a SUBDIRECTORY of /scratch, never /scratch itself. Go refuses to read a
+# go.mod that sits in the temp root ("ignoring go.mod in system temp root"), so with
+# TMPDIR=/scratch every contained go command failed "directory prefix . does not
+# contain main module" -- while `go vet` still exited 0, which is the false-clean this
+# wrapper exists to prevent.
 timeout "$TMO" "$DK" run --rm \
   "${NETFLAG[@]}" \
   --memory "$MEM" --memory-swap "$MEM" --pids-limit "$PIDS" --cpus "$CPUS" \
@@ -182,7 +275,7 @@ timeout "$TMO" "$DK" run --rm \
   --user 1000:1000 \
   --workdir "$WORKDIR" \
   --env HOME=/scratch \
-  --env TMPDIR=/scratch \
+  --env TMPDIR=/scratch/tmp \
   --env CARGO_HOME=/scratch/cargo \
   --env CARGO_TARGET_DIR=/scratch/target \
   --env CARGO_NET_OFFLINE=true \

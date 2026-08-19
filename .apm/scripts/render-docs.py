@@ -361,59 +361,55 @@ RELEASE_AS = None
 
 
 def _build_release_config(pkgs: list[str]) -> dict:
-    # Root component is derived from the repo's own apm.yml name, not a hardcoded
-    # monorepo id, so a renamed repo (or a fork of this template) tags its root
-    # release correctly instead of inheriting the original project's component.
-    # A `-marketplace` suffix keeps the root tag distinct from a member package's
-    # tag when the repo and its sole package share a name (a single-package repo
-    # like sabot): without it both would emit `<name>--v<version>` and collide.
-    root_name = (yaml.safe_load(APM_YML.read_text(encoding="utf-8")) or {}).get(
-        "name", "root"
-    )
-    root_component = (
-        f"{root_name}-marketplace" if root_name in pkgs else root_name
-    )
+    # ONE release for the whole repo, tagged `v<version>`, versioning the root and
+    # every member package in lockstep.
+    #
+    # The alternative -- one release-please package per directory, each tagged
+    # `<component>--v<version>` -- buys independent version lines, and this repo has
+    # no use for them: the root exists only to publish the marketplace that ships the
+    # sole package, so a root release without a package release (or the reverse) has
+    # no meaning. It also cost a workaround: root and package share the name `sabot`,
+    # so both emitted `sabot--v<version>` and collided, which a synthetic
+    # `sabot-marketplace` root component papered over. Lockstep removes the collision
+    # instead of renaming around it.
+    #
+    # `v{version}` is APM's first-tried default and what its resolver documents as
+    # the "universal lockstep convention"; `{name}--v{version}` is documented there
+    # for multi-marketplace repos, which this is not. See DEFAULT_TAG_PATTERNS in
+    # apm_cli/deps/git_semver_resolver.py. So dropping the component prefix keeps
+    # native `/plugin` + `plugin add` resolution rather than giving it up.
+    #
+    # Every apm.yml in the repo is listed as an extra-file so one bump moves them
+    # together; a package added under packages/ must appear here or it silently keeps
+    # the old version while its CHANGELOG claims the new one.
+    extra_files = [{"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}]
+    extra_files += [
+        {"type": "yaml", "path": f"packages/{p}/apm.yml", "jsonpath": "$.version"}
+        for p in pkgs
+    ]
+
     # BOOTSTRAP_SHA / RELEASE_AS are optional one-shot knobs (see the constants
     # above); each key is emitted only when its constant is set, so a normal release
     # carries neither.
-    def _pkg(entry: dict) -> dict:
-        if BOOTSTRAP_SHA:
-            entry["bootstrap-sha"] = BOOTSTRAP_SHA
-        if RELEASE_AS:
-            entry["release-as"] = RELEASE_AS
-        entry["extra-files"] = [
-            {"type": "yaml", "path": "apm.yml", "jsonpath": "$.version"}
-        ]
-        return entry
+    root: dict = {
+        "release-type": "simple",
+        "changelog-path": "CHANGELOG.md",
+    }
+    if BOOTSTRAP_SHA:
+        root["bootstrap-sha"] = BOOTSTRAP_SHA
+    if RELEASE_AS:
+        root["release-as"] = RELEASE_AS
+    root["extra-files"] = extra_files
 
-    packages = {}
-    packages["."] = _pkg(
-        {
-            "release-type": "simple",
-            "component": root_component,
-            "changelog-path": "CHANGELOG.md",
-            "exclude-paths": ["packages"],
-        }
-    )
-    for p in pkgs:
-        packages[f"packages/{p}"] = _pkg(
-            {
-                "release-type": "simple",
-                "component": p,
-                "changelog-path": "CHANGELOG.md",
-            }
-        )
     return {
         "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
         "separate-pull-requests": False,
-        # Double-dash separator: tags render as `{component}--v{version}`, the
-        # convention Claude `/plugin` + Codex `plugin add` use for native version
-        # resolution (APM's remote resolver matches `{name}--v{version}` only).
-        # Existing single-dash tags are kept (backfilled) for back-compat.
-        "tag-separator": "--",
-        "include-component-in-tag": True,
+        # No component in the tag, so releases read `v0.2.0`. With a single package
+        # entry there is nothing to disambiguate, and the prefix would only make the
+        # tag miss APM's first default pattern.
+        "include-component-in-tag": False,
         "changelog-sections": CHANGELOG_SECTIONS,
-        "packages": packages,
+        "packages": {".": root},
     }
 
 
@@ -423,10 +419,11 @@ def _version_at(manifest: Path) -> str:
 
 
 def _build_release_manifest(ctx, pkgs: list[str]) -> dict:
-    versions = {p["dirname"]: p["version"] for p in ctx["packages"]}
-    manifest = {".": _version_at(APM_YML)}
-    manifest.update({f"packages/{p}": versions[p] for p in pkgs})
-    return manifest
+    # One entry, matching the single release-please package. A `packages/<p>` key left
+    # here without a corresponding entry in the config is not inert: release-please
+    # reads the manifest for the versions it owns, so a stale key describes a release
+    # line that no longer exists.
+    return {".": _version_at(APM_YML)}
 
 
 def cmd_release_please(ctx, check: bool) -> int:
