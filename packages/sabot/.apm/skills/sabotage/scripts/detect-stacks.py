@@ -134,6 +134,13 @@ def main():
         rc = subprocess.run(["git", "-C", repo, "rev-parse", "--is-inside-work-tree"],
                             capture_output=True, text=True)
         if rc.returncode != 0 or rc.stdout.strip() != "true":
+            # Say why. A bare exit 3 sent every caller hunting the wrong fault:
+            # build-ext-image.sh could only report "detect-stacks.py failed", which
+            # reads as a broken script rather than a target that is not a git repo.
+            print(f"detect-stacks: not a git repository: {repo}\n"
+                  "  Stack detection reads `git ls-files` so .gitignore is honored.\n"
+                  "  Point --repo at a checkout, or `git init` the target first.",
+                  file=sys.stderr)
             sys.exit(3)
 
     result = detect(repo)

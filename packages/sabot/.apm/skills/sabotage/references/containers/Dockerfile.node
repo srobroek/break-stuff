@@ -6,11 +6,29 @@
 # baked at build time and the web.md recipe runs `retire --jsrepo <baked path>`,
 # which reads the local copy and skips the fetch (retire 5.x has no --noupdate flag;
 # --jsrepo <local file> is the offline mechanism).
+#
+# The tag is trixie-slim, not the default slim (bookworm), because Jazzer.js ships a
+# PREBUILT arm64 native addon linked against GLIBC_2.38. Bookworm carries 2.36, so
+# `jazzer` died at dlopen with ERR_DLOPEN_FAILED while `npm i -g` had reported
+# success -- the fuzzer was installed and unrunnable. Trixie carries 2.41 (bs-156).
 ARG BASE=sabot/base:1
-FROM node:22-slim
+FROM node:22-trixie-slim
 USER root
+# Not masked by `|| true`: a failed install must fail the build, because a missing
+# fuzzer reported as present returns a clean the campaign did not earn. The build
+# then RUNS each tool, since installing a native addon and loading it are different
+# questions -- the one this image got wrong.
 RUN apt-get update -q && apt-get install -y --no-install-recommends ripgrep git ca-certificates >/dev/null \
- && npm i -g @jazzer.js/core fast-check retire 2>&1 | tail -1 || true
+ && rm -rf /var/lib/apt/lists/* \
+ && npm i -g @jazzer.js/core fast-check retire >/dev/null \
+ && jazzer --version \
+ && retire --version \
+ && NODE_PATH=/usr/local/lib/node_modules node -e 'require("fast-check")'
+
+# fast-check is a LIBRARY with no CLI, so it is reachable only via NODE_PATH; a
+# harness that does `require("fast-check")` fails without this. Set for every run
+# rather than in each recipe.
+ENV NODE_PATH=/usr/local/lib/node_modules
 
 # retire.js vulnerability definitions, baked. Pinned by commit SHA of the RetireJS
 # repo (tag-less rolling data), advanced by hand; renovate's semver datasource cannot

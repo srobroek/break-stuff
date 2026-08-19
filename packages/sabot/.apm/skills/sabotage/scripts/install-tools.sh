@@ -26,13 +26,22 @@ set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RUN_CONTAINED="$SKILL_DIR/scripts/run-contained.sh"
 
-# image  :  comma-separated tools that MUST answer inside it.
+# image  :  comma-separated EXECUTABLES that MUST answer inside it.
 # Kept in sync with isolation.md's assert table and each surface's Tools table.
 IMAGE_TOOLS_base="opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner"
 IMAGE_TOOLS_rust="cargo-fuzz,cargo-audit,clippy,cargo-geiger"
-IMAGE_TOOLS_python="atheris,hypothesis,bandit,ruff,semgrep"
-IMAGE_TOOLS_node="jazzer,fast-check,retire"
+IMAGE_TOOLS_python="bandit,ruff,semgrep"
+IMAGE_TOOLS_node="jazzer,retire"
 SURFACES="base rust python node"
+
+# image  :  shell test that each LIBRARY the harnesses import actually LOADS inside
+# the image. A library has no CLI, so the executable probe above cannot see it: it
+# reports `atheris --version` missing whether or not the package is installed, which
+# is both a false alarm and a blind spot. Loading is the right question anyway --
+# atheris and Jazzer.js are native addons, and this image once shipped a jazzer that
+# installed cleanly and then died at dlopen (bs-156).
+IMAGE_LIBS_python='python3 -c "import atheris, hypothesis"'
+IMAGE_LIBS_node='node -e "require(\"fast-check\")"'
 
 # image  :  shell test, run inside the image, that a baked offline DB is PRESENT and
 # NON-EMPTY. A present-but-empty DB is the exact false-clean this asserts against: a
@@ -92,6 +101,18 @@ probe() {
       else
         echo "    $img  FAIL -- $out"
         fail=1
+      fi
+      # Library assertion: prove each imported package LOADS, not merely that pip or
+      # npm wrote it to disk. A native addon can install and still fail at dlopen.
+      local libtest=""
+      eval "libtest=\"\${IMAGE_LIBS_$s:-}\""
+      if [ -n "$libtest" ]; then
+        if "$rt" run --rm --network none "$img" sh -c "$libtest" >/dev/null 2>&1; then
+          echo "    $img  LIBS OK (harness imports load)"
+        else
+          echo "    $img  LIBS FAIL -- a harness library is missing or fails to load ($libtest); rebuild from references/containers/Dockerfile.$s"
+          fail=1
+        fi
       fi
       # Baked-DB assertion: a present tool with an EMPTY DB is a false-clean under
       # --network none (isolation.md, Baked offline databases). Prove the DB has

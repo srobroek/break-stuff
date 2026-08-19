@@ -71,10 +71,13 @@ def test_copies_only_manifest_and_lock_never_source(tmp_path):
     joined = "\n".join(copy_lines)
     assert "Cargo.toml" in joined
     assert "Cargo.lock" in joined
-    # the read-only-target invariant: no source file ever enters a COPY
-    assert "src/lib.rs" not in df
-    assert "src/main.rs" not in df
-    assert ".rs" not in joined
+    # The invariant is about CONTENT, not filenames. Rust needs a src/lib.rs to exist
+    # or `cargo fetch` aborts with no targets, so the script writes an EMPTY stub into
+    # the build context and copies that. Asserting on the path (`".rs" not in joined`)
+    # rejected the legitimate stub; assert the audited bytes stay out instead.
+    assert "src/main.rs" not in joined
+    assert 'open(os.path.join(stub_dir, "lib.rs"), "a").close()' in SCRIPT.read_text(), \
+        "the rust src/lib.rs stub must be CREATED empty, never copied from the target"
 
 
 def test_one_run_per_bake_unit(tmp_path):
