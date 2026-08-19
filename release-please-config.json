@@ -1,8 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "separate-pull-requests": false,
-  "tag-separator": "--",
-  "include-component-in-tag": true,
+  "include-component-in-tag": false,
   "changelog-sections": [
     {
       "type": "feat",
@@ -43,27 +42,16 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "component": "sabot-marketplace",
       "changelog-path": "CHANGELOG.md",
-      "exclude-paths": [
-        "packages"
-      ],
       "extra-files": [
         {
           "type": "yaml",
           "path": "apm.yml",
           "jsonpath": "$.version"
-        }
-      ]
-    },
-    "packages/sabot": {
-      "release-type": "simple",
-      "component": "sabot",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
+        },
         {
           "type": "yaml",
-          "path": "apm.yml",
+          "path": "packages/sabot/apm.yml",
           "jsonpath": "$.version"
         }
       ]
