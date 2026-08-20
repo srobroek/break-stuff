@@ -84,9 +84,7 @@ A *sabot* is a wooden shoe, the French clog worn by peasants and later by factor
 workers. "Sabotage" comes from the legend of striking workers throwing a wooden shoe
 into the machines to jam them.
 
-The package is `sabot` (the tool and repo); the skill you invoke is `sabotage` (the
-verb). You trigger it by asking to harden, red-team, fuzz, attack, or break
-something, or by naming the `/sabotage` skill directly.
+
 
 
 
@@ -99,6 +97,8 @@ Invoke the skill and name a target:
 sabotage: red-team the PreToolUse guards in packages/hooks-bash-safety
 sabotage: fuzz the FITS header parser in this crate
 sabotage: audit this PR for security and robustness issues
+claude: /sabotage find issues in my current branch's changes
+codex: $sabotage find security holes in my repo's ci/cd pipeline
 ```
 
 > ⚠️ **A full-repo scan is slow and token-hungry.** Running sabot against an
