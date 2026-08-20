@@ -110,7 +110,7 @@ sabotage: audit this PR for security and robustness issues
 It runs a five-agent campaign per surface:
 
 1. scout: recon per surface, producing the trust map, invariants, idiom census, and repo-specific rules
-2. fuzzer: writes harnesses, seed corpora, and attack vectors (runs nothing)
+2. fuzzer: writes harnesses, seed corpora, and attack vectors
 3. gremlin: executes scanners and harnesses inside a container, reads for what they miss
 4. triager: dedups crashes, minimizes to a smallest reproducing input, classifies
 5. challenger: sets the evidence tier on every finding, independently
@@ -122,7 +122,7 @@ say so.
 
 Every handoff is a bead, so a campaign that dies mid-run resumes from the graph
 rather than restarting. The interview blocks before anything is touched, and the
-approval blocks before product code is patched. Nothing else waits on you.
+approval blocks before product code is patched. 
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 460, "nodeSpacing": 30, "rankSpacing": 34}}}%%
@@ -131,8 +131,8 @@ flowchart TB
     Q --> OPEN["<b>Open the run</b> · epic + one node per surface<br/>provision images, read the repo's security config, pre-pass"]
 
     OPEN --> SCOUT["<b>scout</b> · trust map, invariants, repo-specific rules"]
-    SCOUT --> FUZZER["<b>fuzzer</b> · harnesses, corpora, vectors · <i>executes nothing</i>"]
-    FUZZER --> GREMLIN["<b>gremlin</b> · runs it all in a container, reads for the rest · <i>edits nothing</i>"]
+    SCOUT --> FUZZER["<b>fuzzer</b> · harnesses, corpora, vectors · "]
+    FUZZER --> GREMLIN["<b>gremlin</b> · runs it all in a container, reads for the rest · "]
 
     GREMLIN -->|crashes| TRIAGER["<b>triager</b> · dedup, minimize,<br/>memory-safety vs robustness"]
     GREMLIN -->|findings| CHAL
@@ -160,7 +160,7 @@ nothing itself, decides what each finding proves.
 - full (default): every step
 - quick: recon plus a smoke campaign, no new harnesses or challenger
 - audit-only: describe findings, never patch (regression tests are still written)
-- harness-only: author harnesses and corpora, execute nothing
+- harness-only: author harnesses and corpora
 
 ### Safety
 
