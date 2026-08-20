@@ -61,7 +61,7 @@ first, working out what the code assumes about itself, where its trust
 boundaries sit, and where it deviates from its own patterns, then attacks those
 assumptions across seven surfaces:
 
-| Surface | What it attacks |
+| Surface | Examples of attack surfaces|
 |---|---|
 | Code | injection, taint-to-sink, unsafe blocks, overflow, deserialization, ReDoS |
 | Shell & hooks | command-position bypass, quoting, fail-open inversion, guard evasion |
