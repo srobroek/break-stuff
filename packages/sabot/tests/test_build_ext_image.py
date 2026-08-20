@@ -47,9 +47,10 @@ def make_repo(root: Path, files: dict[str, str]):
     )
 
 
-def dry_run(target: Path, base="sabot/rust:1", tag="sabot/rust-ext:1"):
+def dry_run(target: Path, base="sabot/rust:1", tag="sabot/rust-ext:1", extra=()):
     r = subprocess.run(
-        ["bash", str(SCRIPT), "--target", str(target), "--base", base, "--tag", tag, "--dry-run"],
+        ["bash", str(SCRIPT), "--target", str(target), "--base", base, "--tag", tag,
+         *extra, "--dry-run"],
         capture_output=True, text=True,
     )
     assert r.returncode == 0, r.stderr
@@ -98,8 +99,11 @@ def test_one_run_per_bake_unit(tmp_path):
     assert len(run_lines) == 2, df
     assert any("cargo fetch" in l for l in run_lines)
     assert any("npm ci" in l for l in run_lines)
-    # the src-tauri member is collapsed into the workspace root: not copied separately
-    assert "src-tauri/Cargo.toml" not in df
+    # The member is collapsed into the workspace ROOT FETCH -- one RUN, not two -- but
+    # its manifest is still copied: `cargo fetch` reads every member to resolve the
+    # graph and aborts "failed to read src-tauri/Cargo.toml" without it.
+    assert "COPY --chown=1000:1000 src-tauri/Cargo.toml ./src-tauri/Cargo.toml" in df
+    assert len([l for l in run_lines if "cargo fetch" in l]) == 1
 
 
 def test_copy_precedes_its_run_so_layer_caches_on_lock(tmp_path):
@@ -189,3 +193,38 @@ def test_help_prints_usage_and_exits_zero():
 def test_unknown_arg_still_exits_2():
     r = subprocess.run(["bash", str(SCRIPT), "--bogus"], capture_output=True, text=True)
     assert r.returncode == 2
+
+
+def test_pnpm_workspace_bakes_with_pnpm(tmp_path):
+    """A pnpm-only target must not be baked with `npm ci`.
+
+    There is no package-lock.json to install from, and the members' `workspace:`
+    specifiers are not npm-resolvable, so the layer either fails or silently resolves a
+    different tree than the lockfile pins.
+    """
+    make_repo(tmp_path, {
+        "package.json": '{"name":"root","devDependencies":{"vitest":"^4"}}',
+        "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+        "pnpm-workspace.yaml": "packages:\n  - 'apps/*'\n",
+        "apps/ui/package.json": '{"name":"ui","devDependencies":{"vite":"^7"}}',
+    })
+    df = dry_run(tmp_path)
+    fetches = [l for l in df.splitlines() if l.startswith("RUN ") and "install" in l]
+    assert fetches == ["RUN pnpm install --frozen-lockfile"], df
+    # --frozen-lockfile verifies every member manifest against the lockfile
+    assert "COPY --chown=1000:1000 apps/ui/package.json /deps/node/apps/ui/package.json" in df
+    assert "COPY --chown=1000:1000 pnpm-workspace.yaml /deps/node/pnpm-workspace.yaml" in df
+    # deps land outside /scratch, which run-contained.sh masks with a fresh tmpfs
+    assert "WORKDIR /deps/node" in df
+
+
+def test_stacks_filter_drops_other_toolchains(tmp_path):
+    """A surface image carries one toolchain: baking cargo into sabot/node:1 fails."""
+    make_repo(tmp_path, {
+        "Cargo.toml": "[package]\nname='a'\n",
+        "package.json": '{"name":"root"}',
+        "package-lock.json": "{}",
+    })
+    df = dry_run(tmp_path, extra=["--stacks", "node"])
+    assert "cargo fetch" not in df, df
+    assert "npm ci" in df

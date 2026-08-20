@@ -24,6 +24,21 @@ RUN apt-get update -q && apt-get install -y --no-install-recommends ripgrep git 
  && retire --version \
  && NODE_PATH=/usr/local/lib/node_modules node -e 'require("fast-check")'
 
+# pnpm, for targets whose only lockfile is pnpm-lock.yaml: `npm ci` cannot install a
+# pnpm workspace (no package-lock.json, `workspace:` specifiers unresolvable), so the
+# ext-image dep bake needs pnpm present here.
+#
+# Installed with `npm i -g`, not corepack: a corepack shim resolves the version named
+# in the target's `packageManager` field by DOWNLOADING it, which is unreachable under
+# the --network none run contract. For the same reason pnpm's own
+# manage-package-manager-versions self-install is disabled -- left on, pnpm 10+ tries
+# to fetch the exact version from `packageManager` before doing any work.
+# renovate: datasource=npm depName=pnpm
+ARG PNPM_VERSION=11.17.0
+ENV npm_config_manage_package_manager_versions=false
+RUN npm i -g "pnpm@${PNPM_VERSION}" >/dev/null \
+ && pnpm --version
+
 # Jazzer.js is installed LOCALLY into a prefix dir, not with `npm i -g`, and that is the
 # whole fix for a fuzzer that reported itself present and could not fuzz.
 #
@@ -101,6 +116,16 @@ RUN set -eux; \
 # harness that does `require("fast-check")` fails without this. Set for every run
 # rather than in each recipe.
 ENV NODE_PATH=/usr/local/lib/node_modules
+
+# NODE_PATH covers `require()` only: ESM resolution ignores it and walks node_modules
+# up the directory chain, so `import fc from "fast-check"` in a vitest/ESM harness
+# died "Cannot find package 'fast-check'" while the CJS probe above passed. Node
+# checks /node_modules last on every walk, whatever the cwd, so linking the globals
+# there makes them resolvable from a harness written anywhere in the container.
+RUN mkdir -p /node_modules \
+ && ln -sf /usr/local/lib/node_modules/fast-check /node_modules/fast-check \
+ && ln -sf /opt/jazzer/node_modules/@jazzer.js /node_modules/@jazzer.js \
+ && node --input-type=module -e 'import fc from "fast-check"; if (!fc.integer) throw new Error("fast-check ESM import broken")'
 
 # retire.js vulnerability definitions, baked. Pinned by commit SHA of the RetireJS
 # repo (tag-less rolling data), advanced by hand; renovate's semver datasource cannot

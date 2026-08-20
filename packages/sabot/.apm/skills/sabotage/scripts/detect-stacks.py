@@ -32,7 +32,7 @@ import sys
 MANIFESTS = {
     "Cargo.toml": ("rust", ["Cargo.lock"], "cargo fetch"),
     "package.json": ("node", ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"],
-                     "npm ci || npm install"),
+                     "npm ci || npm install"),  # refined by node_fetch() from the lockfile
     "pyproject.toml": ("python", ["uv.lock", "poetry.lock", "requirements-dev.txt"],
                        "uv sync --frozen || pip install -e '.[dev]' || true"),
     "requirements-dev.txt": ("python", [], "pip install -r requirements-dev.txt"),
@@ -63,13 +63,53 @@ def is_cargo_workspace(repo, rel):
         return False
 
 
+# A node manifest's fetch is decided by its LOCKFILE, not by npm being the default.
+# `npm ci` on a pnpm workspace fails twice over: there is no package-lock.json, and
+# `workspace:` specifiers are not npm-resolvable. The fallback `npm install` then
+# silently re-resolves a different tree than the one the repo pinned.
+NODE_FETCH = {
+    "pnpm-lock.yaml": "pnpm install --frozen-lockfile",
+    "yarn.lock": "yarn install --immutable || yarn install --frozen-lockfile",
+    "package-lock.json": "npm ci",
+}
+
+
+def node_fetch(found_locks):
+    for lock, cmd in NODE_FETCH.items():
+        if lock in found_locks:
+            return cmd
+    return "npm install"
+
+
+def is_node_workspace(repo, rel):
+    """True when this package.json is a workspace root (pnpm, npm, or yarn)."""
+    directory = os.path.dirname(rel)
+    if os.path.exists(os.path.join(repo, directory, "pnpm-workspace.yaml")):
+        return True
+    try:
+        with open(os.path.join(repo, rel), encoding="utf-8") as fh:
+            return "workspaces" in json.load(fh)
+    except (OSError, ValueError):
+        return False
+
+
+def in_dot_dir(rel):
+    """Manifests under a dot-directory are agent/editor tooling, not the audited code.
+
+    A repo vendoring skills under .claude/ or .specify/ ships their package.json too.
+    Baking those installs a native-addon build chain the campaign never exercises and
+    fails the whole ext image on an unrelated dep.
+    """
+    return any(part.startswith(".") for part in rel.split("/")[:-1])
+
+
 def detect(repo):
     files = tracked_files(repo)
     present = set(files)
     manifests = []
     for rel in files:
         name = os.path.basename(rel)
-        if name not in MANIFESTS:
+        if name not in MANIFESTS or in_dot_dir(rel):
             continue
         stack, locks, fetch = MANIFESTS[name]
         directory = os.path.dirname(rel) or "."
@@ -84,17 +124,24 @@ def detect(repo):
         }
         if name == "Cargo.toml":
             entry["workspace_root"] = is_cargo_workspace(repo, rel)
+        if name == "package.json":
+            entry["workspace_root"] = is_node_workspace(repo, rel)
+            entry["fetch"] = node_fetch(found_locks)
         manifests.append(entry)
 
     # Collapse Cargo workspace members: if a workspace root exists, its members are
     # provisioned by the root fetch, so a member Cargo.toml needs no separate bake.
-    ws_roots = {m["dir"] for m in manifests
-                if m["stack"] == "rust" and m.get("workspace_root")}
+    ws_roots = {}
+    for m in manifests:
+        if m.get("workspace_root"):
+            ws_roots.setdefault(m["stack"], set()).add(m["dir"])
+
     def under_ws_root(m):
-        if m["stack"] != "rust" or m.get("workspace_root"):
+        if m.get("workspace_root"):
             return False
+        roots = ws_roots.get(m["stack"], set())
         return any(m["dir"] == r or m["dir"].startswith(r.rstrip("/") + "/")
-                   for r in ws_roots if r != ".")  or ("." in ws_roots and m["dir"] != ".")
+                   for r in roots if r != ".") or ("." in roots and m["dir"] != ".")
 
     bake_units = [m for m in manifests if not under_ws_root(m)]
     stacks = sorted({m["stack"] for m in manifests})
