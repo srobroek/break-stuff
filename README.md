@@ -2,7 +2,7 @@
   <img src="docs/assets/sabot-logo.png" alt="Sabot" width="640">
 </p>
 
-Let your agents attack your own repos: they drive security and fuzzing tools to find holes in your code, application, and prompts. It combines deterministic scanners with agent-driven exploration, hammers your own codebase until something breaks, then reports each finding with a reproducing input or a traced path.
+Let your agents attack your own code by driving security and fuzzing tools to find holes in your code, application, and prompts. Sabot combines deterministic scanners with agent-driven exploration, hammers your own codebase until something breaks, then reports each finding with a reproducing input or a traced path.
 
 > **Pre-release.** This is an early release and still needs wider testing. It is
 > built to be non-destructive: it runs in a container against a read-only copy of
