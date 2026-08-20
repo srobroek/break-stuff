@@ -122,7 +122,7 @@ say so.
 
 Every handoff is a bead, so a campaign that dies mid-run resumes from the graph
 rather than restarting. The interview blocks before anything is touched, and the
-approval blocks before product code is patched. 
+approval blocks before product code is patched.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 460, "nodeSpacing": 30, "rankSpacing": 34}}}%%
@@ -131,8 +131,8 @@ flowchart TB
     Q --> OPEN["<b>Open the run</b> · epic + one node per surface<br/>provision images, read the repo's security config, pre-pass"]
 
     OPEN --> SCOUT["<b>scout</b> · trust map, invariants, repo-specific rules"]
-    SCOUT --> FUZZER["<b>fuzzer</b> · harnesses, corpora, vectors · "]
-    FUZZER --> GREMLIN["<b>gremlin</b> · runs it all in a container, reads for the rest · "]
+    SCOUT --> FUZZER["<b>fuzzer</b> · harnesses, corpora, vectors"]
+    FUZZER --> GREMLIN["<b>gremlin</b> · runs it all in a container, reads for the rest"]
 
     GREMLIN -->|crashes| TRIAGER["<b>triager</b> · dedup, minimize,<br/>memory-safety vs robustness"]
     GREMLIN -->|findings| CHAL
