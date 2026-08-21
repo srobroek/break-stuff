@@ -544,6 +544,35 @@ def test_control_path_none_is_accepted_for_a_harness_asserting_no_guard(bd_facto
     assert not any(g["bucket"] == "harnesses" for g in doc["stamping_gaps"])
 
 
+def test_a_reproduce_command_stamped_under_repro_cmd_reaches_the_report(bd_factory):
+    """The brief asked for "the reproduce command" and named no key.
+
+    Measured: 0 of 386 findings stamped `repro`, 7 stamped `repro_cmd`, and KEEP_META kept
+    only `repro` -- so every reproduce command on the run's PROVEN findings was dropped.
+    Same shape as the crash keys, from the same cause.
+    """
+    doc, _ = report(bd_factory, export([finding("e.1.80",
+        repro_cmd="cargo test -p app-core -- --exact validate_reveal_path", repro_rc=101,
+    )]))
+    assert doc["findings"][0]["repro_cmd"].startswith("cargo test")
+    assert doc["findings"][0]["repro_rc"] == 101
+
+
+def test_a_reproduce_command_with_no_exit_code_reaches_the_register(bd_factory):
+    # Running it yields a number with nothing to compare against, and the harden route
+    # decides FIXED against NOT FIXED by quoting the rc before and after.
+    doc, _ = report(bd_factory, export([finding("e.1.81",
+        repro_cmd="cargo test -p app-core -- --exact path_preview",
+    )]))
+    entry = next(r for r in doc["not_executed"] if r["kind"] == "repro-without-an-exit-code")
+    assert entry["id"] == "e.1.81"
+
+
+def test_a_finding_with_no_reproduce_command_is_not_flagged_for_a_missing_rc(bd_factory):
+    doc, _ = report(bd_factory, export([finding("e.1.82")]))
+    assert not any(r["kind"] == "repro-without-an-exit-code" for r in doc["not_executed"])
+
+
 def test_a_broken_harness_with_no_re_author_wisp_reaches_the_register(bd_factory):
     """A harness that reports itself broken closes nothing on its own.
 

@@ -29,7 +29,12 @@ finding, decide the evidence tier and defend it. You never edit anything.
   file:line per hop. Verify this rather than re-tracing from scratch; re-derive only
   when it is absent.
 - `repro`: absolute path to a minimized input, when one exists
-- The reproduce command, when one exists
+- `repro_cmd` plus `repro_rc`: the reproduce command and the exit code it produces, when
+  one exists. Both keys by those names. This line once read "the reproduce command, when
+  one exists" and named no key: challengers stamped `repro_cmd`, the report kept only
+  `repro`, and all 7 reproduce commands on a 386-finding run were dropped. A command with
+  no rc cannot be replayed to a verdict either, and the harden route decides FIXED against
+  NOT FIXED by quoting the rc before and after.
 
 You are NOT given anyone's opinion about severity. Form your own.
 

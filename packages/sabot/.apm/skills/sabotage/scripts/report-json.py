@@ -78,7 +78,13 @@ KEEP_META = {
     "crashes": ["input_path", "stack_hash", "state", "kind", "minimized_path",
                 "minimized_bytes", "original_path", "repro_cmd", "repro_rc", "dedup_key",
                 "duplicate_of", "class_closed_by"],
+    # `repro_cmd` and `repro_rc` beside `repro`: the brief asked for "the reproduce command,
+    # when one exists" without naming a key, so challengers stamped `repro_cmd` and the
+    # renderer kept only `repro`. Measured: 0 of 386 findings stamped `repro`, 7 stamped
+    # `repro_cmd`, and every reproduce command on the run's PROVEN findings was dropped --
+    # the same shape as the crash keys, from the same cause of an unnamed field.
     "findings": ["tier", "by", "source", "impact", "locus", "path", "cwe", "repro",
+                 "repro_cmd", "repro_rc",
                  "surface", "node", "evidence", "control_passed", "dedup_key",
                  "root_cause", "not_executed_reason"],
     # entry_points_* is the ratio a harness count cannot express: "13 of 13 harnesses ran"
@@ -438,6 +444,22 @@ def not_executed_register(findings, coverage, surfaces, harnesses=()):
                 "reason": "the benign control did not pass, so this locus is UNTESTED "
                           "and the finding cannot be trusted either way",
             })
+    # A reproduce command with no expected exit code cannot be replayed to a verdict: the
+    # reader runs it, gets a number, and has nothing to compare it against. Measured: two
+    # findings carried a command and no rc, and the hardener's own gate quotes the rc before
+    # and after a patch to decide FIXED against NOT FIXED.
+    for f in findings:
+        cmd = f.get("repro_cmd") or f.get("repro")
+        if isinstance(cmd, str) and cmd.strip() and f.get("repro_rc") is None:
+            register.append({
+                "kind": "repro-without-an-exit-code", "id": f.get("id"),
+                "surface": f.get("surface"), "locus": f.get("locus"),
+                "reason": "a reproduce command is recorded with no expected exit code, so "
+                          "running it produces a number with nothing to compare against. "
+                          "The harden route decides FIXED against NOT FIXED by quoting the "
+                          "rc before and after, and cannot run at all without it",
+            })
+
     # A harness the gremlin found broken leaves its entry point uncovered, and the brief
     # requires a re-author wisp naming what to rewrite. Nothing enforced that. Measured: one
     # campaign ran roughly a dozen harnesses that reported themselves broken -- one at rc=3
