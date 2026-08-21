@@ -60,7 +60,7 @@ DETECT_JSON="$(python3 "$DETECT" --repo "$TARGET")" || {
 # Build the Dockerfile and the minimal context (manifests+locks only) from the map,
 # with python emitting BOTH so the COPY list and the temp-context file list agree.
 CTX="$(mktemp -d "${TMPDIR:-/tmp}/bs-ext-XXXXXX")"
-cleanup() { rm -rf "$CTX"; }
+cleanup() { rm -rf "${CTX:?}"; }
 trap cleanup EXIT
 
 DOCKERFILE="$(
@@ -71,6 +71,43 @@ result = json.loads(sys.argv[1])
 base = os.environ["BASE"]
 target = os.environ["TARGET"]
 ctx = os.environ["CTX"]
+
+# The node fetch is chosen by the lockfile the repo actually ships, not by a single
+# npm-shaped default. Measured: the default `npm ci || npm install` cannot provision a
+# pnpm workspace -- `npm ci` has no package-lock.json to read, and the `npm install`
+# fallback then chokes on `workspace:` protocol ranges -- so the ext image had to be
+# hand-rolled from a manual context. `pnpm fetch` reads the lockfile alone, which suits a
+# context holding no member package.json files at all.
+NODE_FETCH = [
+    ("pnpm-lock.yaml", "corepack pnpm fetch || pnpm fetch"),
+    ("yarn.lock", "corepack yarn install --immutable || yarn install --frozen-lockfile"),
+    ("package-lock.json", "npm ci"),
+]
+
+
+def node_fetch(unit):
+    for lock, cmd in NODE_FETCH:
+        if lock in unit["lockfiles"]:
+            return cmd
+    return "npm install"
+
+
+def cargo_member_manifests(unit):
+    """Member Cargo.toml paths a workspace-root `cargo fetch` cannot do without.
+
+    detect-stacks.py collapses members into the root bake unit, which is right for the
+    fetch COMMAND and wrong for the build CONTEXT: `cargo fetch` at the root parses every
+    path named in `[workspace] members`, so a context holding only the root manifest fails
+    before fetching anything. Measured on a 45-member workspace, which is why that ext
+    image had to be hand-rolled.
+    """
+    root = unit["dir"]
+    prefix = "" if root == "." else root.rstrip("/") + "/"
+    return [
+        m["manifest"] for m in result["manifests"]
+        if m["stack"] == "rust" and m["manifest"] != unit["manifest"]
+        and m["manifest"].startswith(prefix)
+    ]
 
 lines = [
     f"FROM {base}",
@@ -95,6 +132,7 @@ for u in result["bake_units"]:
     copy_rel = [u["manifest"]] + [
         (m if d == "." else f"{d}/{m}") for m in u["lockfiles"]
     ]
+    members = cargo_member_manifests(u) if u["stack"] == "rust" else []
     for rel in copy_rel:
         src = os.path.join(target, rel)
         if not os.path.exists(src):
@@ -118,13 +156,25 @@ for u in result["bake_units"]:
     # at /target at run time), so no product code enters a layer. A committed
     # Cargo.lock, when present, is copied above and makes the fetch exact anyway.
     if u["stack"] == "rust":
-        stub_dir = os.path.join(ctx, "" if d == "." else d, "src")
-        os.makedirs(stub_dir, exist_ok=True)
-        open(os.path.join(stub_dir, "lib.rs"), "a").close()
-        src_dest = "src/" if d == "." else f"{d}/src/"
-        lines.append(f"COPY --chown=1000:1000 {src_dest}lib.rs {src_dest}")
+        # Each member gets its own COPY: a multi-source COPY resolves the destination as a
+        # directory and keeps only basenames, so every member Cargo.toml would collapse
+        # onto one path.
+        for rel in [u["manifest"]] + members:
+            member_dir = os.path.dirname(rel)
+            stub_dir = os.path.join(ctx, member_dir, "src")
+            os.makedirs(stub_dir, exist_ok=True)
+            open(os.path.join(stub_dir, "lib.rs"), "a").close()
+            src_dest = "src/" if not member_dir else f"{member_dir}/src/"
+            lines.append(f"COPY --chown=1000:1000 {src_dest}lib.rs {src_dest}")
+            if rel in members:
+                src = os.path.join(target, rel)
+                dst = os.path.join(ctx, rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy2(src, dst)
+                lines.append(f"COPY --chown=1000:1000 {rel} {member_dir}/")
+    fetch = node_fetch(u) if u["stack"] == "node" else u["fetch"]
     cd = "" if d == "." else f'cd "{d}" && '
-    lines.append(f"RUN {cd}{u['fetch']}")
+    lines.append(f"RUN {cd}{fetch}")
 
 sys.stdout.write("\n".join(lines) + "\n")
 PY

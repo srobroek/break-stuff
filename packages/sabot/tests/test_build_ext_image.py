@@ -98,8 +98,13 @@ def test_one_run_per_bake_unit(tmp_path):
     assert len(run_lines) == 2, df
     assert any("cargo fetch" in l for l in run_lines)
     assert any("npm ci" in l for l in run_lines)
-    # the src-tauri member is collapsed into the workspace root: not copied separately
-    assert "src-tauri/Cargo.toml" not in df
+    # One fetch covers the workspace, but it resolves EVERY member, so each member
+    # manifest has to reach the context: without src-tauri/Cargo.toml cargo exits 101
+    # "failed to read .../src-tauri/Cargo.toml", and with a manifest but no target it
+    # exits 101 "no targets specified" -- hence the stub lib.rs beside it.
+    copied = {f for l in df.splitlines() if l.startswith("COPY") for f in l.split()[2:-1]}
+    assert "src-tauri/Cargo.toml" in copied, df
+    assert "src-tauri/src/lib.rs" in copied, df
 
 
 def test_copy_precedes_its_run_so_layer_caches_on_lock(tmp_path):
