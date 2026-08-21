@@ -539,9 +539,53 @@ def test_control_path_none_is_accepted_for_a_harness_asserting_no_guard(bd_facto
     """
     doc, _ = report(bd_factory, export([harness("e.1.62",
         entry_point="src/parse.rs:20", harness_path="/fuzz/parse.rs", runner="cargo fuzz",
-        control_path="none", expected="pass",
+        control_path="none", expected="pass", state="executed",
     )]))
     assert not any(g["bucket"] == "harnesses" for g in doc["stamping_gaps"])
+
+
+def test_a_broken_harness_with_no_re_author_wisp_reaches_the_register(bd_factory):
+    """A harness that reports itself broken closes nothing on its own.
+
+    Measured: one campaign ran roughly a dozen harnesses that reported themselves broken --
+    one honestly at rc=3 saying its own canary never fired -- and filed ZERO re-author
+    wisps. Every one of those entry points read as uncovered rather than as needing a
+    rewrite, and the allowlist breadth one was written to measure is still untested.
+    """
+    doc, _ = report(bd_factory, export([harness("e.1.70",
+        entry_point="scripts/gitleaks-allowlist-coverage.sh:1",
+        harness_path="/h/allowlist.sh", runner="fuzz-cli", control_path="none",
+        expected="fail", state="invalid",
+    )]))
+    entry = next(r for r in doc["not_executed"]
+                 if r["kind"] == "broken-harness-with-no-re-author-route")
+    assert entry["id"] == "e.1.70"
+    assert "gitleaks-allowlist-coverage.sh:1" in entry["locus"]
+
+
+def test_a_broken_harness_a_re_author_wisp_supersedes_is_not_flagged(bd_factory):
+    # The register is for a broken harness with NO route back. Once the wisp exists the
+    # rewrite is tracked, so flagging it again would train authors to ignore the register.
+    doc, _ = report(bd_factory, export([
+        harness("e.1.71", entry_point="a.sh:1", harness_path="/h/a.sh", runner="fuzz-cli",
+                control_path="none", expected="fail", state="invalid"),
+        harness("e.1.72", entry_point="a.sh:1", harness_path="/h/a.sh", runner="fuzz-cli",
+                control_path="none", expected="fail", state="open",
+                supersedes="e.1.71", reason="fails-in-own-fixture"),
+    ]))
+    assert not any(r["kind"] == "broken-harness-with-no-re-author-route"
+                   for r in doc["not_executed"])
+
+
+def test_a_harness_with_no_state_is_a_gap_because_broken_and_clean_look_alike(bd_factory):
+    # Measured: 192 of 193 harness wisps in one campaign carried no `state`, so a harness
+    # that never ran and one that ran clean were the same record.
+    doc, _ = report(bd_factory, export([harness("e.1.73",
+        entry_point="a.rs:1", harness_path="/h/a.rs", runner="cargo fuzz",
+        control_path="none", expected="pass",
+    )]))
+    gap = next(g for g in doc["stamping_gaps"] if g["bucket"] == "harnesses")
+    assert "state" in gap["issue"]
 
 
 def test_an_explicit_null_is_accepted_where_a_field_does_not_apply(bd_factory):

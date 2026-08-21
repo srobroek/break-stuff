@@ -66,8 +66,10 @@ KEEP_META = {
     # them here is why a challenger asking for the control had nowhere to read it. Measured:
     # all 23 harness wisps in one campaign carried no control_path, two briefs MUST it, and
     # no part of the pipeline noticed.
+    # `supersedes` and `reason` are what make a re-author wisp a re-author wisp; without
+    # them it renders as another harness and the request it carries is invisible.
     "harnesses": ["entry_point", "runner", "harness_path", "input_shape", "control_path",
-                  "expected", "state"],
+                  "expected", "state", "supersedes", "reason"],
     # The triager's own brief prescribes nine keys; keeping two of them dropped the
     # minimization entirely. Measured: a triager minimized 6 crashes to 65/185/71/81/2880/3
     # bytes, wrote the files to disk, and stamped them under its own invented names
@@ -105,7 +107,8 @@ CRASH_REQUIRED = ["state", "kind", "minimized_path", "repro_cmd", "repro_rc", "d
 # no guard, because the challenger's tiering rule turns on knowing which of those two it is.
 # Measured: 23 of 23 harness wisps in one campaign omitted it while two briefs MUST it, so
 # every guard assertion on the run was untierable and nothing in the pipeline said so.
-HARNESS_REQUIRED = ["entry_point", "harness_path", "runner", "control_path", "expected"]
+HARNESS_REQUIRED = ["entry_point", "harness_path", "runner", "control_path", "expected",
+                    "state"]
 
 # Ranking, in order. Five keys, because a run producing hundreds of findings is read
 # top-down and then abandoned; the reader's attention is the scarce resource.
@@ -412,7 +415,7 @@ def systemic_patterns(groups):
     return out
 
 
-def not_executed_register(findings, coverage, surfaces):
+def not_executed_register(findings, coverage, surfaces, harnesses=()):
     """One line per unexercised dimension, with its reason.
 
     `not_executed_reason` is a first-class field rather than an absence, because a
@@ -434,6 +437,24 @@ def not_executed_register(findings, coverage, surfaces):
                 "surface": f.get("surface"), "locus": f.get("locus"),
                 "reason": "the benign control did not pass, so this locus is UNTESTED "
                           "and the finding cannot be trusted either way",
+            })
+    # A harness the gremlin found broken leaves its entry point uncovered, and the brief
+    # requires a re-author wisp naming what to rewrite. Nothing enforced that. Measured: one
+    # campaign ran roughly a dozen harnesses that reported themselves broken -- one at rc=3
+    # saying its own canary never fired -- and filed ZERO re-author wisps, so every one of
+    # those entry points read as uncovered rather than as needing a rewrite. Separately, 192
+    # of 193 harness wisps carried no `state` at all, which makes a broken harness and a
+    # clean run the same record.
+    superseded = {h.get("supersedes") for h in harnesses if h.get("supersedes")}
+    for h in harnesses:
+        if h.get("state") in ("invalid", "broken") and h.get("id") not in superseded:
+            register.append({
+                "kind": "broken-harness-with-no-re-author-route", "id": h.get("id"),
+                "surface": h.get("surface"), "locus": h.get("entry_point"),
+                "reason": "this harness is invalid and no wisp supersedes it, so its entry "
+                          "point is UNTESTED with no route back. File the re-author wisp "
+                          "the gremlin brief prescribes; a harness that reports itself "
+                          "broken closes nothing on its own",
             })
     for c in coverage:
         # `scanners_skipped` is a list of NAMES. A count in its place is not a smaller
@@ -644,7 +665,7 @@ def main():
     report["groups"] = group_findings(report["findings"], threat)
     report["systemic_patterns"] = systemic_patterns(report["groups"])
     report["not_executed"] = not_executed_register(
-        report["findings"], report["coverage"], report["surfaces"]
+        report["findings"], report["coverage"], report["surfaces"], report["harnesses"]
     )
 
     by_tier, by_impact = {}, {}
