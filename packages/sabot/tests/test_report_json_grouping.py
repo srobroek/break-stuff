@@ -544,6 +544,51 @@ def test_control_path_none_is_accepted_for_a_harness_asserting_no_guard(bd_facto
     assert not any(g["bucket"] == "harnesses" for g in doc["stamping_gaps"])
 
 
+def coverage_wisp(bid, **meta):
+    base = {"run_id": "run-A", "surface": "code", "scanners_run": ["opengrep"],
+            "scanners_skipped": [], "harnesses_run": 2, "harnesses_total": 2}
+    base.update(meta)
+    return {
+        "id": bid, "issue_type": "task", "title": "coverage", "status": "open",
+        "metadata": base, "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
+    }
+
+
+def test_an_absent_entry_point_ratio_is_registered_not_read_as_full_coverage(bd_factory):
+    """The unstamped-ratio check needed two ints to fire, so omitting the field passed.
+
+    Measured: 24 of 27 coverage records in one campaign carried no `entry_points_total`,
+    leaving what fraction of each surface was reached unknown while the harness counts read
+    complete. The brief already says to stamp 0 with the mechanism when counting is blocked.
+    """
+    doc, _ = report(bd_factory, export([finding("e.1.1")], coverage=False) +
+                    [coverage_wisp("e.1.95")])
+    entry = next(r for r in doc["not_executed"]
+                 if r["kind"] == "entry-point-ratio-not-stamped")
+    assert entry["id"] == "e.1.95"
+
+
+def test_a_total_with_no_executed_count_is_registered_too(bd_factory):
+    # "706 entry points" and no reached count reads identically to having reached all 706.
+    doc, _ = report(bd_factory, export([finding("e.1.1")], coverage=False) +
+                    [coverage_wisp("e.1.96", entry_points_total=706)])
+    entry = next(r for r in doc["not_executed"]
+                 if r["kind"] == "entry-point-ratio-not-stamped")
+    assert "706" in entry["reason"]
+
+
+def test_a_stamped_zero_of_n_is_the_unexecuted_line_not_the_unstamped_one(bd_factory):
+    # 0 of 199 is a stamped, honest answer: it belongs in the coverage register as an
+    # unexercised surface, never as a stamping omission.
+    doc, _ = report(bd_factory, export([finding("e.1.1")], coverage=False) +
+                    [coverage_wisp("e.1.97", entry_points_total=199,
+                                   entry_points_executed=0)])
+    kinds = {r["kind"] for r in doc["not_executed"]}
+    assert "entry-points-unexecuted" in kinds
+    assert "entry-point-ratio-not-stamped" not in kinds
+
+
 def test_the_summary_totals_where_findings_came_from(bd_factory):
     """A skill rule requires the report to say when stock packs carried the campaign.
 

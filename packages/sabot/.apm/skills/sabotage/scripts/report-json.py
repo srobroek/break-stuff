@@ -511,7 +511,30 @@ def not_executed_register(findings, coverage, surfaces, harnesses=()):
         # 706 entry points is 2% coverage reported as complete, and one node enumerated
         # 199 handlers and executed 0 of them.
         ep_run, ep_total = c.get("entry_points_executed"), c.get("entry_points_total")
-        if isinstance(ep_run, int) and isinstance(ep_total, int) and ep_run < ep_total:
+        if not isinstance(ep_total, int):
+            # The brief says stamp `entry_points_executed: 0` with the mechanism in
+            # `not_executed_reason` when the count is blocked, because an absent ratio is
+            # the same blank as a full one. Nothing enforced it, and the check above needs
+            # two ints to fire at all -- so omitting the field silently bought a pass.
+            # Measured: 24 of 27 coverage wisps carried no entry_points_total, leaving the
+            # surface ratio unknown almost everywhere while the harness counts read complete.
+            register.append({
+                "kind": "entry-point-ratio-not-stamped", "id": c.get("id"),
+                "surface": c.get("surface"), "locus": None,
+                "reason": "this coverage record carries no entry_points_total, so what "
+                          "fraction of the surface was reached is unknown. A harness ratio "
+                          "measures the harnesses; stamp the count, or stamp 0 with the "
+                          "mechanism when counting is blocked",
+            })
+        elif not isinstance(ep_run, int):
+            register.append({
+                "kind": "entry-point-ratio-not-stamped", "id": c.get("id"),
+                "surface": c.get("surface"), "locus": None,
+                "reason": f"this coverage record counts {ep_total} entry point(s) and does "
+                          "not say how many were reached, which reads identically to "
+                          "having reached all of them",
+            })
+        elif ep_run < ep_total:
             register.append({
                 "kind": "entry-points-unexecuted", "id": c.get("id"),
                 "surface": c.get("surface"), "locus": None,
