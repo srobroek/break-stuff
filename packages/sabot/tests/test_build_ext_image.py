@@ -47,10 +47,13 @@ def make_repo(root: Path, files: dict[str, str]):
     )
 
 
-def dry_run(target: Path, base="sabot/rust:1", tag="sabot/rust-ext:1"):
+def dry_run(target: Path, base="sabot/rust:1", tag="sabot/rust-ext:1", stack_skip=""):
+    # SABOT_STACK_SKIP pins the base's provisionable stacks so the emitted Dockerfile
+    # does not depend on which surface images this host happens to have built.
     r = subprocess.run(
         ["bash", str(SCRIPT), "--target", str(target), "--base", base, "--tag", tag, "--dry-run"],
         capture_output=True, text=True,
+        env=dict(os.environ, SABOT_STACK_SKIP=stack_skip),
     )
     assert r.returncode == 0, r.stderr
     return r.stdout
@@ -105,6 +108,28 @@ def test_one_run_per_bake_unit(tmp_path):
     copied = {f for l in df.splitlines() if l.startswith("COPY") for f in l.split()[2:-1]}
     assert "src-tauri/Cargo.toml" in copied, df
     assert "src-tauri/src/lib.rs" in copied, df
+
+
+def test_unprovisionable_stack_is_skipped_not_emitted(tmp_path):
+    """A base image carries ONE stack's toolchain; a unit it cannot run kills the image.
+
+    Measured on platevault: sabot/rust:1 has no npm, so a single node bake unit failed
+    `npm ci` with rc=127 at step 7 of 122 and the whole ext build was lost -- after six
+    successful rust steps. A stack the base cannot provision is a gap for that surface's
+    own ext image, not a reason to lose this one.
+    """
+    make_repo(tmp_path, {
+        "Cargo.toml": "[package]\nname='x'\n",
+        "Cargo.lock": "",
+        "frontend/package.json": '{"name":"f"}',
+        "frontend/package-lock.json": "{}",
+    })
+    df = dry_run(tmp_path, base="sabot/rust:1", stack_skip="node")
+    steps = [l for l in df.splitlines() if l.startswith(("RUN ", "COPY "))]
+    assert any("cargo fetch" in l for l in steps)
+    # the unconditional npm_config_cache ENV stays; no npm STEP may be emitted
+    assert not [l for l in steps if "npm" in l], df
+    assert not [l for l in steps if "frontend" in l], df
 
 
 def test_copy_precedes_its_run_so_layer_caches_on_lock(tmp_path):

@@ -40,6 +40,24 @@ MANIFESTS = {
 }
 
 
+# Agentic-tooling config is not part of any target (SKILL.md, step 1), so its manifests
+# are not bake units either. Measured: platevault tracks
+# .agents/skills/react-components/package-lock.json, which made a node bake unit inside a
+# RUST ext build; the rust base carries no npm, so `npm ci` died 127 and the whole image
+# was lost -- a target's assistant config broke provisioning for its actual code.
+# Matched on the leading path segment, since these are all repo-root config dirs.
+TOOLING_DIRS = (
+    ".claude", ".codex", ".agents", ".cursor", ".continue", ".windsurf", ".aider",
+    ".gemini", ".opencode", ".kiro", ".amazonq", ".roo", ".cline", ".goose",
+)
+
+
+def is_tooling_path(rel):
+    """True for a path under a coding-assistant config dir rather than the product."""
+    head = rel.replace("\\", "/").split("/", 1)[0]
+    return head in TOOLING_DIRS or head.startswith(".aider")
+
+
 def tracked_files(repo):
     """Every tracked file, so .gitignore is honored and untracked scratch is skipped."""
     try:
@@ -69,7 +87,7 @@ def detect(repo):
     manifests = []
     for rel in files:
         name = os.path.basename(rel)
-        if name not in MANIFESTS:
+        if name not in MANIFESTS or is_tooling_path(rel):
             continue
         stack, locks, fetch = MANIFESTS[name]
         directory = os.path.dirname(rel) or "."

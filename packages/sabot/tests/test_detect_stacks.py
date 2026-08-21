@@ -103,6 +103,36 @@ def test_gitignored_manifest_is_skipped(tmp_path):
     assert all("vendor" not in m["manifest"] for m in out["manifests"])
 
 
+def test_agentic_tooling_config_is_not_a_bake_unit(tmp_path):
+    # Regression: platevault tracks .agents/skills/react-components/package.json, which
+    # became a node bake unit in a RUST ext image. `npm ci` in the rust base died 127 and
+    # took the whole image with it. Assistant config is out of every target (SKILL.md
+    # step 1), so it is out of provisioning too.
+    make_repo(tmp_path, {
+        "Cargo.toml": "[package]\nname='x'\n",
+        ".agents/skills/react-components/package.json": '{"name":"rc"}',
+        ".claude/tools/package.json": '{"name":"ct"}',
+        ".cursor/helper/pyproject.toml": "[project]\nname='h'\n",
+    })
+    out = json.loads(run(tmp_path).stdout)
+    assert out["stacks"] == ["rust"]
+    assert out["multi_language"] is False
+    assert [m["manifest"] for m in out["manifests"]] == ["Cargo.toml"]
+    assert "npm" not in run(tmp_path, "--bake").stdout
+
+
+def test_product_code_named_like_an_agent_still_bakes(tmp_path):
+    # The exclusion is the leading path segment only. A shipped agentic app under src/
+    # is in scope on a whole-repo run, so its manifest must still provision.
+    make_repo(tmp_path, {
+        "Cargo.toml": "[package]\nname='x'\n",
+        "src/agents/package.json": '{"name":"app"}',
+    })
+    out = json.loads(run(tmp_path).stdout)
+    assert out["stacks"] == ["node", "rust"]
+    assert any(m["manifest"] == "src/agents/package.json" for m in out["bake_units"])
+
+
 def test_bake_emits_command_lines(tmp_path):
     make_repo(tmp_path, {"go.mod": "module x\n", "go.sum": ""})
     r = run(tmp_path, "--bake")

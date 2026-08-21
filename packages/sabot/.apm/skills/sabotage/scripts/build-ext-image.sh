@@ -57,6 +57,42 @@ DETECT="$HERE/detect-stacks.py"
 DETECT_JSON="$(python3 "$DETECT" --repo "$TARGET")" || {
   echo "build-ext-image: detect-stacks.py failed on $TARGET" >&2; exit 3; }
 
+DK=""
+if command -v docker >/dev/null 2>&1; then DK="docker"
+elif command -v finch >/dev/null 2>&1; then DK="finch"
+fi
+
+# --dry-run only prints a Dockerfile, so it stays runnable with no runtime and no base
+# image; a real build needs both, and says which one is missing.
+if [ "$DRYRUN" -eq 0 ]; then
+  [ -n "$DK" ] || { echo "build-ext-image: no container runtime (docker/finch) on PATH" >&2; exit 3; }
+  $DK image inspect "$BASE" >/dev/null 2>&1 || {
+    echo "build-ext-image: base image not found: $BASE (build it from references/containers/)" >&2; exit 3; }
+elif [ -n "$DK" ] && ! $DK image inspect "$BASE" >/dev/null 2>&1; then
+  DK=""   # cannot probe an absent base; emit every unit rather than guess a skip
+fi
+
+# A surface image carries one stack's toolchain: sabot/rust:1 has cargo and no npm.
+# A multi-language target still yields bake units for every stack, and emitting a RUN
+# for one the base cannot execute loses the WHOLE image to `npm: not found` (rc=127) --
+# measured on platevault, where a single node unit killed a rust ext build after 6
+# successful steps. Probe the base for each stack's fetch binary and skip what it cannot
+# run, reporting the skip: an unprovisioned stack is a coverage gap for its own surface's
+# ext image, not a reason to lose this one.
+# SABOT_STACK_SKIP pins the list instead of probing (a test, or a base image not yet
+# built). Set it empty to emit every unit; leave it unset to let the base decide.
+STACK_SKIP="${SABOT_STACK_SKIP-}"
+if [ -n "$DK" ] && [ -z "${SABOT_STACK_SKIP+set}" ]; then
+  for probe in rust:cargo node:npm python:pip go:go; do
+    stack="${probe%%:*}"; bin="${probe##*:}"
+    $DK run --rm --network none --entrypoint sh "$BASE" \
+      -c "command -v $bin >/dev/null 2>&1" >/dev/null 2>&1 \
+      || STACK_SKIP="$STACK_SKIP $stack"
+  done
+fi
+[ -z "$STACK_SKIP" ] || printf 'build-ext-image: base %s cannot provision:%s (units skipped)\n' \
+  "$BASE" "$STACK_SKIP" >&2
+
 # Build the Dockerfile and the minimal context (manifests+locks only) from the map,
 # with python emitting BOTH so the COPY list and the temp-context file list agree.
 CTX="$(mktemp -d "${TMPDIR:-/tmp}/bs-ext-XXXXXX")"
@@ -64,7 +100,8 @@ cleanup() { rm -rf "${CTX:?}"; }
 trap cleanup EXIT
 
 DOCKERFILE="$(
-  BASE="$BASE" TARGET="$TARGET" CTX="$CTX" python3 - "$DETECT_JSON" <<'PY'
+  BASE="$BASE" TARGET="$TARGET" CTX="$CTX" STACK_SKIP="$STACK_SKIP" \
+  python3 - "$DETECT_JSON" <<'PY'
 import json, os, shutil, sys
 
 result = json.loads(sys.argv[1])
@@ -126,7 +163,10 @@ lines = [
 # One COPY + one RUN per bake unit, ordered so the dep layer caches on the
 # manifest+lock: only a lock change re-fetches. Copy ONLY manifest+lock, never the
 # source, so no audited code enters a layer.
+skip = set(os.environ.get("STACK_SKIP", "").split())
 for u in result["bake_units"]:
+    if u["stack"] in skip:
+        continue
     d = u["dir"]
     dest = "./" if d == "." else f"{d}/"
     copy_rel = [u["manifest"]] + [
@@ -186,14 +226,6 @@ if [ "$DRYRUN" -eq 1 ]; then
   printf '%s' "$DOCKERFILE"
   exit 0
 fi
-
-DK=""
-if command -v docker >/dev/null 2>&1; then DK="docker"
-elif command -v finch >/dev/null 2>&1; then DK="finch"
-else echo "build-ext-image: no container runtime (docker/finch) on PATH" >&2; exit 3; fi
-
-$DK image inspect "$BASE" >/dev/null 2>&1 || {
-  echo "build-ext-image: base image not found: $BASE (build it from references/containers/)" >&2; exit 3; }
 
 # Network is ON at build (the default): the toolchain's own resolver fetches exactly
 # what the manifest names, while no target code runs. Re-tagging is idempotent; the
