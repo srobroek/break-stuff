@@ -555,6 +555,51 @@ def coverage_wisp(bid, **meta):
     }
 
 
+def test_a_wisp_left_claimed_at_report_time_is_registered(bd_factory):
+    """An agent cannot close a wisp, so the release is a status change back to `open`.
+
+    Measured: 161 of 193 harness wisps were left `in_progress` at the end of one campaign.
+    Resume reads in_progress as in-flight and the gremlin's discovery query filters on
+    open, so a resumed run would have read all 161 as still running and found none of them
+    as work. A claim never released is the same as a harness lost.
+    """
+    w = harness("e.1.100", entry_point="a.rs:1", harness_path="/h/a.rs",
+                runner="cargo fuzz", control_path="none", expected="pass", state="executed")
+    w["status"] = "in_progress"
+    doc, _ = report(bd_factory, export([w]))
+    entry = next(r for r in doc["not_executed"] if r["kind"] == "wisp-left-claimed")
+    assert entry["id"] == "e.1.100"
+
+
+def test_a_released_wisp_is_not_flagged(bd_factory):
+    doc, _ = report(bd_factory, export([harness("e.1.101",
+        entry_point="a.rs:1", harness_path="/h/a.rs", runner="cargo fuzz",
+        control_path="none", expected="pass", state="executed")]))
+    assert not any(r["kind"] == "wisp-left-claimed" for r in doc["not_executed"])
+
+
+def test_a_scanner_run_list_stamped_as_a_count_is_registered(bd_factory):
+    """`scanners_run: 7` claims coverage while naming no tool that produced it.
+
+    Measured: 23 of 27 coverage records stamped it as a count and one as a string, while
+    findings on two surfaces recorded `source: stock-pack` for lints clippy actually
+    produced. Neither claim could be checked against the other.
+    """
+    doc, _ = report(bd_factory, export([finding("e.1.1")], coverage=False) +
+                    [coverage_wisp("e.1.98", scanners_run=7, entry_points_total=10,
+                                   entry_points_executed=10)])
+    entry = next(r for r in doc["not_executed"]
+                 if r["kind"] == "scanner-run-list-not-stamped")
+    assert entry["id"] == "e.1.98"
+
+
+def test_a_scanner_run_list_of_names_is_not_flagged(bd_factory):
+    doc, _ = report(bd_factory, export([finding("e.1.1")], coverage=False) +
+                    [coverage_wisp("e.1.99", scanners_run=["clippy", "opengrep"],
+                                   entry_points_total=10, entry_points_executed=10)])
+    assert not any(r["kind"] == "scanner-run-list-not-stamped" for r in doc["not_executed"])
+
+
 def test_an_absent_entry_point_ratio_is_registered_not_read_as_full_coverage(bd_factory):
     """The unstamped-ratio check needed two ints to fire, so omitting the field passed.
 
