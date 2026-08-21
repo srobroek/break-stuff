@@ -61,7 +61,13 @@ LABEL_BUCKET = [
 # report schema stays stable even when a bead carries extra stamps.
 KEEP_META = {
     "surfaces": ["surface", "scope"],
-    "harnesses": ["entry_point", "runner", "harness_path", "input_shape"],
+    # `control_path` and `expected` decide whether a harness result carries a verdict at
+    # all: a hostile failure beside a failing control confirms and refutes nothing. Dropping
+    # them here is why a challenger asking for the control had nowhere to read it. Measured:
+    # all 23 harness wisps in one campaign carried no control_path, two briefs MUST it, and
+    # no part of the pipeline noticed.
+    "harnesses": ["entry_point", "runner", "harness_path", "input_shape", "control_path",
+                  "expected", "state"],
     # The triager's own brief prescribes nine keys; keeping two of them dropped the
     # minimization entirely. Measured: a triager minimized 6 crashes to 65/185/71/81/2880/3
     # bytes, wrote the files to disk, and stamped them under its own invented names
@@ -94,6 +100,12 @@ FINDING_REQUIRED = [
 # a triager that stamped under non-canonical names produced exactly that shape: six wisps,
 # seven minimized files present, nothing in the report reaching them.
 CRASH_REQUIRED = ["state", "kind", "minimized_path", "repro_cmd", "repro_rc", "dedup_key"]
+
+# And for a harness wisp. `control_path` takes an explicit "none" when the harness asserts
+# no guard, because the challenger's tiering rule turns on knowing which of those two it is.
+# Measured: 23 of 23 harness wisps in one campaign omitted it while two briefs MUST it, so
+# every guard assertion on the run was untierable and nothing in the pipeline said so.
+HARNESS_REQUIRED = ["entry_point", "harness_path", "runner", "control_path", "expected"]
 
 # Ranking, in order. Five keys, because a run producing hundreds of findings is read
 # top-down and then abandoned; the reader's attention is the scarce resource.
@@ -612,6 +624,19 @@ def main():
                 "issue": f"crash wisp missing required field(s): {missing}. The minimized "
                          "input may well exist on disk; without these keys no part of this "
                          "report can reach it, and the crash reads as untriaged.",
+            })
+
+    # A harness wisp with no control_path leaves every guard it asserts untierable, and a
+    # blank field reads the same as a harness that deliberately asserts no guard.
+    for h in report["harnesses"]:
+        missing = [k for k in HARNESS_REQUIRED if k not in h]
+        if missing:
+            report["stamping_gaps"].append({
+                "id": h.get("id"), "bucket": "harnesses",
+                "issue": f"harness wisp missing required field(s): {missing}. Stamp "
+                         "control_path as \"none\" when the harness asserts no guard; the "
+                         "challenger cannot tier a hostile result without knowing whether a "
+                         "benign control existed and passed.",
             })
 
     threat = parse_meta(epic).get("threat")
