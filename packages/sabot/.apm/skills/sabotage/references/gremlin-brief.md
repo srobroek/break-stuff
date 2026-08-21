@@ -64,6 +64,12 @@ failure.
 MUST Choose the offline invocation up front, and check whether each pack is bundled in the image or fetched. Gremlins in one run retried a registry-backed pack as though the failure were transient, and every node that reported "scanner ran, 0 findings" had in fact never applied the standard pack.
 NOT Never retry a network failure, and never ask for network to complete a scan. Record the gap and continue.
 
+## Prove the scan scanned, with `assert-scan.py`
+
+MUST Wrap every scanner that writes an output file in `$SABOT_SKILL_DIR/scripts/assert-scan.py --output <file> --tool <name> -- <command>`, and read its verdict rather than the tool's exit code. It deletes a stale output first, then checks the file exists, is non-empty, parses, and reports a nonzero file count. Exit 11 is NOT EXECUTED and exit 7 is a tool failure for `classify-failure.py`; neither is a clean scan.
+MUST Report any file in its `partial_parse_files` as unmeasured, naming the file. A partial parse still counts in `paths.scanned`, so the file looks covered while no rule ever reached the unparsed region: opengrep exited 0 over this package having left 3 lines of `run-contained.sh` unanalysed by all 301 rules. A file count cannot detect this and a findings count of zero cannot either.
+MUST Run `$SABOT_SKILL_DIR/scripts/validate-generated.py` over every generated rule file before scanning with it, and treat a rule that fails to compile or load as NOT EXECUTED for the loci it was written for.
+
 ## A resource failure is INVALID, in both directions
 A run that hit a resource limit measured nothing. It is not a finding about the
 target, and it is not a clean surface.

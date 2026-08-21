@@ -109,6 +109,32 @@ def scanned_count(doc) -> tuple[int, str]:
     return len(seen), "distinct file references in the report"
 
 
+def partial_parse_files(doc) -> set[str]:
+    """Files a semgrep/opengrep run only PARTLY parsed, which `paths.scanned` still counts.
+
+    Measured on this package: opengrep exited 0 having "scanned" run-contained.sh, while
+    a JSON `errors` entry recorded PartialParsing over 3 of its 500 lines -- the
+    `${2:?message}` form. None of the 301 rules ever reached those lines, so a region of
+    a script that governs every contained run was unmeasured and read as clean. A file
+    count cannot see this: the file was opened, so it counts as scanned.
+    """
+    out: set[str] = set()
+    if not isinstance(doc, dict):
+        return out
+    for err in doc.get("errors") or []:
+        if not isinstance(err, dict):
+            continue
+        kind = err.get("type")
+        # opengrep nests the locations under the type: ["PartialParsing", [ {path..}, ]]
+        if isinstance(kind, list) and kind and kind[0] == "PartialParsing":
+            for loc in kind[1] if len(kind) > 1 and isinstance(kind[1], list) else []:
+                if isinstance(loc, dict) and loc.get("path"):
+                    out.add(str(loc["path"]))
+        elif isinstance(kind, str) and "PartialParsing" in kind and err.get("path"):
+            out.add(str(err["path"]))
+    return out
+
+
 def findings_count(doc) -> int | None:
     if isinstance(doc, dict):
         for key in ("results", "findings", "Results", "vulnerabilities"):
@@ -247,6 +273,12 @@ def main(argv: list[str] | None = None) -> int:
             "disk; do not report it as a clean scan, and do not retry it as though it "
             "were transient.",
         )
+
+    unparsed = partial_parse_files(doc)
+    report["partial_parse_files"] = sorted(unparsed)
+    note("fully_parsed", not unparsed,
+         "no PartialParsing" if not unparsed
+         else f"{len(unparsed)} file(s) only partly parsed: {sorted(unparsed)[:5]}")
 
     if rc != 0:
         return _finish(

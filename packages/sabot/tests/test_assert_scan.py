@@ -210,3 +210,36 @@ def test_an_output_directory_is_refused_rather_than_deleted(tmp_path):
     r = run("--output", str(outdir), "--", "/bin/true")
     assert r.returncode == EXIT_NOT_EXECUTED
     assert (outdir / "keep.json").exists(), "a directory output must never be deleted"
+
+
+def test_a_partly_parsed_file_is_reported_though_it_counts_as_scanned(tmp_path):
+    """`paths.scanned` counts a file opened, not a file the rules reached.
+
+    Measured on this package: opengrep exited 0 having "scanned" run-contained.sh while
+    a PartialParsing error covered 3 of its 500 lines (the `${2:?message}` form), so none
+    of the 301 rules ever ran there. The file count cannot see it. A partial parse is a
+    coverage gap, not a failed run, so the check reports it without changing the exit.
+    """
+    out = tmp_path / "og.json"
+    out.write_text(json.dumps({
+        "results": [],
+        "paths": {"scanned": ["a.sh", "b.sh"]},
+        "errors": [{"code": 3, "level": "warn", "type": [
+            "PartialParsing", [{"path": "b.sh", "start": {"line": 105, "col": 39}}]]}],
+    }))
+    r = run("--output", str(out), "--tool", "opengrep", "--verify-only", "--json")
+    assert r.returncode == 0, r.stdout + r.stderr
+    doc = json.loads(r.stdout)
+    assert doc["partial_parse_files"] == ["b.sh"]
+    check = next(c for c in doc["checks"] if c["name"] == "fully_parsed")
+    assert check["ok"] is False, doc["checks"]
+
+
+def test_no_parse_errors_reports_fully_parsed(tmp_path):
+    out = tmp_path / "og.json"
+    out.write_text(semgrep_report(["a.sh"]))
+    r = run("--output", str(out), "--tool", "opengrep", "--verify-only", "--json")
+    assert r.returncode == 0, r.stdout + r.stderr
+    doc = json.loads(r.stdout)
+    assert doc["partial_parse_files"] == []
+    assert next(c for c in doc["checks"] if c["name"] == "fully_parsed")["ok"] is True
