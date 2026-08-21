@@ -14,11 +14,19 @@
 FROM debian:stable-slim
 
 # Cross-surface floor: shell tools + config scanners that apply to any target.
+#
+# `just` is here for the same reason shellcheck is: a repo's task runner IS its shell
+# entry-point surface, and every recipe is an unfuzzed argv boundary. Measured: a
+# 49-vector harness against a 34-recipe justfile could not run at all because no image
+# carried the binary, and under --network none there is no runtime repair -- so the
+# recipe-name resolution boundary read as untested rather than as tool-missing. Debian
+# trixie packages it, so it costs one apt name and no pin of ours.
 RUN apt-get update -q \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl git ripgrep shellcheck jq python3 python3-pip unzip \
+      ca-certificates curl git ripgrep shellcheck just jq python3 python3-pip unzip \
  && rm -rf /var/lib/apt/lists/* \
- && ln -s /usr/bin/rg /usr/local/bin/ripgrep
+ && ln -s /usr/bin/rg /usr/local/bin/ripgrep \
+ && just --version
 
 # Binary scanners, pinned and arch-aware. dpkg --print-architecture gives the
 # Debian arch (arm64|amd64); each release names its arm64 asset differently, so

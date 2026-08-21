@@ -180,6 +180,15 @@ class Runner:
             return b"", b"", -1, "timeout"
         except OSError as e:
             return b"", str(e).encode(), -1, "oserror"
+        except ValueError as e:
+            # An embedded NUL in an argv element raises ValueError out of _fork_exec,
+            # which is not an OSError and so escaped the handler above and aborted the
+            # whole run. Measured: one NUL vector took all 49 vectors of a justfile
+            # harness with it, and the traceback read as a defect in the target. The NUL
+            # is refused by execve, not by the target, so this is a vector the OS cannot
+            # deliver -- reported as undeliverable rather than as a target result, because
+            # calling it a pass would claim the boundary was tested.
+            return b"", str(e).encode(), -1, "undeliverable"
         status = "signal" if p.returncode < 0 else "ok"
         return p.stdout, p.stderr, p.returncode, status
 
@@ -294,6 +303,16 @@ def check_structural(r: Runner, findings: list[Finding], mode: str, max_bytes: i
         if status == "oserror":
             findings.append(Finding("INVALID", case, f"could not execute: {err.decode(errors='replace')[:200]}"))
             continue
+        if status == "undeliverable":
+            # execve refused the argv before the target saw it, so the boundary is
+            # UNTESTED rather than clean. Falling through to the expect checks would
+            # score a vector the target never received as a pass.
+            findings.append(Finding(
+                "INVALID", case,
+                "the OS refused to deliver this vector "
+                f"({err.decode(errors='replace')[:120]}); the target never received it, "
+                "so this boundary is UNTESTED"))
+            continue
 
         # A Python traceback on stderr is a crash even when the exit code lies.
         stderr_txt = err.decode("utf-8", "replace")
@@ -399,6 +418,16 @@ def check_vectors(r: Runner, findings: list[Finding], vectors: list[dict], mode:
             continue
         if status == "oserror":
             findings.append(Finding("INVALID", case, "could not execute target"))
+            continue
+        if status == "undeliverable":
+            # execve refused the argv before the target saw it, so the boundary is
+            # UNTESTED rather than clean. Falling through to the expect checks would
+            # score a vector the target never received as a pass.
+            findings.append(Finding(
+                "INVALID", case,
+                "the OS refused to deliver this vector "
+                f"({err.decode(errors='replace')[:120]}); the target never received it, "
+                "so this boundary is UNTESTED"))
             continue
 
         if expect == "no-crash":
