@@ -161,7 +161,7 @@ RUN set -eux; \
       { echo "sabot python: shrinkray did not reduce the 60-byte input" >&2; exit 1; }; \
     echo "shrinkray: 60 bytes down to $(wc -c < big.txt)"; \
     \
-    cd /; rm -rf "$probe"
+    cd /; rm -rf "${probe:?}"
 
 USER breaker
 WORKDIR /scratch

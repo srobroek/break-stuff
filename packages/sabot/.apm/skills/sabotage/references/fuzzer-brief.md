@@ -60,7 +60,7 @@ parser. Stamp it on the harness wisp as `input_shape`.>
 
 ## Repo conventions (mirror these)
 - Fuzz target location: <fuzz/fuzz_targets/ | *_test.go | tests/fuzz/ | none found>
-- Test runner: <cargo test | go test | pytest | vitest>
+- Test runner: <cargo test --no-fail-fast | go test | pytest | vitest> (a fail-fast runner over many binaries reports the first failure, not the surface, which is an INVALID run rather than a low finding count)
 - Existing fixtures to seed from: <paths>
 - Property-test library already in the project: <proptest | hypothesis | fast-check | none>
 
@@ -90,12 +90,40 @@ harness that EXECUTES it. A destructive-looking payload is data the target parse
    `scripts/fuzz-cli.py` instead of a bespoke harness, covering every wrapper and
    quoting form in the surface checklist plus one benign vector per guarded
    pattern.
-4. One harness wisp per harness, filed with the command below (not from memory).
+4. A benign control for every harness that asserts a guard, paired with the hostile
+   one and named `<harness>_control`. The control feeds an input the guard MUST
+   accept. Without it, a failing hostile harness proves nothing: the failure may be
+   the guard working, the harness being broken, or the fixture not building. Stamp
+   `control_path` on the wisp. One control per assertion, and never two assertions in
+   one test: a shared test stops at the first panic and leaves the second assertion
+   unfired while appearing to have run.
+5. One harness wisp per harness, filed with the command below (not from memory).
    `--parent <surface>` and `run_id` are both required, or the harness is invisible
    to the gremlin's discovery query and never runs:
 
      HARNESS=$(bd create "harness: <entry point>" --parent <surface-bead> --labels sab-harness,non-work --json \
-       --metadata '{"run_id":"<RUN_ID>","entry_point":"<file:line>","runner":"<cargo fuzz|pytest|fuzz-cli>","harness_path":"<path>","input_shape":"<from recon>"}' | jq -r '.id')
+       --metadata '{"run_id":"<RUN_ID>","entry_point":"<file:line>","runner":"<cargo fuzz|pytest|fuzz-cli>","harness_path":"<path>","control_path":"<path or none>","expected":"<pass|fail>","input_shape":"<from recon>"}' | jq -r '.id')
+
+## Prove the files exist before you return
+Run `wc -l` over every path you claim to have written, and paste the output verbatim
+into your return, one line per file. Every `harness_path` and `control_path` you
+stamped must appear in it. Anything absent from that output you did not write, and
+must not report as written.
+
+A run lost two surfaces to this: a fuzzer reported authoring `fuzz/` trees under two
+crates, the trees never existed, the claim reached the dispatch table as a new repo
+convention, and two gremlins were sent to run harnesses that were never on disk.
+
+Every authored artifact needs the same proof, not harnesses alone:
+
+| Artifact | Proof in the return |
+|---|---|
+| harness, control, seed corpus | `wc -l` over the path |
+| scenario or attack-vector file | `wc -l` over the path |
+| rule file | `wc -l` plus the tool's own `rules_loaded` count, per `scout-brief.md` |
+| a directory you created (`fuzz/`, `corpus/`) | `ls -ld` over the directory |
+
+MUST Author and verify in one step, before the return. A claim made in one step and checked in another is a claim nobody checks, and the receiving gremlin treats an unproven path as NOT EXECUTED.
 
 ## Return
 The Fuzzer Output format from your agent definition: a coverage block, a harness
@@ -116,3 +144,9 @@ findings; finding them is the gremlin's job.
   location writes files the project's test command never finds.
 - **Never ask a fuzzer to run its own harness.** The write and execute split is
   what keeps a silently-broken harness from reporting a clean result.
+- **Require the `wc -l` block in the return, and check it against the wisp
+  metadata.** A fuzzer's report that it wrote a file is not evidence the file exists,
+  and verifying costs one command.
+- **Ask for the expected outcome per harness, and the control that makes it legible.**
+  A harness the fuzzer expects to FAIL is a prediction, and a prediction with no
+  passing control is unreadable when it comes back either way.

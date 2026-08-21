@@ -120,7 +120,7 @@ RUN set -eux; \
     : > "$seed/go.sum"; \
     XDG_CACHE_HOME=/opt/sabot-db/osv \
       osv-scanner scan source --download-offline-databases --offline-vulnerabilities -r "$seed" || true; \
-    rm -rf "$seed"
+    rm -rf "${seed:?}"
 
 WORKDIR /scratch
 VOLUME /artifacts

@@ -127,7 +127,7 @@ EOF
 mkdir -p "$FUZZDEPS/src"
 : > "$FUZZDEPS/src/lib.rs"
 (cd "$FUZZDEPS" && CARGO_HOME=/deps/cargo cargo fetch)
-rm -rf "$FUZZDEPS"
+rm -rf "${FUZZDEPS:?}"
 chown -R 1000:1000 /deps
 
 # World-readable so the non-root user reads the toolchain, registry cache, and db.

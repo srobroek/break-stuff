@@ -1,10 +1,33 @@
 # Report template
 
-The step-8 output. Read the finding set from beads rather than from the agents'
-replies, so the report matches the durable graph.
+The step-8 output, and a rendering of the finding beads rather than a document
+authored from the agents' replies. Every column below maps to a field in the finding
+wisp schema in `beads-store.md`; a blank column means a missing field on a wisp, so
+the fix is the stamp rather than the prose.
 
 Every finding carries both axes and a bead ID, and a section that does not apply is
 dropped rather than padded.
+
+## Ordering, grouping, and counting
+
+A run producing hundreds of findings needs an ordering rule, since the reader stops
+partway down. Rank on the fields already on the wisp:
+
+| Rank key | Order | Read from |
+|---|---|---|
+| 1. tier | PROVEN, REACHABLE, HARDENING, REFUTED | `tier` |
+| 2. impact | CRITICAL, HIGH, MEDIUM, LOW | `impact` |
+| 3. threat alignment | findings matching the epic's stamped `threat` first | `threat` on the epic against `cwe` on the wisp |
+| 4. instance count | descending | `instance_count` on the group representative |
+| 5. locus | lexical, so the order is stable across renders | `locus` |
+
+One row per GROUP, never per instance. A group's row shows the representative's locus
+and its `instance_count`, and its instances go to a nested list or an appendix.
+
+MUST Order every findings table by the five keys above. An unordered table of 251 rows hides its own CRITICAL rows.
+MUST Use the epic's stamped `threat` as rank key 3. One run stamped a threat model and then ordered by nothing, so the model influenced no output.
+MUST Report three counts separately: groups, instances, and wisps. One run reported 251 findings where the group count was near 30, which overstates the defect count and understates each one.
+MUST Render every table from the beads query, and cite the query in the report footer. A report typed from agent replies drifts from the graph, and the graph is what the next campaign resumes from.
 
 ---
 
@@ -41,10 +64,63 @@ worse off than one who knows its limits.
 Gap reasons, stated precisely:
 - `SKIPPED (scoped)` -- global-class analysis on a bounded target
 - `SKIPPED (not installed)` -- with the install command
+- `SKIPPED (budget)` -- named the tool recon aimed ON that the clock displaced
+- `NOT EXECUTED (requires network)` -- the tool or its ruleset fetches from a
+  registry, and every container runs `--network none`
 - `INVALID` -- the scanner or harness crashed, so nothing was tested
+- `NOT EXECUTED` -- the tool or harness never ran; the reason distinguishes absent
+  from unreachable from never-written
+- `UNTESTED` -- it ran and produced no verdict, because its benign control failed or
+  its assertion never fired
 - `budget_exhausted` -- the harness hit its cap with coverage still climbing, and
   the remaining budget needed
 - `N/A` -- no tool exists for this dimension on this stack
+
+### NOT-EXECUTED register
+
+One row per dimension the campaign did not exercise, with a reason on every row.
+Every entry here is a limit on the report's central claim, so the register is
+mandatory even when the run found plenty.
+
+| Dimension | Reason | Consequence for the claim |
+|---|---|---|
+| interprocedural taint (CodeQL) | OFF on cost | every dataflow path in the report was traced by hand |
+| stock ruleset for the code surface | `requires network`, and every container runs `--network none` | only locally-authored rules ever ran, so no standard pack was applied on any surface |
+| a harness set on one surface | INVALID on a resource limit (SIGKILL/137, ENOSPC, image I/O error, lost log) | the surface is UNTESTED, in both directions |
+| justfile recipes | the runner is absent from every image | UNTESTED |
+| exhaustive interleavings | the model checker is absent from the lockfile | concurrency findings are sampled, not exhaustive |
+| power-loss durability | untestable in-process | the durability half of the claim is unmeasured |
+| git-history secret scan | the worktree `.git` is a pointer outside the mount, so the scanner saw 0 commits and exited 0 | INVALID, never clean |
+| N of M command handlers | unreachable by any harness | the boundary is read-traced only |
+| one crate | every executable vector fills the disk, which the authoring ban forbids | accepted gap, deliberate |
+
+### Tool-integrity certification
+
+Per surface, the evidence that each tool ran. A surface without this row is a gap.
+
+| Surface | Compiler verified | Test binaries at nonzero counts | `running 0 tests` count | Scanner results parsed | Any result resting on a wrapper exit code |
+|---|---|---|---|---|---|
+| code | `/usr/local/cargo/bin/cargo` 1.97.1 | 13, named | 0 | JSON, 38 files | none |
+
+### Structurally closed classes
+
+Classes no finding could exist in, with the census that establishes it. "We found no
+X" and "X is impossible here" are different claims, and only the second is worth
+reading.
+
+| Class | Closed by | Census | Role affected |
+|---|---|---|---|
+| memory safety | `unsafe_code = "forbid"` at `Cargo.toml:31` | 0 `unsafe` blocks over 44 crates | triager: 0 crash wisps over 15 node-runs, no-op |
+
+### Premise corrections
+
+Facts the campaign's own dispatch asserted and later measured false. Each one cost
+agent time, and the count is a measure of how well the run was aimed.
+
+| Premise as dispatched | What is true | Cost |
+|---|---|---|
+| a coverage gap at `seed-builder/src/main.rs:31` | a `//!` doc-comment line; nothing was ever there | 4 agents told to chase it |
+| the install path is unreachable | no shipped entry point reaches it, and it IS production source called from `installer.rs:15` | both prior claims half wrong; 4 findings reclassified as pre-wiring defects |
 
 ## Recon
 
@@ -66,6 +142,16 @@ Finding provenance, which shows whether recon did the work:
 | Harnesses asserting a recon invariant | 4 | 27% |
 | Standard packs, placed on a path by the trust map | 3 | 20% |
 | Standard packs, unplaced (HARDENING) | 2 | 13% |
+
+## Systemic patterns
+
+The step-8.5 output, placed above the individual findings because a shape repeating
+across nodes is a stronger statement than any of its instances. Drop the section only
+when the synthesis pass found no `root_cause` spanning two nodes.
+
+| # | Bead | Impact | Pattern | Instances | Nodes | What it says about the codebase |
+|---|---|---|---|---|---|---|
+| P1 | sab-40 | HIGH | a safety mechanism is built and never wired to a caller, and its self-check reports success | 8 | code, shell, infra | the review process accepts a mechanism's existence as evidence it runs |
 
 ## PROVEN findings
 
@@ -152,6 +238,15 @@ re-reported.
 
 | Source | Rule | Where |
 |---|---|---|
+
+Suppression accounting, since the unreasoned count is itself a finding:
+
+| Measure | Count | Effect |
+|---|---|---|
+| total suppressions | 331 | the size of the deliberately-unscanned surface |
+| with a stated reason | 249 | each caps a related finding at HARDENING |
+| with no stated reason | 82 | capped nothing; reported as one HARDENING finding |
+| documented accepted risks | 7 | cited rather than re-reported |
 ```
 
 ---
@@ -159,6 +254,12 @@ re-reported.
 ## Rules for filling it
 
 MUST Put coverage before findings. A report that leads with findings and buries its gaps reads as complete when it is not.
+MUST Fill the NOT-EXECUTED register with a reason on every row, even on a run that found plenty. A dimension the campaign never exercised is a limit on its central claim, and a limit stated only as a count reads as coverage.
+MUST Separate NOT EXECUTED from UNTESTED from INVALID from clean. A locus whose benign control failed has no verdict; a locus whose harness was never written was never tested; a locus whose scanner crashed was not scanned. All three read as clean when collapsed into one number.
+MUST Include the tool-integrity certification per surface, and mark a surface UNVERIFIED where the gremlin did not supply one. A wrapper returning 0 while running nothing was measured three separate ways in one run, so an exit code supports no coverage claim.
+MUST Report a structurally closed class with its census rather than omitting it, and say which role it left with nothing to do.
+MUST Include the premise-corrections table whenever an agent corrected a dispatched premise. Premise error is a property of the run's own aim, and it stays invisible without a place to record it.
+MUST Put the systemic-patterns section above the findings whenever step 8.5 filed a pattern wisp, and state its instance count and node span. A pattern rendered as N separate rows deep in a long table reads as N unrelated bugs.
 MUST Cite a bead ID on every finding, since that is what survives the session and what a fix can be tracked against.
 MUST Keep the REFUTED section even when it is the only content. A campaign that found nothing real still tells the reader what was checked.
 MUST Set the budget actually used against the budget approved, so the reader can judge whether more time would find more.

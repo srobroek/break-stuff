@@ -47,6 +47,22 @@ harness:
 MUST State the invariant in a comment at the top of every harness, because a harness whose assertion nobody understands gets deleted at the first false positive.
 DEFAULT Prefer a never-panics harness first when the target has no obvious oracle, since it requires no expected output and still finds real bugs.
 
+## Every guard harness ships a benign control
+
+A harness that asserts a guard produces an unreadable result on its own. Its failure
+has three candidate causes the runner output cannot separate: the guard held, the
+harness is broken, the fixture never built.
+
+| Pair | Feeds | A pass means | A fail means |
+|---|---|---|---|
+| hostile `<name>` | an input the guard must reject | the guard holds, or the harness never reached it | the guard is bypassable, IF the control passed |
+| benign `<name>_control` | an input the guard must accept | the harness reaches the guard and the guard is not over-blocking | the harness or fixture is broken, and the hostile result yields no verdict |
+
+MUST Write the control beside every harness asserting a guard, and stamp `control_path` on the harness wisp. In one run, two hostile harnesses failed with their benign controls also failing, so both loci were reported UNTESTED rather than as findings.
+MUST Assert one invariant per test. A test holding two assertions stops at the first panic and leaves the second unfired, so an untested assertion reads as covered. One run lost an assertion this way, and four more to an early panic in a shared test.
+MUST Assert the VALUE the code computes rather than the absence of a panic whenever the panic depends on the build profile. A `debug_assert!` measures the profile; an arithmetic overflow panics in debug and wraps silently in release when the release profile sets no `overflow-checks`. A wrapped size or offset feeding a filesystem or SQL decision is worse than a crash, because nothing announces it.
+MUST State the expected outcome (`pass` or `fail`) on every harness wisp. A harness whose failure IS the finding is a prediction, and a prediction with no recorded expectation is read as a broken harness.
+
 ## Per-target patterns
 
 **Parser or deserializer.** Take `&[u8]` or `bytes` directly, feed it to the parse

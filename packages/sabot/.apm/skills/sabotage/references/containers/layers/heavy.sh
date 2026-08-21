@@ -139,7 +139,7 @@ EOF
 	}
 	echo "joern builds a CPG offline ($(stat -c %s "$probe/cpg.bin") bytes)"
 )
-rm -rf "$probe"
+rm -rf "${probe:?}"
 
 # LAST: the probe above wrote into $HOME and the unpacks wrote as root. The campaign runs
 # as uid 1000 against a read-only image, so anything unreadable now stays unreadable.

@@ -197,6 +197,6 @@ test -s "$probe/bearer.json" || {
 kingfisher scan "$probe/app" --no-validate --format json >"$probe/kf.json" 2>&1 || true
 
 echo "scanners: $tmpl_count nuclei templates, $rule_count bearer rules; checkov + bearer + kingfisher all report on the probe"
-rm -rf "$probe"
+rm -rf "${probe:?}"
 
 chmod -R a+rX /opt/sabot-db /opt/pipx

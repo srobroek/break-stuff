@@ -18,7 +18,7 @@ is in scope, authorizes the few actions that run real payloads through real gran
 Do not fold the opt-in into the core questions, and never present an action the hard
 rules forbid.
 
-### Core (always asked, the three STOP questions)
+### Core (always asked, the four STOP questions)
 
 | Fact | STOP question | Why it changes the run | Unpins the run when |
 |---|---|---|---|
@@ -26,9 +26,43 @@ rules forbid.
 | User's threat | 1 | what the user fears decides which surface leads and orders the report | absent: the report prioritizes nothing |
 | Surfaces | 2 | each surface is a parallel gremlin and a cost | detected set never shown to the user to trim or extend |
 | Tools + budget | 3 | decides coverage and wall-clock, and bounds the machine | "go" on an unseen tool set, or a budget the user never approved |
+| Remediation route | 4 | decides what step 10 does with a confirmed finding, and whether the run needs tracker access at all | asked only after the report, when the findings are already stale and the user has lost the context to choose |
 
-MUST Resolve the core four before spawning a scout. A campaign that starts under an unpinned scope produces findings for the wrong target and a coverage claim it cannot support.
+MUST Resolve all six core facts before spawning a scout. A campaign that starts under an unpinned scope produces findings for the wrong target and a coverage claim it cannot support.
 MUST Record every defaulted fact as a gap in the report. "Whole repo, because none was named" belongs there, since the user may have meant one module.
+
+### Remediation route (core question 4)
+
+Ask what should happen to a confirmed finding, and ask it in the interview rather
+than at step 10. The answer changes work that happens much earlier: a run headed for
+a tracker must capture a reproduction and a proposed fix in a form that survives
+without the session, while a run headed for a patch needs the verification command
+recorded per finding. Both routes may be chosen; neither is the default.
+
+| Route | Step 10 becomes | Requires |
+|---|---|---|
+| `harden` | `hardener` patches one approved finding, then steps 6 and 7 re-run to prove the finding is gone | per-finding approval, as it always has |
+| `ticket` | one ticket per surviving finding in the user's tracker, carrying the evidence, the `file:line`, the repro, and the proposed fix | a tracker and an access method the user named and confirmed |
+| `both` | ticket every finding, then harden the subset the user approves, and note the ticket id in the patch | both of the above |
+| `report only` | nothing. The report is the deliverable | nothing |
+
+**Never infer the tracker from the repository.** A GitHub remote does not mean issues
+are the destination: issues are often disabled, or the team tracks in Jira, Linear,
+GitLab, or an internal system while mirroring code to GitHub. Ask which system, then
+ask how to reach it, then confirm the resolved destination before writing anything.
+
+| Ask | Then confirm back |
+|---|---|
+| which tracker | the system, and that it is the one the team actually works in |
+| how to reach it | the CLI or endpoint, and which credential it uses (`gh`, `glab`, an API token in a named env var, an MCP server already connected) |
+| where tickets land | the exact project, repo, board, or queue, plus labels and whether a parent epic should hold them |
+| whether to open one at all | a dry run that prints the ticket bodies without creating them, when the user is unsure |
+
+MUST Ask which tracker and which access method, and confirm both, before any ticket is created. Inferring the tracker from the git remote is how a campaign files a public issue on a mirror, and a security finding filed publicly is a disclosure the user never authorized.
+MUST Offer a dry run that renders every ticket body without creating anything. The user judges a template from a rendered ticket, not from a description of one.
+MUST Treat the ticket route as a separate authorization from the patch route. Approving a patch is not approving an external write, and approving a ticket is not approving a code change.
+MUST Ask whether the tracker is public when the findings include anything unpatched. A PROVEN reachable crash in a public issue is a published vulnerability, so the user decides that deliberately or the route stays private.
+NOT Never open a ticket for a REFUTED finding, and never open one per instance for findings sharing a `root_cause`. One ticket per root cause with the instance list is what a maintainer can act on; twenty near-duplicates get closed as noise and take the real one with them.
 
 ### Blast-radius opt-in (a SEPARATE question, only when applicable)
 
@@ -47,7 +81,7 @@ as "N/A" or "unavailable", since a greyed-out option frames a non-choice as a di
 MUST Ask each blast-radius opt-in as its own question after the core, and only when its triggering surface is in scope. An opt-in offered with no trigger is clutter; an opt-in folded into the core question buries the consent that matters.
 MUST Omit entirely any action the hard rules forbid (attacking a network host, a public endpoint, or a third-party service). It is never a menu option, an "N/A" row, or an "unavailable" line. A referenced-but-forbidden target (a CI file that probes a live host) is read statically and not mentioned in the interview at all.
 MUST Restate what a granted opt-in will run, against what, before the first spawn, and wait. An offhand "sure" is not the authorization a live-spawn or DAST run requires.
-MUST Ask, when the user opts into agentic grading (promptfoo or live-spawn), which LLM to use: an API key with its provider, a local or self-hosted endpoint, or none (which skips agentic-fuzz). Grading runs host-side, since the agents surface is container-free, so the credential stays a plain host env var and is never baked into an image. Keep this question inside the opt-in block, out of the core.
+MUST Ask, when the user opts into agentic grading (promptfoo or live-spawn), which LLM to use: an API key with its provider, a local or self-hosted endpoint, or none (which skips agentic-fuzz). Grading runs host-side, since the agents surface is container-free, so the credential stays in an environment variable on the host and is never baked into an image. Keep this question inside the opt-in block, out of the core.
 
 ## How to probe: adapt, do not recite
 
@@ -91,8 +125,10 @@ it.
 | Surfaces | the full detected set, robustness always included |
 | Tools + budget | the installed tools and the `fuzzing.md` budget defaults |
 | Blast-radius | live-spawn and DAST are OFF; they require an interactive opt-in |
+| Remediation route | `report only`, with both `harden` and `ticket` refused |
 
 MUST Refuse live-spawn and dev-server DAST in a non-interactive run. Both need a target the user named and an explicit human authorization that a defaulted run cannot supply.
+MUST Default a non-interactive run to `report only` and refuse both remediation routes. A cron job that patches product code or files tickets is writing to the repo and to the team's tracker with nobody having read a finding, and a defaulted route is the one default whose damage outlives the run.
 MUST Record every default as a coverage gap. A non-interactive run that hides its assumptions reads as a scoped audit when it was a whole-repo sweep on borrowed defaults.
 
 ## Handing the scope forward
@@ -110,3 +146,10 @@ prioritizes attention; the derived model is the map recon builds without a
 hypothesis.
 
 MUST Stamp the user's threat on the epic for prioritization and reporting, and keep it out of the scout Brief. A scout handed a suspected bug narrows its census to that guess and misses the deviations that census exists to find.
+
+The remediation route is stamped on the epic too, as `remediation_route` plus, on the
+`ticket` route, the confirmed `tracker`, access method, and destination. Step 10 reads
+those rather than re-asking, so a campaign resumed days later remediates where the
+user said and not where the git remote points.
+
+MUST Stamp the route and, on the `ticket` route, the confirmed tracker and destination on the epic. Step 10 often runs in a later session than the interview, and a route held only in conversation is a route the resumed run has to guess.

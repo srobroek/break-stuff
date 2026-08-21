@@ -18,8 +18,36 @@ bd info >/dev/null 2>&1 || bd init --stealth --prefix sab
 
 No `bd` on PATH stops the run: tell the user to install beads. There is no
 fallback store. A present `bd` with no database gets `bd init --stealth --prefix
-brk`, which is git-invisible (writes `.git/info/exclude`, leaves `git status`
+sab`, which is git-invisible (writes `.git/info/exclude`, leaves `git status`
 clean).
+
+## Invoking `bd` at all: three ways the command silently produces nothing
+
+Every one of these was hit in a real run, and each is indistinguishable from an
+empty database.
+
+| Trap | Symptom | Rule |
+|---|---|---|
+| `--labels` on a query | `bd list --labels sab-harness` returns nothing or errors, and the agent concludes no work exists | **`--label` (singular) on every query.** `--labels` (plural) exists only on `bd create` and `--add-label`. See the flag table below. |
+| Wrong cwd | `bd` resolves the database from the repo root, so a call from a subdirectory or a worktree reads a different or absent store | `cd` to the repo root before any `bd` call, and state that root in every Brief |
+| Output interception | a token-savings or logging hook truncates `bd show`/`bd list` and spills the body to a file, so the agent parses a summary as the whole answer | Capture with `--json` redirected to a file under the artifacts dir, then read the file. Never parse `bd` output straight out of the terminal. |
+
+| Flag | Valid on | Never on |
+|---|---|---|
+| `--label <one>` | `bd list`, `bd ready` (repeat the flag for several) | n/a |
+| `--labels a,b` | `bd create` | any query |
+| `--add-label` | `bd update` | any query |
+
+MUST Distinguish an empty query result from a successful-but-empty surface before concluding there is no work, by re-running the query with the label dropped:
+
+| Labelled count | Unlabelled count | Reading |
+|---|---|---|
+| 0 | nonzero | the QUERY is wrong; fix the flag or the label and re-run |
+| 0 | 0 | the parent has no children, which is a defect to report and never a clean surface |
+| nonzero | nonzero | a real work list |
+
+A campaign lost a whole surface to a plural flag that returned nothing and read as
+"no harnesses exist".
 
 ## Objects
 
@@ -32,11 +60,11 @@ concurrent campaigns. The `run_id` field scopes every rollup to one run.
 
 | Object | Beads representation |
 |---|---|
-| Run | one **epic** bead; metadata `run_id`, `target`, `base_sha`, `budget` (JSON), `artifacts` (abs dir) |
+| Run | one **epic** bead; metadata `run_id`, `target`, `base_sha`, `budget` (JSON), `artifacts` (abs dir), `remediation_route` (`harden`\|`ticket`\|`both`\|`report only`), and on the `ticket` route `tracker` (JSON: system, access method, destination, whether public) |
 | Surface node | **task** bead, `--parent <epic>`, label `sab-surface`, metadata `run_id`, `surface`, `scope` (JSON array of globs) |
 | Harness wisp | **task** bead, `--parent <surface>`, labels `sab-harness` + `non-work`, metadata `run_id`, `entry_point`, `runner`, `harness_path`, `input_shape` |
 | Crash wisp | **task** bead, `--parent <surface>`, labels `sab-crash` + `non-work`, metadata `run_id`, `input_path`, `stack_hash` |
-| Finding wisp | **task** bead, `--parent <surface>`, label `sab-finding`, metadata `run_id`, `tier`, `by`, `source`, `impact`, `locus`, `surface`, `path` |
+| Finding wisp | **task** bead, `--parent <surface>`, label `sab-finding`, metadata `run_id`, `tier`, `by`, `source`, `impact`, `locus`, `surface`, `path`, and after step 10 `ticket_id` (the created ticket, so a resumed run cannot file it twice) |
 | Coverage record | **task** bead, `--parent <surface>`, label `sab-coverage` + `non-work`, metadata `run_id`, `scanners_run`, `scanners_skipped`, `harnesses_run`, `harnesses_total`, one per surface node |
 | Decision | **decision** bead under the epic, for an accepted-risk or scope ruling that outlives one finding |
 
@@ -59,7 +87,6 @@ MUST Capture a bead id with `bd create ... --json | jq -r '.id'`, never with `--
 MUST Stamp `run_id` on every campaign bead, matching the epic's. Rollups filter on it (see Reading the run), and a bead created without it is invisible to every rollup, so its harness never runs or its finding never reports.
 MUST Label harness, crash, and coverage wisps `non-work` as well as their own label, then discover them by their own label rather than by `bd ready`. On bd 1.1.2 `bd ready` still returns a `non-work` wisp, so a discovery query keys on the specific label (`sab-harness`) plus the surface parent, not on the ready queue.
 MUST Use `--metadata` for stamps, since it merges with existing keys and never clobbers `surface` or `scope`.
-MUST Write `--label` (singular) on every `bd list`. On bd 1.1.2 `bd list --labels` is a hard error, so a discovery command written with the plural silently fails and the agent finds nothing. Only `bd create` takes `--labels`.
 
 ## Handoff chain
 
@@ -77,9 +104,41 @@ graph rather than from a parent's prose.
 A `gremlin` discovers its work with:
 
 ```
-bd list --parent <surface> --label sab-harness --status open --json
+cd <repo root>
+bd list --parent <surface> --label sab-harness --status open --json > <artifacts>/wisps-<surface>.json
 bd update <harness-wisp> --claim        # atomic, first-wins, sets assignee
 ```
+
+### Who may close a surface node
+
+`scout`, `fuzzer`, and `gremlin` all write to the same surface node in sequence, so
+closing it is the one verb they cannot each decide for themselves. A closed node
+refuses `bd update --claim` ("issue not claimable: status closed") while its wisps
+still parent fine, so the work looks scheduled and never runs.
+
+| Agent | May set the node to | Must never |
+|---|---|---|
+| `scout` | `in_progress` while working, back to `open` when its artifacts are filed | `closed`; the fuzzer and gremlin still have to claim it |
+| `fuzzer` | `in_progress`, back to `open` | `closed` |
+| `gremlin` | `in_progress`, back to `open` after filing its `sab-coverage` wisp | `closed` |
+| main thread | `closed`, at step 9 only | close a node before its `sab-coverage` wisp exists |
+
+MUST Leave every surface node `open` or `in_progress` until step 9. Only the main thread closes one, and only after the close-out gate passes. A run in which surfaces were closed early spends the rest of the campaign working around a node its own agents cannot claim.
+MUST Re-read a surface node's status immediately before spawning an agent against it, and reopen it (`bd update <node> --status open`) when something closed it. A node that self-closed twice in one run is the observed case, not the hypothetical one.
+
+### A handoff you cannot query is not a handoff
+
+MUST Verify your own wisps are discoverable by the documented query before returning. Run the receiving agent's exact discovery command (the `bd list --parent ... --label ...` above) and assert the count equals the number you filed. A mismatch means the label, the parent, or the flag is wrong, and the author fixes it. In one run the orchestrator had to relabel one surface's wisps and reconstruct another's by hand because both shipped invisible to that query.
+MUST Report the verified count in your return, not the count you intended to file. "11 wisps filed, 11 returned by the gremlin's discovery query" is checkable; "11 harnesses written" is not.
+
+### An out-of-lane finding goes into the graph, not into your reply
+
+An agent reading its own globs regularly finds a real defect in a neighbouring
+surface's tree. Dropping it loses it; filing it under your own surface misattributes
+it.
+
+MUST File an out-of-lane finding as a `sab-finding` wisp under the surface node whose scope globs contain the locus, with `metadata.found_by` naming your surface, and draw `relates-to` back to your own surface node. Do not tier it and do not investigate further. In one run two agents found five real defects outside their globs and dropped all five, which survived only because a human hand-carried them into the next dispatch.
+MUST Cite an existing finding rather than re-filing it when your locus is already covered by another surface's wisp: `bd dep add <your-note> <their-finding> --type relates-to` and stop. Independent confirmation of someone else's finding is worth more as a citation on their wisp than as a duplicate row.
 
 ## Correlation edges
 
@@ -141,9 +200,13 @@ generator reads structure rather than prose:
 
 ```
 FINDING=$(bd create "finding: <one-line claim>" --parent <surface> --labels sab-finding --json \
-  --metadata '{"run_id":"run-<id>","tier":"PROVEN","by":"challenger","source":"synthesized-rule","impact":"HIGH","locus":"src/auth/token.rs:88","surface":"code","cwe":"CWE-190","repro":"<abs path to minimized input>","path":"handle_post -> parse_body -> alloc @ api.rs:41"}' \
+  --metadata '{"run_id":"run-<id>","tier":"PROVEN","by":"challenger","source":"synthesized-rule","impact":"HIGH","locus":"src/auth/token.rs:88","surface":"code","node":"<surface node bead>","cwe":"CWE-190","repro":"<abs path to minimized input>","path":"handle_post -> parse_body -> alloc @ api.rs:41","evidence":"<abs artifact path or exact command>","control_passed":true,"dedup_key":"code:src/auth/token.rs:88:CWE-190","root_cause":"unchecked arithmetic at the IPC boundary","not_executed_reason":null}' \
   | jq -r '.id')
 ```
+
+This blob is the report. Step 8 renders these fields; a field left off the wisp is a
+column the report cannot fill, and prose in an agent's reply is discarded at the end
+of the session.
 
 | Field | Values |
 |---|---|
@@ -154,7 +217,15 @@ FINDING=$(bd create "finding: <one-line claim>" --parent <surface> --labels sab-
 | `locus` | `file:line`, always |
 | `path` | the reachability chain the gremlin recorded, `entry -> ... -> sink` with a `file:line` per hop, so the challenger verifies the recorded path rather than re-tracing it |
 | `repro` | absolute path to the minimized input, when one exists |
+| `node` | the surface node bead this finding belongs to. `--parent` already sets it, and the field makes it readable from the finding alone by a rollup that queries on `run_id` |
+| `evidence` | one absolute artifact path or one exact command. The report's evidence column reads this field, so a finding without it is HARDENING at best |
+| `control_passed` | `true` · `false` · `null` (no control applies). `false` means the locus is UNTESTED, so the challenger caps it and the report lists it under NOT-EXECUTED |
+| `dedup_key` | `<surface>:<locus>:<class>`, lowercased. a key appearing on more than one wisp marks the same finding found twice, which is independent confirmation rather than two findings |
+| `root_cause` | one phrase naming the shared defect, identical across every finding sharing it. The grouping pass and the synthesis step both read this field, and neither can group on prose |
+| `not_executed_reason` | `null` on a real finding. On a placeholder wisp standing for an unexercised dimension, one of the gap reasons in `report-template.md` |
 
+MUST Fill every field above on every finding wisp, using `null` where one does not apply rather than omitting the key. A missing key and a deliberate `null` read the same to the report generator, so an omission becomes a silent blank column.
+MUST Stamp `dedup_key` and `root_cause` at creation, by the agent that filed the finding. The finder knows the class; a later pass reconstructing it from a one-line title guesses.
 MUST Stamp `by=self` when the agent that found a finding also tiered it, and `by=challenger` when an independent pass did. The report cannot tell a self-tier from a challenged one otherwise, so a self-judged finding reads as independently confirmed.
 MUST Record `source` on every finding, since a report whose findings are all `source=stock-pack` did no recon, and the provenance table can only say so when the field is on the wisp rather than in prose.
 
@@ -197,6 +268,19 @@ their own label scoped to the run with `--metadata-field run_id=<id>`.
 
 MUST Roll up grandchildren with `--metadata-field run_id=<id>`, never `--parent <epic>`. On bd 1.1.2 `--parent` returns direct children only, so an epic-parent query for findings or harnesses returns an empty set and the close-out gate passes over unrun, untiered work.
 MUST Gate close-out on a `sab-coverage` record existing for every detected surface. A gremlin that died before writing coverage leaves a surface untested, and without this check the report omits it and reads as clean.
+MUST Drive that gate from the SURFACE-NODE list, never from the coverage-wisp list. Both directions look identical when they pass and only one of them can fail:
+
+```sh
+# WRONG: iterates the records that exist, so a node with no record is never visited
+bd list --label sab-coverage --metadata-field run_id="$RUN" --all --json | jq -r '.[].parent'
+
+# RIGHT: iterates the nodes that MUST have one, and names the ones that do not
+comm -23 \
+  <(bd list --label sab-surface --parent "$EPIC" --all --json | jq -r '.[].id' | sort) \
+  <(bd list --label sab-coverage --metadata-field run_id="$RUN" --all --json | jq -r '.[].parent' | sort)
+```
+
+Any id the second form prints is a surface with no coverage record. Empty output is the only pass. Measured: one campaign's web node reached the gate with 9 findings and no coverage wisp while all 20 other nodes had one, and the record-driven form reported 20 of 20 covered.
 MUST Count a `blocked` (INVALID) harness as unfinished at the gate, not only an `open` one, since an INVALID harness is an untested entry point that would otherwise pass a gate keyed on `open` alone.
 
 ## Raw export: the graph IS the persistence

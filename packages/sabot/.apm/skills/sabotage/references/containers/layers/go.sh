@@ -93,8 +93,11 @@ func main() { println(rand.Intn(10)) }
 EOF
 (
 	cd "$probe"
+	# `|| true` is deliberate: gosec exits non-zero BECAUSE it found the planted G404,
+	# so its status cannot distinguish a finding from a crash. The grep below is the
+	# real assertion -- a crashed gosec writes no G404 and fails the probe there.
 	GOFLAGS='' GOPROXY=off gosec ./... 2>&1 | tee "$probe/out.txt" || true
 	grep -q G404 "$probe/out.txt"
 	echo "gosec baked (rules load: G404 found on the probe module)"
 )
-rm -rf "$probe"
+rm -rf "${probe:?}"

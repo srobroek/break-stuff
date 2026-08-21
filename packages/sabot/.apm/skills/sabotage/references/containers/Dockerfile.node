@@ -95,7 +95,7 @@ RUN set -eux; \
       { echo "sabot node: no-unsanitized/method did not report document.write" >&2; \
         cat out.txt >&2; exit 1; }; \
     echo "eslint-plugin-no-unsanitized reports both seeded sinks"; \
-    cd /; rm -rf "$probe"
+    cd /; rm -rf "${probe:?}"
 
 # fast-check is a LIBRARY with no CLI, so it is reachable only via NODE_PATH; a
 # harness that does `require("fast-check")` fails without this. Set for every run
