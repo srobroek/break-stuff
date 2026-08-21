@@ -150,7 +150,7 @@ still parent fine, so the work looks scheduled and never runs.
 | `gremlin` | `in_progress`, back to `open` after filing its `sab-coverage` wisp | `closed` |
 | main thread | `closed`, at step 9 only | close a node before its `sab-coverage` wisp exists |
 
-MUST Leave every surface node `open` or `in_progress` until step 9. Only the main thread closes one, and only after the close-out gate passes. A run in which surfaces were closed early spends the rest of the campaign working around a node its own agents cannot claim.
+MUST Leave every surface node `open` or `in_progress` until step 9. Only the main thread closes one, and only after the coverage gate passes. A run in which surfaces were closed early spends the rest of the campaign working around a node its own agents cannot claim.
 MUST Re-read a surface node's status immediately before spawning an agent against it, and reopen it (`bd update <node> --status open`) when something closed it. A node that self-closed twice in one run is the observed case, not the hypothetical one.
 
 ### A handoff you cannot query is not a handoff
@@ -293,9 +293,13 @@ their own label scoped to the run with `--metadata-field run_id=<id>`.
 | coverage record per surface | `bd list --label sab-coverage --metadata-field run_id=<id> --all --json` |
 | coverage gaps | harnesses and findings carrying `state:budget_exhausted` or `state:invalid`: `bd list --metadata-field run_id=<id> --all --json` filtered on the `state:` label |
 | resume after crash | in-flight = `bd list --metadata-field run_id=<id> --status in_progress --all --json`; agent handle = bead `assignee` |
-| close-out gate | `bd dep cycles` clean AND every detected surface node has a `sab-coverage` record AND no `sab-harness` wisp left `open`, `blocked`, or `in_progress` AND every `sab-finding` carries a `tier` AND every REFUTED finding is `closed` AND every campaign bead carries `sab-audit` AND every non-defect record carries `non-work` AND every finding's priority matches the tier-impact table |
+| stamping gate | `sab-audit` is set on every campaign bead AND `non-work` on every non-defect record AND every REFUTED finding is `closed` AND every finding's priority matches the tier-impact table. Blocks NOTHING. Each condition is record hygiene that one `bd update` fixes, and none of it is evidence about the target |
+| coverage gate | `bd dep cycles` clean AND every detected surface node has a `sab-coverage` record AND no `sab-harness` wisp left `open`, `blocked`, or `in_progress` AND every `sab-finding` carries a `tier`. Blocks CLOSING A SURFACE NODE, never the report: an unmet condition here is a coverage gap, which is the report's subject matter |
 
-MUST Roll up grandchildren with `--metadata-field run_id=<id>`, never `--parent <epic>`. On bd 1.1.2 `--parent` returns direct children only, so an epic-parent query for findings or harnesses returns an empty set and the close-out gate passes over unrun, untiered work.
+MUST Emit the report whatever the coverage gate says. An unrun harness, a missing coverage record, and an untiered finding are the report's SUBJECT, so a gate that withheld the report until they were resolved would withhold it exactly when it is most worth reading. The report states each one as a gap; step 10 is where a gap gets fixed, and only on explicit approval.
+MUST Fix a stamping-gate failure rather than reporting it. A missing label, a wrong priority, and a REFUTED finding left open are hygiene on the record and cost one `bd update` each; none of them is evidence about the target, so none belongs in the NOT-EXECUTED register.
+
+MUST Roll up grandchildren with `--metadata-field run_id=<id>`, never `--parent <epic>`. On bd 1.1.2 `--parent` returns direct children only, so an epic-parent query for findings or harnesses returns an empty set and the coverage gate passes over unrun, untiered work.
 MUST Gate close-out on a `sab-coverage` record existing for every detected surface. A gremlin that died before writing coverage leaves a surface untested, and without this check the report omits it and reads as clean.
 MUST Drive that gate from the SURFACE-NODE list, never from the coverage-wisp list. Both directions look identical when they pass and only one of them can fail:
 
