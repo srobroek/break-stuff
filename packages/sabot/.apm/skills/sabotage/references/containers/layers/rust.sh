@@ -81,6 +81,17 @@ rustup component add --toolchain "$RUST_NIGHTLY" rust-src
 ln -sfn "$RUSTUP_HOME/toolchains/${RUST_NIGHTLY}-"* \
 	"$RUSTUP_HOME/toolchains/nightly-$(rustc -vV | sed -n 's/^host: //p')"
 
+# The same alias for `stable`, and for the same reason. A target that pins
+# `channel = "stable"` in its own rust-toolchain.toml overrides this image's default
+# toolchain by NAME, and rustup then tries to sync `stable` over the network -- which
+# under --network none fails before a single crate compiles. Measured: the desktop_shell
+# crate could not be built at all until RUSTUP_TOOLCHAIN was forced by hand on the docker
+# command line, which is a repair no recipe carries and no gremlin would think to add.
+# The pinned stable IS what the image installed, so the alias makes the target's own
+# pin resolve to it rather than to a fetch.
+ln -sfn "$RUSTUP_HOME/toolchains/${RUST_STABLE}-"* \
+	"$RUSTUP_HOME/toolchains/stable-$(rustc -vV | sed -n 's/^host: //p')"
+
 cargo install cargo-fuzz --locked --version "$CARGO_FUZZ_VERSION"
 cargo install cargo-audit --locked --version "$CARGO_AUDIT_VERSION"
 cargo install cargo-geiger --locked --version "$CARGO_GEIGER_VERSION"
