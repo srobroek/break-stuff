@@ -77,10 +77,13 @@ as "N/A" or "unavailable", since a greyed-out option frames a non-choice as a di
 | Live-spawn agentic fuzzing | agent/skill/MCP definitions are in scope AND the user opts in | omitted from the question entirely; the definition-review pass still runs statically |
 | Dev-server DAST | a runnable web server is in scope AND the user opts in | omitted entirely; the static web pass still runs |
 | LLM access for grading | live-spawn or promptfoo grading was opted into | agentic-fuzz is skipped, recorded as a declined opt-in |
+| Network stage (step 8.6) | always applicable, since the campaign is always offline | DECLINED, with all four egress-blocked gaps listed as open (`references/network-stage.md`) |
+| Secret verification | the network stage was opted into AND a candidate secret was found | live secrets are reported UNVERIFIED by location and type; nothing is sent anywhere |
 
 MUST Ask each blast-radius opt-in as its own question after the core, and only when its triggering surface is in scope. An opt-in offered with no trigger is clutter; an opt-in folded into the core question buries the consent that matters.
 MUST Omit entirely any action the hard rules forbid (attacking a network host, a public endpoint, or a third-party service). It is never a menu option, an "N/A" row, or an "unavailable" line. A referenced-but-forbidden target (a CI file that probes a live host) is read statically and not mentioned in the interview at all.
 MUST Restate what a granted opt-in will run, against what, before the first spawn, and wait. An offhand "sure" is not the authorization a live-spawn or DAST run requires.
+MUST Ask for the network stage and for secret verification separately, and ask the second only after the first is granted and a candidate secret actually exists. Verifying a credential sends it to its provider, which the other five gaps never do, so one "yes" cannot cover both. Name the owner of the secret in the question, because a third party's key is never verified at all.
 MUST Ask, when the user opts into agentic grading (promptfoo or live-spawn), which LLM to use: an API key with its provider, a local or self-hosted endpoint, or none (which skips agentic-fuzz). Grading runs host-side, since the agents surface is container-free, so the credential stays in an environment variable on the host and is never baked into an image. Keep this question inside the opt-in block, out of the core.
 
 ## How to probe: adapt, do not recite
@@ -124,10 +127,10 @@ it.
 | Threat model | none; every surface is treated at equal priority and the report says so |
 | Surfaces | the full detected set, robustness always included |
 | Tools + budget | the installed tools and the `fuzzing.md` budget defaults |
-| Blast-radius | live-spawn and DAST are OFF; they require an interactive opt-in |
+| Blast-radius | live-spawn, DAST, the network stage, and secret verification are all OFF; each requires an interactive opt-in |
 | Remediation route | `report only`, with both `harden` and `ticket` refused |
 
-MUST Refuse live-spawn and dev-server DAST in a non-interactive run. Both need a target the user named and an explicit human authorization that a defaulted run cannot supply.
+MUST Refuse live-spawn, dev-server DAST, and the network stage in a non-interactive run. Each needs a target the user named and an explicit human authorization that a defaulted run cannot supply, and a cron job that sends a found credential to its provider has done something no default should be able to authorize.
 MUST Default a non-interactive run to `report only` and refuse both remediation routes. A cron job that patches product code or files tickets is writing to the repo and to the team's tracker with nobody having read a finding, and a defaulted route is the one default whose damage outlives the run.
 MUST Record every default as a coverage gap. A non-interactive run that hides its assumptions reads as a scoped audit when it was a whole-repo sweep on borrowed defaults.
 

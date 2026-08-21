@@ -21,7 +21,7 @@ the surface is the decision, not the language.
 |------|------|-------|-----------|---------|---------|
 | shellcheck | default-on | local | `shellcheck -f json -S style <files>` | unquoted expansion, word splitting, glob injection, `[` vs `[[`, subshell scope loss, unsafe `read` | the floor; nothing else parses shell this well |
 | shfmt | default-on | local | `shfmt -d -i 2 -ci .` | formatting drift that hides logic, mismatched heredocs | none |
-| semgrep | default-on | local | `opengrep --config p/bash --config p/command-injection --json <files>` | `eval` on interpolated data, `curl \| sh`, unsafe `mktemp` | registry packs; complements shellcheck with taint-shaped rules |
+| opengrep | default-on | local | `opengrep --config /opt/sabot-db/semgrep-rules/bash --config /opt/sabot-db/semgrep-rules/generic --json <files>` (6 + 257 baked rules) | `eval` on interpolated data, `curl \| sh`, unsafe `mktemp` | **baked, offline.** Never `p/bash` or `p/command-injection`: a registry shorthand exits `OG_RC=2` under `--network none`. Complements shellcheck with taint-shaped rules |
 | bandit | default-on | local | `bandit -f json -r <paths>` | Python-side `shell=True`, `subprocess` with a formatted string | Python hooks only |
 | checkov | opt-in | local | `checkov -d . -o json --framework github_actions` | shell inside CI, off unless workflows are in scope | overlaps zizmor from `infra.md` |
 | `scripts/fuzz-cli.py` | default-on | local | see `harnesses.md` | crash, hang, non-JSON output, wrong-allow on a guard | the only tool that proves a bypass |

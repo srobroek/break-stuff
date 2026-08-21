@@ -103,10 +103,17 @@ DEFAULT Prefer `ast-grep` for a structural deviation, and `opengrep` when the ru
 
 ### 5. Aim the standard rulesets
 
-Use every mature ruleset available: semgrep's registry packs, bandit's and gosec's
-built-ins, clippy's lint groups. These are well-tested detectors and rewriting them
-wastes the campaign's time. The package ships no generic rules of its own, because a
-hand-maintained generic rule duplicates a pack and can rot silently.
+Use every mature ruleset available: the semgrep rules baked into the image at
+`/opt/sabot-db/semgrep-rules/<lang>`, bandit's and gosec's built-ins, clippy's lint
+groups. These are well-tested detectors and rewriting them wastes the campaign's
+time. The package doesn't ship generic rules of its own, because a hand-maintained
+generic rule duplicates a pack and can rot silently.
+
+Name the baked path, never the registry shorthand. `p/rust`, `p/javascript`, and
+`--config auto` resolve over the network, so under `--network none` they exit
+`OG_RC=2` having scanned nothing, and a rule aimed by recon at a pack that never ran
+measures nothing at all. A curated pack with no baked equivalent (`p/trailofbits`)
+belongs to the network stage; see `references/network-stage.md`.
 
 What recon builds is the **harness around them**. It decides which packs run
 against which paths, which of their findings matter here, which of their rules this

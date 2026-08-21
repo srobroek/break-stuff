@@ -102,6 +102,28 @@ RUN set -eux; \
 # rather than in each recipe.
 ENV NODE_PATH=/usr/local/lib/node_modules
 
+# Playwright + chromium, BAKED. `playwright install` downloads a ~150 MiB browser, so
+# under --network none it fails and every DAST probe needing a real browser is lost:
+# one campaign executed 6 of its 13 probes for exactly this reason and the web surface
+# could not be called covered. Only the DOWNLOAD wants egress -- the probes drive
+# 127.0.0.1 and run entirely offline once the binary is on disk, which is why this
+# belongs in the image rather than in the network stage.
+#
+# PLAYWRIGHT_BROWSERS_PATH moves the browser out of root's HOME: the default
+# /root/.cache/ms-playwright is unreadable to the uid-1000 user every run uses, so the
+# browser would be present and unlaunchable -- the same shape as the Jazzer.js bug above.
+#
+# The launch probe passes --no-sandbox because chromium's own sandbox needs privileges
+# run-contained.sh drops. Harnesses MUST pass it too; without it launch() fails at
+# runtime while the build reported the browser working.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN npm i -g playwright >/dev/null \
+ && apt-get update -q \
+ && NODE_PATH=/usr/local/lib/node_modules npx --yes playwright install --with-deps chromium >/dev/null \
+ && rm -rf /var/lib/apt/lists/* \
+ && chmod -R a+rX /opt/ms-playwright \
+ && NODE_PATH=/usr/local/lib/node_modules node -e 'const{chromium}=require("playwright");chromium.launch({args:["--no-sandbox"]}).then(async b=>{console.log("chromium",await b.version());await b.close()})'
+
 # retire.js vulnerability definitions, baked. Pinned by commit SHA of the RetireJS
 # repo (tag-less rolling data), advanced by hand; renovate's semver datasource cannot
 # track a bare SHA. Fetch only the pinned commit, keep the JSON, drop the rest.

@@ -18,7 +18,7 @@ frontend with native IPC behind it.
 | Tool | Tier | Class | Run recipe | Catches | Overlap |
 |------|------|-------|-----------|---------|---------|
 | eslint-plugin-security + no-unsanitized | default-on | local | `npx eslint --format json .` with the plugins | `innerHTML`, `dangerouslySetInnerHTML`, `document.write`, `eval`, `javascript:` URLs | project-local; the DOM-sink detector `code.md` lacks |
-| semgrep xss pack | default-on | local | `opengrep --config p/xss --config p/javascript --json <files>` | reflected and stored XSS patterns, template injection | registry pack |
+| opengrep js/ts pack | default-on | local | `opengrep --config /opt/sabot-db/semgrep-rules/javascript --config /opt/sabot-db/semgrep-rules/typescript --config /opt/sabot-db/semgrep-rules/html --json <files>` (173 + 30 + 6 baked rules, XSS rules included) | reflected and stored XSS patterns, template injection | **baked, offline.** Never `p/xss` or `p/javascript`: a registry shorthand resolves over the network and exits `OG_RC=2` under `--network none`, scanning nothing |
 | retire.js | default-on | local | `npx retire --outputformat json` | known-vulnerable JS libraries shipped in the bundle | complements osv-scanner with browser-lib CVEs |
 | nuclei | opt-in | dynamic | `nuclei -u <local-url> -json -o <artifacts>/nuclei.json` | live findings against the running app: headers, exposures, known CVEs | dynamic; needs the dev server up |
 | ZAP baseline | opt-in | dynamic | `zap-baseline.py -t <local-url> -J <artifacts>/zap.json` | passive scan: CSP, cookie flags, missing headers, mixed content | dynamic; passive by default |

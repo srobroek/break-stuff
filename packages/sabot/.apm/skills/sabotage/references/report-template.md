@@ -66,7 +66,9 @@ Gap reasons, stated precisely:
 - `SKIPPED (not installed)` -- with the install command
 - `SKIPPED (budget)` -- named the tool recon aimed ON that the clock displaced
 - `NOT EXECUTED (requires network)` -- the tool or its ruleset fetches from a
-  registry, and every container runs `--network none`
+  registry, and every container runs `--network none`. Say whether the step-8.6
+  network stage was granted, declined, or never offered, since that decides whether
+  the gap was closable at all (`references/network-stage.md`)
 - `INVALID` -- the scanner or harness crashed, so nothing was tested
 - `NOT EXECUTED` -- the tool or harness never ran; the reason distinguishes absent
   from unreachable from never-written

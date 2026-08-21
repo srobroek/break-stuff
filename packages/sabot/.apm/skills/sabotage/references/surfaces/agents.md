@@ -49,7 +49,7 @@ MUST Scan the user's agentic-tooling config only when the user names the path as
 | `jq` schema read | default-on | local | `jq '.permissions, .hooks, .mcpServers' <settings.json>` | over-broad allowlists, wildcard permissions, unpinned MCP servers | mechanical, so it needs no judgement |
 | gitleaks | default-on | local | `gitleaks detect --no-git --report-format json` | credentials in an MCP config or agent definition | overlaps the repo's own `secrets-scan` package, which is preferred when present |
 | agentic-radar | opt-in | local | `uvx agentic-radar` | a static map of an agentic system's tools and flows | upstream quiet since 2025-11 |
-| semgrep (ToB pack) | opt-in | local | `opengrep --config p/trailofbits --json <files>` | agent-adjacent code patterns the shipped ruleset misses | fetches the pack over the network |
+| opengrep (ToB pack) | opt-in | **network stage only** | `opengrep --config p/trailofbits --json <files>` | agent-adjacent code patterns the shipped ruleset misses | **not baked and registry-only**, so it cannot run in the offline campaign at all. Defer it to the network stage (`references/network-stage.md`) or record it NOT EXECUTED, requires network |
 | snyk-agent-scan | default-on | local | `uvx snyk-agent-scan <config-path>` | MCP tool poisoning, cross-origin escalation, rug-pull patterns | static, so no LLM gate; the only executable scanner for MCP configs |
 
 MUST Read the agent or skill definition as a whole before testing a payload against it, since the tool grant determines what an injection can reach.

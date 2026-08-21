@@ -202,6 +202,14 @@ Run in order. `references/workflow.md` holds the full procedure; LOAD it first.
      epic with its instance ids. The main thread performs this step. A shape repeating
      across nodes is the campaign's strongest statement, and no per-finding row
      states it.
+   - **8.6. Network stage, only when the user opted in.** LOAD
+     `references/network-stage.md`. Four questions can only be answered by a remote
+     service: is this leaked credential live, is the baked OSV/trivy DB stale, is the
+     `cargo-audit` advisory DB stale, what do the registry-only rule packs say. This
+     stage runs in a container WITH egress, performs lookups rather than attacks, and
+     is DECLINED-by-default with the gaps recorded. A tool that only needs to DOWNLOAD
+     something (a Playwright browser, a CodeQL pack) belongs in the image instead: it
+     drives loopback offline once installed.
 9. **Report.** Emit via `references/report-template.md`, citing bead IDs so
    remediation is trackable after the session ends.
 10. **Remediate on the route pinned in question 4, only on explicit approval.** LOAD
@@ -220,7 +228,7 @@ Run in order. `references/workflow.md` holds the full procedure; LOAD it first.
 
 ## Hard rules
 
-MUST Fuzz and attack only local code in this repo or worktree. A network host, public endpoint, or third-party service is out of scope regardless of who asks.
+MUST Fuzz and attack only local code in this repo or worktree. A network host, public endpoint, or third-party service is out of scope regardless of who asks. The step-8.6 network stage does not widen this: it looks a local artifact up against a published service, which is using that service as intended, and it still may not probe, fuzz, or attack anything remote.
 MUST Attack this codebase rather than a model. An LLM red-team tool measures a model's alignment, which is a different target, so it stays out of scope even on the agents surface.
 MUST Cap every campaign with the wall-clock, job, and memory limits set in step 3, and stop when they are reached. The main thread measures elapsed wall-clock against the approved `total_s` at every wave boundary, since a per-harness cap leaves the campaign total unmeasured.
 MUST Treat every self-check in this skill's own tooling as a claim to verify. A wrapper's exit code, a "ran successfully" line, and an absent result file are all compatible with nothing having run, and the same fail-open shape appears in a campaign's tooling and in its target.
@@ -278,6 +286,7 @@ NOT Raw scanner output is HARDENING until a path or repro is traced, so do not r
 | `references/agentic-fuzz.md` | Steps 5 to 6: generated attacks against a hook, skill, or agent |
 | `references/triager-brief.md` | Step 7: build the `triager` Brief |
 | `references/challenger-brief.md` | Step 8: build the `challenger` Brief |
+| `references/network-stage.md` | Step 8.6: the egress-only lookups, and secret-verification consent |
 | `references/report-template.md` | Step 9: two-axis report format |
 | `references/remediation.md` | Step 10: route selection, tracker access, ticket schema, verification |
 | `references/hardener-brief.md` | Step 10: build each `hardener` Brief |
