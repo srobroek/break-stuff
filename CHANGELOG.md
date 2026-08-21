@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/srobroek/sabot/compare/v0.3.1...v0.3.2) (2026-08-21)
+
+
+### Documentation
+
+* **sabot:** stop the report stage gating on the gaps it exists to report ([#39](https://github.com/srobroek/sabot/issues/39)) ([38dc354](https://github.com/srobroek/sabot/commit/38dc354b16185a1d19332e54656f9c3868d59c0f))
+
 ## [0.3.1](https://github.com/srobroek/sabot/compare/v0.3.0...v0.3.1) (2026-08-21)
 
 
