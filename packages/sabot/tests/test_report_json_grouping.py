@@ -329,6 +329,31 @@ def test_entry_points_never_executed_reach_the_register_though_every_harness_ran
     assert cov["entry_points_executed"] == 0
 
 
+def test_a_scanner_skip_count_is_a_register_line_and_never_a_traceback(bd_factory):
+    """`scanners_skipped` holds NAMES; a count in its place names none of them.
+
+    Measured: 21 of 22 coverage wisps in one campaign stamped both scanner fields as
+    integers and one as a comma string. Iterating the int raised TypeError, so the entire
+    report died instead of naming the wisp -- a mis-stamp on one surface erased 388
+    findings from the output.
+    """
+    lines = export([finding("e.1.1")], coverage=False)
+    lines.append({
+        "id": "e.1.90", "issue_type": "task", "title": "coverage", "status": "open",
+        "metadata": {"run_id": "run-A", "surface": "code",
+                     "scanners_run": 4, "scanners_skipped": 9,
+                     "harnesses_run": 2, "harnesses_total": 2},
+        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
+    })
+    doc, _ = report(bd_factory, lines)          # rc 0: no traceback
+    bad = [r for r in doc["not_executed"] if r["kind"] == "scanner-skip-list-not-stamped"]
+    assert bad, doc["not_executed"]
+    assert "9" in bad[0]["reason"]
+    # and no fabricated skip lines stand in for the nine unnamed scanners
+    assert not any(r["kind"] == "scanner-skipped" for r in doc["not_executed"])
+
+
 # --- stamping discipline ----------------------------------------------------
 
 
@@ -339,6 +364,55 @@ def test_a_missing_required_field_is_a_stamping_gap_not_a_blank_column(bd_factor
     doc, _ = report(bd_factory, lines)
     issues = " ".join(g["issue"] for g in doc["stamping_gaps"])
     assert "evidence" in issues and "control_passed" in issues
+
+
+def crash(bid, **meta):
+    return {
+        "id": bid, "issue_type": "task", "title": f"crash {bid}", "status": "open",
+        "metadata": dict({"run_id": "run-A"}, **meta),
+        "labels": ["sab-crash", "sab-surface"],
+        "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
+    }
+
+
+def test_a_minimized_crash_input_survives_into_the_report(bd_factory):
+    """The whole value of a crash wisp is a file on disk, so the path must reach shape().
+
+    Measured: KEEP_META["crashes"] kept 2 of the 9 keys the triager brief prescribes, so
+    the minimization was dropped even when stamped correctly.
+    """
+    doc, _ = report(bd_factory, export([crash("e.1.50",
+        state="minimized", kind="robustness", input_path="/art/orig.fits",
+        minimized_path="/art/min.fits", minimized_bytes=65, original_path="/art/orig.fits",
+        repro_cmd="cargo test -p fits-header -- --exact parse", repro_rc=101,
+        dedup_key="code:a.rs:1:panic", duplicate_of=None,
+        stack_hash="ab12", class_closed_by=None,
+    )]))
+    c = doc["crashes"][0]
+    assert c["minimized_path"] == "/art/min.fits"
+    assert c["repro_cmd"].startswith("cargo test")
+    assert c["minimized_bytes"] == 65
+    assert c["repro_rc"] == 101
+    assert c["kind"] == "robustness"
+    assert not any(g["bucket"] == "crashes" for g in doc["stamping_gaps"])
+
+
+def test_a_crash_stamped_under_invented_key_names_is_a_gap_not_a_blank_record(bd_factory):
+    """A triager may stamp anything; `bd update` exits 0 for every key name.
+
+    Measured: one triager minimized 6 crashes to 65/185/71/81/2880/3 bytes, wrote 7 files
+    to disk, reported "comments + metadata written", and had written 0 comments plus keys
+    of its own invention (`min_input`, `min_bytes`, `dedup`, `triage_class`). Every crash
+    record rendered blank and no part of the report said the inputs existed.
+    """
+    doc, _ = report(bd_factory, export([crash("e.1.50",
+        min_input="/art/min.fits", min_bytes=65, dedup="a|b", triage_class="robustness",
+        triaged=True,
+    )]))
+    gap = next(g for g in doc["stamping_gaps"] if g["bucket"] == "crashes")
+    for key in ("state", "kind", "minimized_path", "repro_cmd", "repro_rc", "dedup_key"):
+        assert key in gap["issue"], f"{key} must be named as missing"
+    assert doc["summary"]["stamping_gaps"] >= 1
 
 
 def test_an_explicit_null_is_accepted_where_a_field_does_not_apply(bd_factory):

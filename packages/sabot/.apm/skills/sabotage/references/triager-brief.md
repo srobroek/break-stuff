@@ -148,9 +148,31 @@ MUST State what you normalized. Two stacks declared identical after stripping an
 - Re-run a harness for longer to look for more crashes. Your batch is the batch.
 
 ## Stamp each crash
-    bd update <wisp> --status in_progress --metadata '{"state":"minimized","kind":"<memory-safety|robustness>","minimized_path":"<abs>","minimized_bytes":<n>,"original_path":"<abs>","repro_rc":<n>,"dedup_key":"<key>","duplicate_of":"<id or null>","class_closed_by":"<unsafe_code=forbid, 0 unsafe blocks | null>"}'
+    bd update <wisp> --status in_progress --metadata '{"state":"minimized","kind":"<memory-safety|robustness>","minimized_path":"<abs>","minimized_bytes":<n>,"original_path":"<abs>","repro_cmd":"<the exact command, runnable against minimized_path>","repro_rc":<n>,"dedup_key":"<key>","duplicate_of":"<id or null>","class_closed_by":"<unsafe_code=forbid, 0 unsafe blocks | null>"}'
     bd comment <wisp> "MINIMIZED bytes=<n> rc=<n> kind=<kind> evidence=<abs path>"
-Read the wisp back after stamping.
+
+MUST Stamp `repro_cmd` with the command you actually ran, and `repro_rc` with the exit
+code it returned. A minimized file with no command that replays it is an artifact, not a
+reproduction: the next reader has 65 bytes and no way to make them crash anything.
+Measured: one triager minimized six crashes, wrote every file, and recorded no reproduce
+command and no exit code on any wisp under any key name -- so six confirmed crashes
+became six unreplayable byte strings.
+
+MUST Copy those key names verbatim. They are the names `scripts/report-json.py` reads
+(`KEEP_META["crashes"]`), so a synonym is dropped silently and the crash renders as
+though it were never triaged. Measured: one triager minimized six crashes to
+65/185/71/81/2880/3 bytes, wrote all seven files to disk, and stamped them as
+`min_input`, `min_bytes`, `dedup`, `triaged`, `triage_class` -- inconsistently across the
+six, with `tier` on three and `evidence_tier` on a fourth. Every crash record in the
+report came out blank, and nothing anywhere said the inputs existed. A shorter name is
+not a smaller version of the field; it is a different field nothing reads.
+
+MUST Read every wisp back with `bd show <wisp> --json` and diff the keys you find
+against the list above, then paste the missing-key result in your return. Claiming
+"comments and metadata written" is not the check: the run above reported exactly that,
+having written 0 comments and not one canonical key. `bd update` exits 0 for any key
+name at all, so its exit code proves the write happened, never that the reader can find
+it.
 
 ## Return
 The Triager Output format from your agent definition: a verdict line with the batch

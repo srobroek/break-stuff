@@ -61,7 +61,14 @@ LABEL_BUCKET = [
 KEEP_META = {
     "surfaces": ["surface", "scope"],
     "harnesses": ["entry_point", "runner", "harness_path", "input_shape"],
-    "crashes": ["input_path", "stack_hash"],
+    # The triager's own brief prescribes nine keys; keeping two of them dropped the
+    # minimization entirely. Measured: a triager minimized 6 crashes to 65/185/71/81/2880/3
+    # bytes, wrote the files to disk, and stamped them under its own invented names
+    # (`min_input`, `min_bytes`, `dedup`, `triage_class`). Every crash record in the report
+    # rendered blank, and nothing said the seven files existed.
+    "crashes": ["input_path", "stack_hash", "state", "kind", "minimized_path",
+                "minimized_bytes", "original_path", "repro_cmd", "repro_rc", "dedup_key",
+                "duplicate_of", "class_closed_by"],
     "findings": ["tier", "by", "source", "impact", "locus", "path", "cwe", "repro",
                  "surface", "node", "evidence", "control_passed", "dedup_key",
                  "root_cause", "not_executed_reason"],
@@ -80,6 +87,12 @@ FINDING_REQUIRED = [
     "tier", "by", "source", "impact", "locus", "surface", "node", "evidence",
     "control_passed", "dedup_key", "root_cause", "not_executed_reason",
 ]
+
+# The same rule for a crash wisp, which is the one bucket whose whole value is a file on
+# disk. A crash with no path to its input is unreproducible whatever its title claims, and
+# a triager that stamped under non-canonical names produced exactly that shape: six wisps,
+# seven minimized files present, nothing in the report reaching them.
+CRASH_REQUIRED = ["state", "kind", "minimized_path", "repro_cmd", "repro_rc", "dedup_key"]
 
 # Ranking, in order. Five keys, because a run producing hundreds of findings is read
 # top-down and then abandoned; the reader's attention is the scarce resource.
@@ -410,7 +423,24 @@ def not_executed_register(findings, coverage, surfaces):
                           "and the finding cannot be trusted either way",
             })
     for c in coverage:
-        for name in (c.get("scanners_skipped") or []):
+        # `scanners_skipped` is a list of NAMES. A count in its place is not a smaller
+        # version of the field: "9 skipped" identifies none of the nine, and nothing
+        # downstream can say which invariant went unchecked. Measured: 21 of 22 coverage
+        # wisps in one campaign stamped both scanner fields as integers and one as a comma
+        # string, and iterating an int raised TypeError -- the whole report died rather
+        # than naming the wisp. Register the mis-stamp instead of crashing on it, and
+        # never silently coerce it into a name.
+        skipped = c.get("scanners_skipped")
+        if isinstance(skipped, (int, float)) or isinstance(skipped, str):
+            register.append({
+                "kind": "scanner-skip-list-not-stamped", "id": c.get("id"),
+                "surface": c.get("surface"), "locus": None,
+                "reason": f"scanners_skipped is {skipped!r}, not a list of scanner names, "
+                          "so no skipped scanner can be named and no invariant traced to "
+                          "the tool that went unrun",
+            })
+            skipped = []
+        for name in (skipped or []):
             register.append({"kind": "scanner-skipped", "id": c.get("id"),
                              "surface": c.get("surface"), "locus": None,
                              "reason": str(name)})
@@ -522,6 +552,19 @@ def main():
                 "issue": f"finding wisp missing required field(s): {missing}. Use an "
                          "explicit null where a field does not apply; an omission reads "
                          "as a considered 'not applicable'.",
+            })
+
+    # A crash whose input the report cannot name is unreproducible, and it renders exactly
+    # like a crash that was never minimized. Named rather than blanked, so a triager that
+    # stamped under its own key names is visible instead of silently discarded.
+    for c in report["crashes"]:
+        missing = [k for k in CRASH_REQUIRED if k not in c]
+        if missing:
+            report["stamping_gaps"].append({
+                "id": c.get("id"), "bucket": "crashes",
+                "issue": f"crash wisp missing required field(s): {missing}. The minimized "
+                         "input may well exist on disk; without these keys no part of this "
+                         "report can reach it, and the crash reads as untriaged.",
             })
 
     threat = parse_meta(epic).get("threat")
