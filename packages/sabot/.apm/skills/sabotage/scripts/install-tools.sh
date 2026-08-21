@@ -28,7 +28,7 @@ RUN_CONTAINED="$SKILL_DIR/scripts/run-contained.sh"
 
 # image  :  comma-separated EXECUTABLES that MUST answer inside it.
 # Kept in sync with isolation.md's assert table and each surface's Tools table.
-IMAGE_TOOLS_base="opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner,radamsa,zzuf,creduce,hadolint,kube-linter,tflint,poutine,trufflehog"
+IMAGE_TOOLS_base="opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,trivy,osv-scanner,radamsa,zzuf,creduce,hadolint,kube-linter,tflint,poutine,trufflehog"
 IMAGE_TOOLS_rust="cargo-fuzz,cargo-audit,clippy,cargo-geiger"
 # semgrep is NOT here: opengrep in base reads the same baked semgrep-rules and
 # measured identical output (5 findings, same 3 rules, 0 errors) on the same
@@ -89,7 +89,7 @@ IMAGE_DB_base='test "$(find /opt/sabot-db/trivy -name trivy.db | wc -l)" -ge 1 \
   && LC_ALL=C.UTF-8 LANG=C.UTF-8 opengrep scan --quiet --json \
        --config /opt/sabot-db/semgrep-rules/python "$p" > "$p/g.json" 2>/dev/null \
   && test "$(grep -c insecure-hash-algorithm-md5 "$p/g.json")" -ge 1 \
-  && rm -rf "$p"'
+  && rm -rf "${p:?}"'
 IMAGE_DB_rust='test "$(ls /usr/local/advisory-db/crates 2>/dev/null | wc -l)" -ge 100 \
   && ls /deps/cargo/registry/cache/*/libfuzzer-sys-*.crate >/dev/null 2>&1 \
   && ls /deps/cargo/registry/cache/*/arbitrary-*.crate >/dev/null 2>&1'
@@ -186,6 +186,24 @@ probe() {
     echo "  runtime:  MISSING -- no docker/finch/podman/nerdctl. The campaign ABORTS: no runtime, no run (isolation.md, No container runtime)."
     fail=1
   fi
+
+  # Free disk. A campaign filled a 460 GiB volume to 100% with compiler output, after
+  # which containerd could not grow its sparse disk, image blobs returned
+  # `input/output error`, and no container would start on any image. That is
+  # unrecoverable mid-run, so it is a precondition here rather than a runtime surprise.
+  # 20 GiB covers a surface image build plus one cold workspace compile.
+  local free_mb
+  free_mb="$(df -Pm "${TMPDIR:-/tmp}" 2>/dev/null | awk 'NR==2 {print $4}')"
+  case "$free_mb" in
+    ''|*[!0-9]*) echo "  disk:     UNKNOWN -- could not read df; verify headroom by hand before a build phase." ;;
+    *)
+      if [ "$free_mb" -lt 20480 ]; then
+        echo "  disk:     ${free_mb} MiB free -- BELOW the 20480 MiB a build phase needs. Free space first; a full disk corrupts the runtime's content store and cannot be retried out of."
+        fail=1
+      else
+        echo "  disk:     ${free_mb} MiB free"
+      fi ;;
+  esac
 
   # bd + git -- the orchestration primitives the agent needs on the host.
   command -v bd  >/dev/null 2>&1 && echo "  bd:       $(bd version 2>/dev/null | head -1)" || { echo "  bd:       MISSING -- required for the run graph (beads-store.md)."; fail=1; }

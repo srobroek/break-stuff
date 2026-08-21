@@ -45,7 +45,7 @@ Where two surfaces could both claim a finding, the owner is:
 | `innerHTML` from a fetched value | `web.md` | a DOM sink, which `code.md`'s server-side taint never traces |
 | A server rendering a request value into HTML | `web.md` | the running app confirms it; `code.md` sees only the string build |
 | `build.rs` shelling out on a fetched value | `build.md` | it runs at compile time, which `shell.md`'s tool-call model does not cover |
-| An unpinned GitHub Action | `infra.md` | supply chain, caught by pinact and zizmor |
+| An unpinned GitHub Action | `infra.md` | supply chain, caught by `zizmor --offline` |
 
 ## Authoring
 

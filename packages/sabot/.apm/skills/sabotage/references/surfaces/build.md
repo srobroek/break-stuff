@@ -14,6 +14,23 @@ recipes, `.pre-commit-config.yaml` repos pinned to a branch, `binstall`/`cargo`
 config running a fetch, git hooks under version control, and any codegen step a
 build invokes.
 
+### A missing task runner is not a coverage gap
+
+`just`, `make`, and `task` dispatch shell; they do not contain the behaviour under
+attack. When the runner is absent from the image, read the recipe and run its body
+directly rather than recording the recipes as UNTESTED. The recipes stay in scope; only
+the dispatcher is missing, and a dispatcher is substitutable.
+
+| Runner | Enumerate recipes | Run one recipe's body |
+|---|---|---|
+| `just` | parse the `justfile`, or `just --dump --dump-format json` where the binary exists | `bash -c` the recipe lines, after substituting `{{var}}` from the file's own assignments |
+| `make` | parse the `Makefile`, or `make -pn` | `bash -c` the rule's commands, dropping `@`/`-` prefixes |
+| `task` | parse `Taskfile.yml` | `bash -c` each `cmds` entry |
+
+MUST Execute the recipe body when the runner is absent, and say which recipes were reached that way. A run that reports 26 recipes UNTESTED because a dispatcher was missing has declined to read a shell script that was sitting in the repo.
+MUST Report a recipe as UNTESTED only when its body itself cannot run: it needs a network host, a real credential, a platform the container is not, or a tool no image carries. That is a coverage gap; the runner's absence is not.
+NOT Never substitute a recipe body you cannot fully resolve. An unexpanded `{{var}}` or an unresolved `$(shell ...)` makes the executed command different from the real one, and a finding on a command the repo never runs is a false positive.
+
 ## Tools
 
 | Tool | Tier | Class | Run recipe | Catches | Overlap |
@@ -22,7 +39,7 @@ build invokes.
 | semgrep | opt-in | local | `opengrep --config /opt/sabot-db/semgrep-rules/rust --config /opt/sabot-db/semgrep-rules/python --json build.rs setup.py` | a build script shelling out on a value it fetched or read | baked rule dir, code side only |
 | `cargo metadata` | default-on | local | `cargo metadata --format-version 1` | every build-dependency and proc-macro crate that runs at compile time | enumerates the compile-time code surface |
 | npm dry-run | default-on | local | `npm install --ignore-scripts --dry-run` then diff against a normal install | which packages want to run install scripts | shows the install-time execution set |
-| pinact | default-on | local | `pinact run --check` | a pre-commit repo or action pinned to a mutable ref | shared with `infra.md` |
+| ~~pinact~~ | dropped | - | - | a pre-commit repo or action pinned to a mutable ref | **not installed.** See `infra.md`: `zizmor --offline` covers the detection |
 | osv-scanner | default-on | global | `XDG_CACHE_HOME=/opt/sabot-db/osv osv-scanner scan source --offline-vulnerabilities --format json -r .` (the env var is MANDATORY; `--offline*` alone loads no db and reports 0) | a known-malicious build-dependency | shared with `infra.md`; prefer the `dep-audit` package |
 
 MUST Read `build.rs`, proc-macro crates, and every install script, since a scanner enumerates none of them and the whole surface is code that runs before a test could catch it.

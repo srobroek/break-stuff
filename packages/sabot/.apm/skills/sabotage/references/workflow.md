@@ -48,6 +48,34 @@ MUST Stamp the resolved artifacts dir on the epic before spawning any agent, so 
    parse functions, CLI commands, hook scripts, request handlers, config readers,
    agent definitions. Record each with a `file:line`.
 
+### Step 2.5: size the nodes before creating them
+
+A surface is a class of attack; a NODE is the unit one set of agents runs against. A
+surface usually exceeds a node in size, and a node too large is sampled rather than
+tested.
+
+An atomic unit of sabotage is **one trust boundary's worth of code that one agent can
+enumerate, cover with harnesses, and read inside one budget.** In a Rust workspace
+that is usually one crate or one crate family sharing a boundary; in a script tree,
+one directory of scripts sharing an entry shape.
+
+Size each candidate node against the entry-point count step 2 recorded, and split or
+merge before creating any bead:
+
+| Signal | Verdict | Action |
+|---|---|---|
+| entry points > 4x the harness count the budget affords | TOO LARGE | split by subtree until each part fits |
+| the globs span unrelated trust boundaries | TOO LARGE | split by boundary, one node each |
+| harnessable share of entry points < 50% | TOO LARGE | split, and label the residue a declared sample with its ratio |
+| the node cannot be reasoned about without reading a sibling's globs | TOO SMALL | merge with that sibling |
+| the globs overlap a sibling's | TOO SMALL | move the overlap to one node and record which |
+| entry points fit the budget, one boundary, no glob overlap | RUNNABLE | create the node |
+
+MUST Compute `harnessable / total entry points` per node and stamp it on the node as `coverage_ratio` before spawning anything. One node in one run covered 13 of 706 entry points, which is a sample, and no artifact said so. A ratio on the bead makes the sample declared instead of discovered at report time.
+MUST Split a node rather than sampling it. A node that cannot be covered inside the budget becomes several nodes; where a residue must stay uncovered, name it a declared sample with its ratio in the coverage wisp.
+MUST Translate an operator's stated unit into node beads explicitly. An instruction like "one run per crate" is a sizing decision, and leaving it unrecorded means the orchestrator improvises the split and nothing checks it.
+MUST Decide node size and parallelism together. Each node holds a container for the length of its run, so the node count and the concurrent-container ceiling are one decision: total nodes divided by the affordable concurrency gives the number of waves, and a node sized past the budget adds a wave rather than coverage.
+
 MUST Record the entry points before step 4. A fuzzer given no entry points invents its own scope and writes harnesses for code nobody calls.
 MUST Record each entry point as a bare `file:line` with no threat annotation. Do not mark which entries "map onto the stated threat", label a parser "hostile-response", or rank them by suspected relevance. That annotation is the orchestrator's hypothesis, and it reaches the scout through the entry-point list and narrows the census to the guessed spot. The user's threat orders the REPORT (stamped on the epic), never the recon input.
 
@@ -91,8 +119,18 @@ Before running any scanner, find and read every config that governs it:
 | `SECURITY.md`, an accepted-risk doc | a documented accepted risk is cited rather than re-reported |
 | `.gitleaksignore`, a secrets allowlist | an allowlisted value is not a finding |
 
+Count them, because the counts are the finding:
+
+| Number | Meaning for the report |
+|---|---|
+| total suppressions | the size of the deliberately-unscanned surface |
+| suppressions with a stated reason | each caps a related finding at HARDENING |
+| suppressions with no stated reason | each caps nothing, and the count is itself a HARDENING finding |
+| documented accepted risks | cited rather than re-reported |
+
 MUST Honor the project's config. Reporting a deliberately disabled rule as a new finding destroys the report's credibility, and the user stops reading it.
-MUST Record a suppression that carries no reason as its own HARDENING finding, since an unexplained suppression is a gap rather than a decision.
+MUST Cap a finding at HARDENING only against a suppression that states a reason. An unreasoned suppression earns no cap, so a finding it covers is tiered on its own evidence.
+MUST Report the unreasoned-suppression count as its own HARDENING finding with the four counts above. One run measured 331 suppressions of which 82 carried no reason; the bare total would have read as 331 deliberate decisions.
 
 ### Step 3.6: repo-global pre-pass (compute once, share on the epic)
 
@@ -137,6 +175,23 @@ artifacts: the ranked, boundary-anchored vectors that become the fuzzer's work l
 MUST Recon before authoring, since a fuzzer with no invariants writes never-panics harnesses and nothing else.
 MUST Aim the standard packs here. An unaimed pack floods the report and the reader stops separating signal from volume.
 
+### Step 4.5: check which finding classes are structurally closed
+
+A language or build setting can make a whole vulnerability class unreachable in this
+repo. Establish that once, here, and re-aim the campaign onto the classes that
+remain.
+
+| Signal | Class it closes | Consequence for the run |
+|---|---|---|
+| `unsafe_code = "forbid"` workspace-wide with zero `unsafe` blocks | memory safety in Rust | crashes are logic defects; step 7 is a probable no-op |
+| a memory-safe language with no FFI and no native extension | memory safety | same |
+| every input arrives from the local filesystem or the local user | remote attack surface | reframe onto local and inter-process boundaries |
+| no `eval`/`exec`/template rendering of untrusted input | injection into the host language | reframe onto SQL, shell, and path construction |
+
+MUST Census a closed class rather than asserting it. "0 `unsafe` blocks over 44 crates, `unsafe_code = "forbid"` at `Cargo.toml:31`" closes the class; "this is safe Rust" does not.
+MUST Re-aim the campaign when a class is closed, and say so in the report. One run staffed a whole role for memory safety against a repo that forbids `unsafe`: 15 node-runs produced 0 crash wisps and the triager did nothing. The budget belonged on logic, ordering, and durability invariants.
+MUST Keep the class in the report as a closed class with its census, since "we found no memory-safety bugs" and "memory-safety bugs are structurally impossible here" are different claims and only the second is worth reading.
+
 ## Step 5: author the attack plan
 
 Spawn one `fuzzer` per surface, in parallel, Briefed from `fuzzer-brief.md`. Each
@@ -158,6 +213,29 @@ Spawn one `gremlin` per surface node, in parallel, Briefed from
 
 MUST Treat a scanner crash as INVALID and fix the invocation, since "0 findings" from a tool that never ran is the most damaging possible report line.
 MUST Verify each harness reached its target using the runner's coverage output, because a harness wired to nothing looks exactly like a clean result.
+MUST Name the campaign-wide ceiling's observer, which is the main thread and no other role. A gremlin sees its own per-harness cap alone, so nothing measures the total unless the orchestrator records elapsed wall-clock against the approved `total_s` at each wave boundary and stops to re-approve before exceeding it. One run's approved `total_s` was 1800 and the run passed it roughly fiftyfold with no role positioned to notice.
+MUST Reserve the budget for the scanners recon aimed ON before allocating any of it to builds. `clippy` and the stock `opengrep` pack were dropped on three nodes of one run because a multi-target build consumed the clock, and recon had aimed both ON. A cheap mandated check that loses to an expensive optional build is a plan the budget table did not model.
+
+### Step 6 lateral channel: parallel gremlins must be able to reach each other
+
+Surfaces run in parallel, so a blocker or a corrected fact one gremlin discovers has
+no route to its siblings. In one run a build panic on a read-only mount blocked
+several nodes for half the campaign because the node that diagnosed it had nowhere to
+publish the diagnosis.
+
+1. Create `<artifacts>/operational-notes.md` at step 6 open, and name its absolute
+   path in every gremlin Brief as both readable and appendable.
+2. Every gremlin appends a dated section for any fact that changes what a SIBLING
+   would do: a blocker and its workaround, a tool that cannot run in the image, a
+   measured environment fact, a retraction of something the Brief asserted.
+3. Every gremlin reads the file before its first tool call and again before filing
+   coverage, since notes land while it works.
+4. The orchestrator broadcasts anything that invalidates in-flight work to the live
+   gremlins directly rather than waiting for them to poll.
+
+MUST Give the lateral channel a written home before the fan-out. A channel improvised mid-run reaches only the agents still alive when it appears.
+MUST Validate an environment fact on ONE node before writing it into every Brief. One run asserted that `/artifacts` was a per-container volume discarded on exit, fanned that to every gremlin, and the shared host bind filled the host disk: one node lost its whole test pass and another lost its harness attribution. A wrong recipe costs once per child it reached.
+MUST Append a retraction to the lateral channel with the original wording quoted, and renumber nothing. Editing a numbered instruction in place leaves readers citing an instruction whose text has changed under them.
 
 ### Step 6.5: live-spawn agentic fuzzing (opt-in)
 
@@ -174,6 +252,10 @@ MUST Read the canaries and collect the artifacts before discarding the lease.
 `triager` claims each crash batch. It dedups by stack, minimizes every input, then
 classifies memory-safety against robustness. Each minimized crash becomes a
 finding wisp, and its crash wisp closes.
+
+Skip this step when step 4.5 closed the memory-safety class and no crash wisp exists,
+and record it as skipped-because-closed with the crash count. Spawning a triager over
+zero crashes spends a role on nothing.
 
 ## Step 8: prove or refute
 
@@ -198,6 +280,27 @@ output". The report must say which honest path was taken:
 
 MUST Prefer spawning `challenger` even in a non-interactive run, since independence comes from a fresh context rather than from a human being present.
 MUST Mark an inline tier `by=self` and headline the missing independent pass when spawning was impossible, because a self-judged finding presented as challenged is the dishonesty the two-agent split exists to prevent.
+
+### Step 8.5: synthesize the systemic patterns
+
+Run one pass over the tiered finding set looking for the defect SHAPE that repeats
+across nodes. Individual findings are the input; the output is a small set of named
+patterns, each with its instance list and its own impact. Query the graph rather than
+re-reading replies:
+
+    bd list --label sab-finding --metadata-field run_id=<id> --all --json > <artifacts>/findings.json
+    jq -r '.[].metadata.root_cause' <artifacts>/findings.json | sort | uniq -c | sort -rn
+
+Any `root_cause` appearing across two or more surface nodes is a candidate pattern.
+For each one, file a pattern wisp on the epic:
+
+    bd create "pattern: <name>" --parent <epic> --labels sab-finding,sab-pattern --json \
+      --metadata '{"run_id":"<id>","kind":"systemic-pattern","instances":["<id>","<id>"],"nodes":["<node>","<node>"],"impact":"<LEVEL>","root_cause":"<phrase>"}'
+
+MUST Run this step on every run that produced more than one node's findings, and assign it explicitly (the main thread, or a `challenger` continued after tiering). One campaign's central conclusion, eight independent built-but-never-wired mechanisms whose self-checks all failed open, was noticed in passing by the orchestrator and was produced by no step in this file.
+MUST Rank a pattern by its instance count and its span across nodes, and report it above the individual findings. A defect appearing on eight nodes is an engineering-practice finding, and its per-node rows read as eight unrelated bugs.
+MUST File each pattern as its own wisp with its instance ids. A pattern living only in the report's prose is lost to the next campaign, which re-derives it or misses it.
+NOT Never let a pattern replace its instances. The instances keep their rows and their fixes; the pattern is an additional finding, per the no-delete rule.
 
 ## Step 9: report
 
@@ -230,8 +333,15 @@ it pass is what audit-only withholds). See the write policy below.
 | An agent dies mid-campaign | resume from beads per `beads-store.md`, since its wisps survive |
 | The budget runs out with harnesses unrun | stop, and list every unrun harness as a gap |
 | A crash does not reproduce | a harness bug rather than a target bug, recorded as INVALID |
+| A harness file named in a wisp does not exist on disk | NOT EXECUTED, never a pass: `state:invalid` on the wisp plus a re-author wisp back to `fuzzer` |
+| A harness runs but its benign control fails | both surfaces UNTESTED: no verdict either way, and nothing resting on it may be tiered above HARDENING |
+| A gremlin finds a defect outside its scope globs | file it under the surface node whose globs contain the locus per `beads-store.md`, do not investigate, do not drop |
+| A Brief premise turns out to be false | file a premise-correction comment on the surface node and state it in the return, for the report's premise-corrections section |
+| A read-only agent needs a write to make its best measurement | escalate per `escalation.md`; record the measurement as blocked-by-role rather than dropping it |
+| A wrapper or scanner exits 0 having done nothing | INVALID: an exit code proves no execution, so require a positive artifact such as a nonzero test count with named tests, or parsed scanner JSON |
 
 MUST State every gap in the report. A campaign that hides what it could not check reads as a clean bill of health.
+MUST Treat an exit code from any wrapper script as unproven until a positive in-container artifact confirms execution. Wrappers measured returning 0 while running nothing, in one run: the container runner on its own usage errors, a host hook that rewrote the build tool, the container CLI while printing an I/O error.
 
 ## Debug mode
 

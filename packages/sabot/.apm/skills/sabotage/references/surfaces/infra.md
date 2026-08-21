@@ -20,12 +20,12 @@ lockfiles (`Cargo.lock` `package-lock.json` `pnpm-lock.yaml` `uv.lock` `go.sum`
 | checkov | default-on | local | `checkov -d . -o json` | deeper IaC policy checks, including custom policies | overlaps trivy, and catches policy classes trivy misses |
 | zizmor | default-on | local | `zizmor --format json .github/workflows/` | CI workflow injection: `pull_request_target` with untrusted checkout, template injection into `run:`, over-broad `GITHUB_TOKEN` | unique; no other tool does workflow dataflow |
 | actionlint | default-on | local | `actionlint -format '{{json .}}'` | workflow syntax, shell inside `run:` through embedded shellcheck | complements zizmor, which judges security rather than validity |
-| pinact | default-on | local | `pinact run --check` | actions referenced by tag rather than SHA | mechanical and unique |
+| ~~pinact~~ | dropped | - | - | actions referenced by tag rather than SHA | **not installed.** `zizmor --offline` reports the same unpinned refs (`error[unpinned-uses]`), and pinact's unique capability is *writing* the pin, which is remediation rather than detection |
 | osv-scanner | default-on | global | `XDG_CACHE_HOME=/opt/sabot-db/osv osv-scanner scan source --offline-vulnerabilities --format json -r .` (the env var is MANDATORY; `--offline*` alone loads no db and reports 0) | CVEs across every lockfile ecosystem | overlaps the repo's `dep-audit` package, which is preferred when present |
 | hadolint | default-on | local | `hadolint -f json <Dockerfile>` | root user, unpinned base image, unsafe `RUN`, missing `HEALTHCHECK` | embeds shellcheck for `RUN` bodies |
 | kube-linter | default-on | local | `kube-linter lint --format json <path>` | missing limits, privileged containers, `runAsNonRoot`, host mounts | k8s only |
 | tflint | default-on | local | `tflint -f json` | provider-aware Terraform errors | complements the policy scanners |
-| gitleaks | default-on | local | `gitleaks detect --report-format json` | committed credentials | the repo's `secrets-scan` package is preferred when present |
+| gitleaks | default-on | local | `gitleaks dir --report-format json .` for the working tree, AND `gitleaks git --report-format json .` for history. **Verify the history pass saw commits**: in a worktree, `.git` is a pointer file outside the mount, so `gitleaks git` scans 0 commits and exits 0 | committed credentials | the repo's `secrets-scan` package is preferred when present |
 | grype | opt-in | global | `grype dir:. -o json` | container image and SBOM CVEs | overlaps trivy's vuln scanner |
 | conftest | opt-in | local | `conftest test --output json <files>` | custom Rego policy, useful only when the repo ships policies | none |
 

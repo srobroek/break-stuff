@@ -180,16 +180,66 @@ class Runner:
             return b"", b"", -1, "timeout"
         except OSError as e:
             return b"", str(e).encode(), -1, "oserror"
+        except ValueError as e:
+            # An embedded NUL in an argv element raises ValueError out of _fork_exec,
+            # which is not an OSError and so escaped the handler above and aborted the
+            # whole run. Measured: one NUL vector took all 49 vectors of a justfile
+            # harness with it, and the traceback read as a defect in the target. The NUL
+            # is refused by execve, not by the target, so this is a vector the OS cannot
+            # deliver -- reported as undeliverable rather than as a target result, because
+            # calling it a pass would claim the boundary was tested.
+            return b"", str(e).encode(), -1, "undeliverable"
         status = "signal" if p.returncode < 0 else "ok"
         return p.stdout, p.stderr, p.returncode, status
 
-    def save_input(self, name: str, payload: bytes) -> str:
-        """Persist a payload that produced a finding, so it is reproducible."""
+    def save_input(self, name: str, payload: bytes, delivery: str = "stdin") -> str:
+        """Persist a payload that produced a finding, so it is reproducible.
+
+        A saved repro is round-tripped before its path is handed back. Zero-byte
+        `.input` files shipped as "reproducing inputs" for a whole campaign and were
+        caught only by a reader who distrusted them and re-persisted all 21 payloads by
+        hand; a crash whose repro is empty cannot be minimized, which is the entire job
+        of the triager role downstream. An unreadable or short write is therefore loud
+        here rather than a silent artifact discovered later.
+
+        `delivery` records HOW the payload reached the target, because an argv payload
+        replayed on stdin does not reproduce anything either.
+        """
         self.artifacts.mkdir(parents=True, exist_ok=True)
         safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in name)[:80]
         path = self.artifacts / f"{safe}.input"
+
+        if not payload:
+            raise ValueError(
+                f"refusing to write an empty repro for {name!r}: a zero-byte .input "
+                "reproduces nothing. If the case genuinely has an empty payload, record "
+                "it as a finding with no repro rather than as an empty file."
+            )
+
         path.write_bytes(payload)
+        readback = path.read_bytes()
+        if readback != payload:
+            raise OSError(
+                f"repro {path} did not round-trip: wrote {len(payload)} byte(s), read "
+                f"back {len(readback)}. The artifact is unusable; do not report it as a "
+                "repro."
+            )
+        (self.artifacts / f"{safe}.delivery").write_text(f"{delivery}\n")
         return str(path.resolve())
+
+
+def persist(r: "Runner", case: str, payload: bytes, delivery: str) -> str:
+    """save_input() with the one legitimately-empty case handled.
+
+    A genuinely empty payload (the `empty` structural case) has no repro to write, and
+    that is different from a repro that was LOST. It yields an EMPTY input_ref, so the
+    finding reads as having no repro; a zero-byte file presented as a repro is the
+    failure this guards, because the field being populated is what a reader trusts.
+    """
+    try:
+        return r.save_input(case, payload, delivery)
+    except ValueError:
+        return ""
 
 
 # --------------------------------------------------------------------------
@@ -225,32 +275,49 @@ def extract_decision(obj) -> str | None:
 
 def check_structural(r: Runner, findings: list[Finding], mode: str, max_bytes: int) -> None:
     for name, payload, note in structural_corpus(mode, max_bytes):
+        # `repro` is what gets persisted; `stdin_payload` is what the target reads. argv
+        # mode used to blank the payload it had just moved into argv, so every repro
+        # written after the first argv case was zero bytes.
+        repro = payload
+        delivery = "stdin"
+        stdin_payload = payload
         argv_extra = None
         if mode == "argv":
             try:
                 argv_extra = [payload.decode("utf-8", "replace")]
-                payload = b""
             except Exception:
                 argv_extra = ["<undecodable>"]
-        out, err, rc, status = r.invoke(payload, argv_extra)
+            stdin_payload = b""
+            delivery = "argv"
+        out, err, rc, status = r.invoke(stdin_payload, argv_extra)
 
         case = f"structural/{name}"
         if status == "timeout":
-            ref = r.save_input(case, payload)
+            ref = persist(r, case, repro, delivery)
             findings.append(Finding("HANG", case, f"no exit within {r.timeout}s ({note})", ref))
             continue
         if status == "signal":
-            ref = r.save_input(case, payload)
+            ref = persist(r, case, repro, delivery)
             findings.append(Finding("CRASH", case, f"killed by signal {-rc} ({note})", ref))
             continue
         if status == "oserror":
             findings.append(Finding("INVALID", case, f"could not execute: {err.decode(errors='replace')[:200]}"))
             continue
+        if status == "undeliverable":
+            # execve refused the argv before the target saw it, so the boundary is
+            # UNTESTED rather than clean. Falling through to the expect checks would
+            # score a vector the target never received as a pass.
+            findings.append(Finding(
+                "INVALID", case,
+                "the OS refused to deliver this vector "
+                f"({err.decode(errors='replace')[:120]}); the target never received it, "
+                "so this boundary is UNTESTED"))
+            continue
 
         # A Python traceback on stderr is a crash even when the exit code lies.
         stderr_txt = err.decode("utf-8", "replace")
         if "Traceback (most recent call last)" in stderr_txt:
-            ref = r.save_input(case, payload)
+            ref = persist(r, case, repro, delivery)
             findings.append(Finding("CRASH", case, f"unhandled exception ({note})", ref))
             continue
 
@@ -265,17 +332,57 @@ def check_structural(r: Runner, findings: list[Finding], mode: str, max_bytes: i
         try:
             json.loads(body)
         except json.JSONDecodeError as e:
-            ref = r.save_input(case, payload)
+            ref = persist(r, case, repro, delivery)
             findings.append(
                 Finding("UNPARSABLE", case,
                         f"non-JSON stdout on a JSON-contract target ({e.msg}) ({note})", ref))
 
 
+EXPECT_VERDICTS = ("deny", "allow", "ask", "no-crash", "nonzero-exit", "zero-exit")
+
+
+def validate_vectors(vectors: list[dict]) -> list[str]:
+    """Reject a vectors file before running it. Returns human-readable problems.
+
+    `expect` used to default to `no-crash` and `why` to `""`, so a misspelled or missing
+    key silently downgraded the vector to the WEAKEST assertion in the set: the vector
+    still ran, still passed, and still counted. A bypass vector that quietly becomes a
+    did-not-crash vector is a false clean, so an unusable vector is a loud refusal.
+    """
+    problems: list[str] = []
+    for i, vec in enumerate(vectors):
+        where = f"vector[{i}]" + (f" ({vec.get('name')})" if vec.get("name") else "")
+        if not isinstance(vec, dict):
+            problems.append(f"{where}: not an object")
+            continue
+        expect = vec.get("expect")
+        if expect is None:
+            problems.append(
+                f"{where}: no `expect`. It is required: an absent expectation used to "
+                f"default to `no-crash`, the weakest verdict, so the vector passed "
+                f"without asserting what it was written to assert. One of {EXPECT_VERDICTS}."
+            )
+        elif str(expect).strip().lower() not in EXPECT_VERDICTS:
+            problems.append(
+                f"{where}: expect={expect!r} is not one of {EXPECT_VERDICTS}. A "
+                f"misspelling used to fall through to `no-crash`."
+            )
+        if not str(vec.get("why") or "").strip():
+            problems.append(
+                f"{where}: no `why`. The finding detail is rendered from it, so a "
+                f"failure without one cannot be triaged."
+            )
+        unknown = set(vec) - {"name", "expect", "why", "payload"}
+        if unknown:
+            problems.append(f"{where}: unknown key(s) {sorted(unknown)}")
+    return problems
+
+
 def check_vectors(r: Runner, findings: list[Finding], vectors: list[dict], mode: str) -> None:
     for i, vec in enumerate(vectors):
         name = vec.get("name") or f"vector-{i}"
-        expect = (vec.get("expect") or "no-crash").strip().lower()
-        why = vec.get("why", "")
+        expect = str(vec["expect"]).strip().lower()
+        why = vec["why"]
         raw = vec.get("payload")
         if isinstance(raw, (dict, list)):
             payload = json.dumps(raw).encode()
@@ -286,36 +393,53 @@ def check_vectors(r: Runner, findings: list[Finding], vectors: list[dict], mode:
         else:
             payload = str(raw).encode()
 
+        # The payload to PERSIST is kept separate from the payload to send on stdin.
+        # argv mode used to blank `payload` after moving it into argv, so every
+        # save_input() below wrote a zero-byte repro for the rest of the run.
+        repro = payload
+        delivery = "stdin"
         argv_extra = None
+        stdin_payload = payload
         if mode == "argv":
             argv_extra = [payload.decode("utf-8", "replace")]
-            payload = b""
+            stdin_payload = b""
+            delivery = "argv"
 
-        out, err, rc, status = r.invoke(payload, argv_extra)
+        out, err, rc, status = r.invoke(stdin_payload, argv_extra)
         case = f"vector/{name}"
 
         if status == "timeout":
-            ref = r.save_input(case, payload)
+            ref = persist(r, case, repro, delivery)
             findings.append(Finding("HANG", case, f"no exit within {r.timeout}s", ref))
             continue
         if status == "signal":
-            ref = r.save_input(case, payload)
+            ref = persist(r, case, repro, delivery)
             findings.append(Finding("CRASH", case, f"killed by signal {-rc}", ref))
             continue
         if status == "oserror":
             findings.append(Finding("INVALID", case, "could not execute target"))
+            continue
+        if status == "undeliverable":
+            # execve refused the argv before the target saw it, so the boundary is
+            # UNTESTED rather than clean. Falling through to the expect checks would
+            # score a vector the target never received as a pass.
+            findings.append(Finding(
+                "INVALID", case,
+                "the OS refused to deliver this vector "
+                f"({err.decode(errors='replace')[:120]}); the target never received it, "
+                "so this boundary is UNTESTED"))
             continue
 
         if expect == "no-crash":
             continue
         if expect == "nonzero-exit":
             if rc == 0:
-                ref = r.save_input(case, payload)
+                ref = persist(r, case, repro, delivery)
                 findings.append(Finding("CONTRACT", case, f"expected nonzero exit, got 0. {why}", ref))
             continue
         if expect == "zero-exit":
             if rc != 0:
-                ref = r.save_input(case, payload)
+                ref = persist(r, case, repro, delivery)
                 findings.append(Finding("CONTRACT", case, f"expected exit 0, got {rc}. {why}", ref))
             continue
 
@@ -326,7 +450,7 @@ def check_vectors(r: Runner, findings: list[Finding], vectors: list[dict], mode:
             try:
                 parsed = json.loads(body)
             except json.JSONDecodeError:
-                ref = r.save_input(case, payload)
+                ref = persist(r, case, repro, delivery)
                 findings.append(Finding("UNPARSABLE", case,
                                         "expected a decision but stdout is not JSON", ref))
                 continue
@@ -335,7 +459,7 @@ def check_vectors(r: Runner, findings: list[Finding], vectors: list[dict], mode:
         effective = got or "allow"
         if effective != expect:
             kind = "BYPASS" if expect == "deny" and effective in ("allow", "ask") else "CONTRACT"
-            ref = r.save_input(case, payload)
+            ref = persist(r, case, repro, delivery)
             findings.append(
                 Finding(kind, case,
                         f"expected {expect}, got {effective}. {why}".strip(), ref))
@@ -449,6 +573,17 @@ def main(argv: list[str]) -> int:
             return 2
         if not isinstance(vectors, list):
             print("fuzz-cli: vectors file must be a JSON list", file=sys.stderr)
+            return 2
+        problems = validate_vectors(vectors)
+        if problems:
+            for problem in problems:
+                print(f"fuzz-cli: {problem}", file=sys.stderr)
+            print(
+                "fuzz-cli: refusing to run an unusable vectors file. A vector missing "
+                "`expect` used to run as `no-crash` and pass, so the bypass it was "
+                "written to prove read as a clean result.",
+                file=sys.stderr,
+            )
             return 2
 
     r = Runner(target_cmd, args.mode, args.timeout, args.mem_mb, artifacts, env_extra)

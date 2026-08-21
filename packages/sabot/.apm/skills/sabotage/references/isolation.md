@@ -36,6 +36,21 @@ image via `run-contained.sh`.
 MUST Run every target-touching tool in the container, not only the fuzzers. A compiling scanner (`clippy`, `gosec`) builds the crate and so runs the target's build code; a text scanner has no host-side reason to exist separately. The host holds the agent and `bd`/`git`/the runtime, nothing that touches target code.
 MUST Never run a compiling linter on the host as a "static" pass. It executes the target's `build.rs` and proc-macros on the host, which is the unconfined build-time execution the container exists to prevent.
 
+## No network
+
+Read this before choosing a single tool or flag. Every target-touching command runs with
+`--network none`: no DNS, no egress, no proxy, no package registry, no rule registry. It is
+this skill's own rule rather than a property of one host, so it holds on every run and there
+is no invocation that gets an exception.
+
+"Local host access" means loopback INSIDE the container, reaching a server the campaign
+itself started there. A host port, a LAN address, or a public endpoint is out of scope no
+matter who asks for it.
+
+MUST Report a tool that needs the network as NOT EXECUTED, with the reason "requires network; container is `--network none`". Never as "0 findings", and never as a retry.
+MUST Resolve every remote dependency at IMAGE BUILD time, or in one explicit, separated, network-allowed fetch phase that runs no target code. Rule packs, advisory databases, and dev-deps are all in this class; see Baked offline databases and Provisioning below.
+NOT Never grant network to a scan to make it pass. That trades the isolation guarantee for a result, which is the one trade this contract exists to prevent.
+
 ## Container contract
 
 ```
@@ -45,37 +60,88 @@ docker run --rm \
   --pids-limit 512 \               # fork-bomb ceiling
   --cpus 2 \
   --read-only \                    # image fs is read-only
-  --tmpfs /scratch:size=512m \     # the only writable place inside
+  --tmpfs /scratch:size=2g \       # writable, RAM-backed, charged to --memory (see below)
   --workdir /scratch \             # cwd is writable; the target is read at /target
   --env HOME=/scratch --env TMPDIR=/scratch \
-  --env CARGO_TARGET_DIR=/scratch/target --env GOCACHE=/scratch/go-build \
+  --env CARGO_TARGET_DIR=/artifacts/.build/cargo-target \
+  --env GOCACHE=/artifacts/.build/go-build \
   --env GOPATH=/scratch/go --env npm_config_cache=/scratch/npm \
+  --env LANG=C.UTF-8 --env LC_ALL=C.UTF-8 --env PYTHONUTF8=1 \
   --cap-drop ALL --security-opt no-new-privileges \
   --user 1000:1000 \               # never root
   -v <target>:/target:ro \         # target mounted READ-ONLY
-  -v <artifacts>:/artifacts \      # the one writable host mount, for findings
-  <image> <campaign command reading /target, e.g. cargo test --manifest-path /target/Cargo.toml>
+  -v <per-run named volume>:/artifacts \   # findings; copied to the host after the run
+  <image> <campaign command reading /target, e.g. cargo test --no-fail-fast --manifest-path /target/Cargo.toml>
 ```
 
 MUST Mount the target read-only. The campaign reads and attacks it; it never needs to write the target, and a read-only mount makes an accidental mutation impossible.
 MUST Pass `--network none` for a fuzz or build run. A harness that needs loopback (dev-server DAST) gets a published port mapping instead, never full network.
 MUST Enforce the run's memory, pid, and cpu budget as container flags, since a flag the kernel enforces holds where a `NOT` rule in prose does not.
 MUST Run as a non-root user with `--cap-drop ALL` and `--security-opt no-new-privileges`, so a container escape has nothing to escalate to.
-MUST Write findings only to the `/artifacts` bind mount, the single writable path that survives the container.
-MUST Direct every build and test toolchain to write under `/scratch`, never the read-only target: `run-contained.sh` sets `--workdir /scratch` and `CARGO_TARGET_DIR`/`GOCACHE`/`TMPDIR`/`HOME` there, and the command after `--` reads the target at `/target` (e.g. `cargo test --manifest-path /target/Cargo.toml`). A `cargo test` left to write `target/` in the read-only mount fails, which reads as a broken harness rather than the isolation working.
+MUST Write findings only to `/artifacts`, the single writable path whose contents survive the container.
+MUST Direct every build and test toolchain away from the read-only target: `run-contained.sh` sets `--workdir /scratch`, puts `TMPDIR`/`HOME` on the tmpfs and `CARGO_TARGET_DIR`/`GOCACHE` under `/artifacts/.build`, and the command after `--` reads the target at `/target` (e.g. `cargo test --no-fail-fast --manifest-path /target/Cargo.toml`). A `cargo test` left to write `target/` in the read-only mount fails, which reads as a broken harness rather than the isolation working.
+MUST Set a UTF-8 locale (`LANG`/`LC_ALL=C.UTF-8`, `PYTHONUTF8=1`), which the wrapper does. Under the default POSIX locale a python scanner dies on the first non-ASCII byte of a rule file: `opengrep` raised `'ascii' codec can't decode byte 0xe2` from `config_resolver.py:241` and exited 2 having scanned 0 files, where the same invocation under UTF-8 returned 41 findings across 14 files. `scout` synthesizes rule files, so a curly quote in a synthesized rule is the expected case.
+
+### `/artifacts` is a volume that gets copied out, and `/scratch` is RAM
+
+Two claims that read as isolation guarantees are narrower than they look, and both were
+measured the hard way.
+
+`/artifacts` is a per-run NAMED VOLUME, not a host bind mount. Nothing the container writes
+there touches the host while the run is in progress. After the run, `run-contained.sh`
+replicates the whole volume onto the host with `docker cp`, so anything left in it becomes
+permanent host residue. A campaign that pointed build output there accumulated 1.2 GiB,
+856 MiB, 2.0 GiB, and 5.2 GiB of compiler output across four runs, filled a 460 GiB volume
+to 100%, and left containerd unable to grow its sparse disk: image blobs began returning
+`input/output error` and no container would start on any image. One copy-out took 600 s and
+destroyed the node's log. The wrapper now prunes `/artifacts/.build` and any directory
+carrying a `CACHEDIR.TAG` before copying, and refuses a payload above `--max-copy-mb`.
+
+`/scratch` is a tmpfs, and tmpfs pages are charged to the `--memory` cgroup. Measured: `dd`
+was SIGKILLed at exactly 2.0 GiB under `--mem 2g --scratch 12g`, so `--scratch` buys
+nothing a build can use. A multi-GiB cargo target dir on `/scratch` OOM-kills the build,
+which is why build caches default to the disk-backed `/artifacts/.build`.
+
+MUST Treat free host disk as a precondition, not a background condition. `run-contained.sh` reads `df` on the artifacts dir and refuses to start below `--min-free-mb` (default 4096).
+MUST Bound the copy-out. Findings are kilobytes; anything at the megabyte scale is build residue that a caller pointed at the wrong path.
+NOT Never retry into a disk failure. A full disk corrupts the runtime's content store, and the second attempt lands on a runtime that can no longer read its own images.
+
+### A host shell wrapper can leak into the container
+
+Containerization is not hermetic against a wrapper installed in the shell that launches the
+run. One was measured rewriting `cargo` to `rtk` INSIDE the container: it selected 0 tests
+across 11 targets and exited 0, which is indistinguishable in a report from a clean surface.
+Another rewrite echoed a denied host command back as `rtk df`.
+
+MUST Pass `--require-cmd <names>` for every toolchain a run depends on. The wrapper resolves each name inside the container, prints the resolved path and version, and exits 6 when one does not resolve, so a substitution is visible before the command that depends on it runs.
+MUST Distrust an exit code on its own. The wrapper writes `<artifacts>/run-contained.status` with `executed=0|1`, `rc`, and a `reason`, rewritten at every transition; a caller that requires a run to have happened greps `executed=1` rather than reading `$?`, which a host wrapper has been measured returning as 0 alongside a fatal error, and which a `| tee` in the caller's own pipeline discards outright.
+MUST Pass `--expect-json <path>` for any scanner whose output a caller will parse. A crashed scanner leaves the previous run's JSON in place; the wrapper deletes the path before the command and afterwards requires a fresh file, parseable JSON, and a nonzero scanned-file count, exiting 7 with `executed=0` otherwise.
+
+### A worktree's `.git` is a file, and repo-aware scanners fail open on it
+
+In a git worktree `.git` is a pointer FILE naming the real gitdir, which lives outside the
+mount. `gitleaks git` then finds no history to walk and reports success over zero commits,
+which is a clean secrets scan for a repo it never read.
+
+MUST Run a repo-aware scanner in its filesystem mode against a worktree (`gitleaks dir`, `gitleaks detect --no-git`), or mount the real gitdir alongside. History mode over a worktree is NOT EXECUTED.
+MUST Confirm the scanner reports a nonzero unit count (commits walked, files scanned) before recording zero findings, since every one of these fails open to an empty result.
 
 ### The wrapper's own exit codes
 
 `run-contained.sh` reserves the low codes for its own failures, so a caller can tell
 "the campaign command failed" from "the run never happened". Every one of these is an
-INVALID run to be reported as a coverage gap, never as zero findings.
+INVALID run to be reported as a coverage gap, never as zero findings. Code 124 is the one
+exception: a user-set deadline expired, which is a normal outcome carrying partial results.
 
 | Code | Meaning |
 |---|---|
 | 2 | usage error (a missing flag, a bad `--workdir`, an illegal tool name) |
-| 3 | no container runtime, or the image is absent |
-| 4 | the findings copy-out failed; output is stranded in the volume |
+| 3 | no container runtime, the image is absent, or host free disk is below `--min-free-mb` |
+| 4 | the findings copy-out failed, or was refused above `--max-copy-mb`; output is stranded in the volume |
 | 5 | `--copy-src` staging failed 3 times; the source copy may be incomplete |
+| 6 | a `--require-cmd` name does not resolve inside the container |
+| 7 | an `--expect-json` output is missing, unparseable, or reports 0 files scanned |
+| 124 | a user-set `--timeout` expired; the findings collected so far ARE copied out, and `deadline=1` is recorded |
 | other | the contained command's own exit code, passed through |
 
 Code 5 exists because the staging tar is the LEFT side of a pipe. Without `pipefail`
@@ -106,7 +172,7 @@ comma-list the surface doc's Tools table names:
 | `sabot/python:1` | `bandit,ruff,semgrep` | `python3 -c "import atheris, hypothesis"` |
 | `sabot/node:1` | `jazzer,retire` | `node -e 'require("fast-check")'` |
 | `sabot/go:1` | `go,gosec,golangci-lint` | none |
-| `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,pinact,trivy,osv-scanner,radamsa,zzuf,creduce,hadolint,kube-linter,tflint,poutine,trufflehog` | none |
+| `sabot/base:1` | `opengrep,shellcheck,ripgrep,gitleaks,ast-grep,shfmt,zizmor,actionlint,trivy,osv-scanner,radamsa,zzuf,creduce,hadolint,kube-linter,tflint,poutine,trufflehog` | none |
 | `sabot/rust-extras:1` (optional) | `cargo-deny,cargo-vet,cargo-semver-checks,weggli` | none (cargo-careful and Miri are asserted by their baked sysroots, below) |
 
 Each column asks a different question, and conflating them hid a real gap.

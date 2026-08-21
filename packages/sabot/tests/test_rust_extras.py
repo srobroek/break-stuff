@@ -97,6 +97,27 @@ def test_the_baked_advisory_db_is_a_shallow_clone_that_keeps_its_git_dir():
         "the campaign runs as uid 1000 against a root-owned repo; git refuses it"
 
 
+def test_the_rust_layer_bakes_the_gtk_stack_a_tauri_target_needs_to_compile():
+    """A Tauri crate cannot COMPILE without these, so their absence is not a lint gap.
+
+    Measured on platevault: `tauri = { features = ["wry"] }` pulls webkit2gtk-sys ->
+    gtk-sys -> glib-sys, whose build script shells `pkg-config glib-2.0 >= 2.70`. The
+    image carried /usr/bin/pkg-config and zero matching .pc files, so all 199 Tauri
+    command handlers were NOT EXECUTED and `--network none` left no runtime repair. The
+    target's own tests already wire tauri's `test` feature to a MockRuntime, so this apt
+    line was the whole distance between 0 and 134 handlers executable.
+    """
+    rust = (SKILL / "references/containers/layers/rust.sh").read_text()
+    for pkg in ("libglib2.0-dev", "libgtk-3-dev", "libwebkit2gtk-4.1-dev",
+                "libsoup-3.0-dev"):
+        assert pkg in rust, f"the rust layer no longer installs {pkg}"
+    # pkg-config EXISTING is what made the gap invisible; assert the .pc files RESOLVE.
+    assert 'pkg-config --exists "$pc"' in rust, \
+        "assert pkg-config resolves the stack, not merely that the binary answers"
+    assert "--component rustfmt" in rust, \
+        "cargo-fmt was absent for toolchain 1.97.1, so a fmt check read as a tool gap"
+
+
 def test_build_proves_cargo_deny_reads_the_baked_db_offline():
     """`docker build` HAS network: without --offline the probe passes on a fresh clone.
 

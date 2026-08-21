@@ -60,9 +60,9 @@ its checklist as a floor rather than your output.
 4. An idiom census: how this repo does a thing, the conforming count, the deviating
    count, and the deviation loci.
 5. Repo-specific semgrep or ast-grep rules for the invariants and deviations no
-   standard pack covers. Validate each, then prove it matches a known-positive and
-   skips a known-negative drawn from this repo. Write each at the repo's own
-   lint-config convention when it has one, so a confirmed rule can graduate into CI.
+   standard pack covers, each one PROVEN per the section below before you hand it
+   forward. Write each at the repo's own lint-config convention when it has one, so a
+   confirmed rule can graduate into CI.
 6. A pack-aiming decision: packs to run with exact invocations, and packs left off
    with reasons.
 7. An agentic-code scan: signature-detect whether the application itself is agentic
@@ -73,6 +73,27 @@ its checklist as a floor rather than your output.
    app code even with no `.claude`/`.mcp.json` in the repo, and you synthesize rules
    for the patterns in `surfaces/agents.md`. This is content-based recon, not a path
    glob.
+
+## A rule is not usable until it has fired and stayed quiet
+
+Same shape as the benign control on a guard harness: one execution proves the rule
+detects, a second proves it discriminates, and a rule missing either one supports
+nothing. Draw both fixtures from THIS repo, by `file:line`.
+
+| Fixture | Expected | A rule missing it cannot support |
+|---|---|---|
+| known-positive (a locus you already found by reading) | 1 or more matches | any finding, because the rule has never been shown to fire |
+| known-negative (a conforming locus from the idiom census) | 0 matches | any clean result, because the rule has never been shown to stay quiet |
+
+Run the tool once per fixture and paste the verbatim invocation plus its match count.
+Then stamp the outcome on the rule wisp:
+
+    --metadata '{"rule_path":"<abs>","positive_fixture":"src/a.rs:88","positive_matches":3,"negative_fixture":"src/b.rs:12","negative_matches":0,"rules_loaded":6,"validated":true}'
+
+MUST Run both fixtures through the real tool and paste both counts. A rule read back to yourself is unvalidated, and in one run a synthesized rule shipped ENTIRELY COMMENTED OUT: valid YAML, zero rules loaded, and the surface recorded as skipped.
+MUST State `rules_loaded` from the tool's own output, not the count of rules you wrote. A file the tool declined to load reports zero findings, which is indistinguishable from a clean surface.
+MUST Keep every rule file pure ASCII, and check it before you hand it forward (`LC_ALL=C grep -n '[^ -~]' <rule_path>` prints nothing). One non-ASCII character killed opengrep under the default locale at rc=2 over 0 files, leaving a stale JSON on disk that read as clean. This skill writes these files, so it triggers this in itself.
+MUST Stamp `validated:false` and hand the rule forward disabled when a fixture behaved wrongly and you cannot fix the rule. A rule that fails its own fixture and ships anyway pollutes every finding it touches.
 
 ## What you MUST NOT do
 - Edit product code, tests, or an existing rule file.

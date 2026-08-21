@@ -25,7 +25,11 @@ would run the target's code outside the container, so every tool lives in the im
    confirmation gate: the interview's tool answers already authorized it.
 3. **Assert (image):** `run-contained.sh --assert-tools <image> <tools>` confirms
    every campaign tool answers inside the image before the run trusts a clean result.
+   To learn what an image HAS rather than test a guess, `run-contained.sh --list-tools
+   <image>` prints its executables. Reach for it before assuming a helper exists:
+   `sabot/node-ext:1` carries no `python3`, which broke a probe that took it for granted.
 
+MUST Enumerate the image with `--list-tools` when a recipe depends on an interpreter or helper the tool table does not name, since a probe written against the wrong inventory fails in a way that looks like the target's fault.
 MUST Provision tools into the image, never onto the host. A scanner on the host runs the target's build code unconfined, the exact risk the container removes.
 MUST Treat a missing runtime (or missing `bd`) as a hard abort of the whole run: stop at step 0 before opening the run graph, not merely skip the execution phases. Report a missing image tool as a coverage gap in the report; never let it pass as a silent skip.
 

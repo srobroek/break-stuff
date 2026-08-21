@@ -28,7 +28,14 @@ permissions:
   pull-requests: write
 
 jobs:
+  # Release gate: the suite must pass on the pushed commit before release-please runs.
+  # A failing suite leaves the release PR unopened and unmerged rather than tagging a
+  # version whose tests never ran.
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   release-please:
+    needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

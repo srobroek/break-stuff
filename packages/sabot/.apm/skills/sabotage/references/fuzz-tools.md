@@ -61,6 +61,7 @@ NOT Never hand-write a corpus a listed tool would generate. A hand-written corpu
 | `scripts/fuzz-cli.py` | hook and guard decisions | invariant assertion over caller-supplied vectors | see below | asserts verdict correctness, which no general fuzzer can judge |
 
 MUST Verify a tool's route by running it once before the campaign depends on it, since a route that resolves in a registry can still fail to execute.
+MUST Confirm a run-time launcher (`uvx`, `npx`, `pipx run`, `go run <url>`) resolves LOCALLY before relying on it. `npx jazzer` is fine when jazzer.js is in the baked `node_modules`; the same form fetches when it is not, and the container is `--network none`. A launcher that has to fetch is a coverage gap, not an invocation. `run-contained.sh --list-tools <image>` states what is actually there.
 MUST Seed radamsa, zzuf, AFL++, and honggfuzz from the repo's own fixtures, since a mutator with no seeds produces noise the parser rejects immediately.
 MUST Record the seed used with zzuf, because its determinism is the reason to choose it and an unrecorded seed throws that away.
 DEFAULT Prefer the language's native coverage-guided fuzzer when one exists, and fall back to radamsa when instrumenting the target is impractical.
@@ -71,12 +72,12 @@ DEFAULT Prefer the language's native coverage-guided fuzzer when one exists, and
 
 | Tool | Role | Invocation |
 |---|---|---|
-| CASR | crash triage: dedup by stack; severity classification; report generation | `casr-san -o <out>.casrep -- <bin> <input>` then `casr-cluster -d <indir> -o <outdir>` (resident: `mise use cargo:casr`) |
+| CASR | crash triage: dedup by stack; severity classification; report generation | `casr-san -o <out>.casrep -- <bin> <input>` then `casr-cluster -d <indir> -o <outdir>` (bake it: `cargo install --locked casr`) |
 | afl-tmin | input minimization for AFL++ targets | `afl-tmin -i <crash> -o <min> -- <bin> @@` |
 | `cargo fuzz tmin` | input minimization for a libFuzzer target | `cargo +nightly fuzz tmin <target> <input>` (rejects `-j`) |
 | afl-cmin | corpus minimization before a campaign | `afl-cmin -i <in> -o <out> -- <bin> @@` |
-| shrinkray | generic test-case reducer, any input shape | `uvx shrinkray <interestingness-test> <input>` |
-| creduce | C and C++ source reduction | `creduce <interestingness-test> <input>` (resident: `brew install creduce`; cvise is not on PyPI) |
+| shrinkray | generic test-case reducer, any input shape | `shrinkray <interestingness-test> <input>` (bake it; `uvx shrinkray` fetches and cannot run under `--network none`) |
+| creduce | C and C++ source reduction | `creduce <interestingness-test> <input>` (bake it into the native image; cvise is not on PyPI) |
 | `llvm-symbolizer` | resolve a stripped stack into frames | via ASan's `ASAN_SYMBOLIZER_PATH` |
 | hypothesis, proptest shrinking | automatic minimization inside the property runner | built in |
 | `-merge=1` (libFuzzer) | corpus minimization | `<harness> -merge=1 <dest> <src>` |

@@ -31,8 +31,59 @@ holds after each one. Your reading pass targets these rather than sweeping the
 whole file list.>
 
 ## Rules recon synthesized for THIS repo (run these)
-<absolute paths to the validated rule files, with the invariant each encodes. Run
-them alongside the standard packs; they carry knowledge no pack has.>
+<absolute paths to the validated rule files, with the invariant each encodes, and the
+`validated` plus `rules_loaded` stamp from each rule wisp. Run them alongside the
+standard packs; they encode knowledge no pack has.>
+
+### Verify each rule loaded, before you read its output
+A rule file the tool declined to load produces the same empty output as a clean
+surface. Compare the tool's reported loaded-rule count against the count on the wisp:
+
+| Observation | Verdict |
+|---|---|
+| loaded count equals the wisp's `rules_loaded` | the scan ran; read the output |
+| loaded count is 0, or lower than the wisp's | NOT EXECUTED for the missing rules, never 0 findings. One run shipped a rule fully commented out, so it was valid YAML that loaded nothing |
+| the run exits nonzero over 0 files, with or without a result file on disk | NOT EXECUTED. A stale JSON from an earlier attempt reads as a completed clean scan |
+| the wisp says `validated:false`, or has no fixture counts | NOT EXECUTED. An unfired rule supports no finding, and an untested-quiet rule supports no clean result |
+
+MUST Report every rule that failed to load as NOT EXECUTED against the loci it was written for, and name the invariant left unchecked. Silence from a rule that never loaded is the most expensive line a report can contain.
+MUST Treat any authored path you cannot verify on disk as NOT EXECUTED, and say so in your return. `ls -l` is the check; an absent file is never a pass, whoever claimed to write it.
+
+## You are offline. Read this before choosing a scanner invocation.
+Every container in this run has `--network none`: no DNS, no egress, no proxy, no
+package registry, no rule registry. "Local host access" means loopback INSIDE the
+container. Any invocation that reaches a network is a design error, not a transient
+failure.
+
+| Situation | Verdict |
+|---|---|
+| a tool fetches its ruleset from a registry at scan time | NOT EXECUTED, reason `requires network`. Report the pack as never applied |
+| that tool exits nonzero, or exits 0 with an empty result | still NOT EXECUTED, never "0 findings" |
+| a locally-authored ruleset is available for the same tool | run it, and report the two halves separately: local rules ran, the stock pack did not |
+
+MUST Choose the offline invocation up front, and check whether each pack is bundled in the image or fetched. Gremlins in one run retried a registry-backed pack as though the failure were transient, and every node that reported "scanner ran, 0 findings" had in fact never applied the standard pack.
+NOT Never retry a network failure, and never ask for network to complete a scan. Record the gap and continue.
+
+## Prove the scan scanned, with `assert-scan.py`
+
+MUST Wrap every scanner that writes an output file in `$SABOT_SKILL_DIR/scripts/assert-scan.py --output <file> --tool <name> -- <command>`, and read its verdict rather than the tool's exit code. It deletes a stale output first, then checks the file exists, is non-empty, parses, and reports a nonzero file count. Exit 11 is NOT EXECUTED and exit 7 is a tool failure for `classify-failure.py`; neither is a clean scan.
+MUST Report any file in its `partial_parse_files` as unmeasured, naming the file. A partial parse still counts in `paths.scanned`, so the file looks covered while no rule ever reached the unparsed region: opengrep exited 0 over this package having left 3 lines of `run-contained.sh` unanalysed by all 301 rules. A file count cannot detect this and a findings count of zero cannot either.
+MUST Run `$SABOT_SKILL_DIR/scripts/validate-generated.py` over every generated rule file before scanning with it, and treat a rule that fails to compile or load as NOT EXECUTED for the loci it was written for.
+
+## A resource failure is INVALID, in both directions
+A run that hit a resource limit measured nothing. It is not a finding about the
+target, and it is not a clean surface.
+
+| Signal | Reading |
+|---|---|
+| SIGKILL or exit 137 during compile or link | the memory cap, INVALID. One run misread a linker OOM as a missing library and lost 0-of-9 harnesses before diagnosing it |
+| an OOM-killer message in the kernel or runtime log | the memory cap, INVALID |
+| `No space left on device`, ENOSPC | the disk, INVALID |
+| a container image blob `input/output error` | the runtime store, INVALID; no container can start |
+| a copy-out or log-retrieval timeout | the log is gone, which is evidentially identical to never having run: INVALID |
+
+MUST Stamp `state:invalid` with the resource signal quoted, and report the surface as UNTESTED. A resource failure reads as a defect in the target when nobody names the class.
+MUST Report a resource failure in your return even when some harnesses succeeded, naming which results predate it. One run lost a node's harness log to a 600 s copy-out window and every finding on that node became read-sourced.
 
 ## Standard packs to run, and the ones deliberately off
 <the packs recon aimed at this surface, with the exact invocation. Also the packs
@@ -50,7 +101,42 @@ docs. A rule the project disabled with a stated reason caps at HARDENING.>
 ## Harnesses to execute
 <list the harness wisps for this surface. Discover them yourself with:
   bd list --parent <surface-bead> --label sab-harness --status open --json
-Claim each with `bd update <wisp> --claim` before running it.>
+Note `--label`, singular: the plural form returns nothing silently. Claim each with
+`bd update <wisp> --claim` before running it. An empty result is a broken query until
+you have re-run it without the label and compared the counts, per
+`references/beads-store.md`.>
+
+Before running anything, `ls -l` every `harness_path` and `control_path` on the
+wisps you claimed.
+
+| On disk | Verdict |
+|---|---|
+| harness present, control present | run both |
+| harness present, no control stamped and the harness asserts a guard | run it, and report the result as UNTESTED with no verdict |
+| harness absent | NOT EXECUTED. Never a pass. `bd set-state <wisp> state=invalid` and file the re-author wisp below |
+
+## Return path for a broken or missing harness
+You may not fix a harness, and a broken harness must not leave its entry point
+silently uncovered. File the re-authoring request into the graph:
+
+    RE=$(bd create "re-author: <harness title>" --parent <surface-bead> --labels sab-harness,non-work --json \
+      --metadata '{"run_id":"<RUN_ID>","entry_point":"<file:line>","reason":"<absent|fails-in-own-fixture|unsound-assertion>","supersedes":"<original wisp id>"}' | jq -r '.id')
+    bd dep add "$RE" <original-wisp> --type discovered-from
+
+Report the entry point as UNTESTED in your coverage wisp and name the re-author wisp
+id. One run shipped 3 of 8 harnesses INVALID on one surface with no route back, so
+those entry points read as uncovered rather than as needing a rewrite.
+
+A harness that reports itself broken takes this path too. A self-diagnosis is a
+verdict, and it closes nothing on its own:
+
+| What the harness reported | Route |
+|---|---|
+| its own canary never fired, or `HARNESS-BROKEN` at any exit code | re-author wisp, and the invariant reported UNTESTED |
+| its benign control failed | re-author wisp; the locus is untested in both directions |
+| a rule the scan needed never loaded | re-author wisp against the rule, per the section above |
+
+MUST Open a re-author wisp for every self-reported broken harness, and list those wisp ids under a `RE-AUTHOR REQUESTED` heading in your return. One harness reported honestly at rc=3 that its own canary never fired, no wisp was opened, and the allowlist breadth it was written to measure is still untested. Honest reporting closes nothing by itself.
 
 ## Isolation (mandatory)
 Run every tool, harness, scanner, and dev-server inside the container of
@@ -98,22 +184,77 @@ catalogue.
    the report. Persist every crashing input and record the exact reproduce command.
 
      FINDING=$(bd create "finding: <one-line claim>" --parent <surface-bead> --labels sab-finding --json \
-       --metadata '{"run_id":"<RUN_ID>","source":"<synthesized-rule|stock-pack|harness|read>","locus":"<file:line>","surface":"<surface>","path":"<entry to sink>"}' | jq -r '.id')
+       --metadata '{"run_id":"<RUN_ID>","source":"<synthesized-rule|stock-pack|harness|read>","locus":"<file:line>","surface":"<surface>","path":"<entry to sink>","dedup_key":"<surface>:<locus>:<class>","root_cause":"<one phrase>"}' | jq -r '.id')
      bd dep add "$FINDING" <harness-bead> --type discovered-from
      # a crash instead: bd dep add <crash-bead> <harness-bead> --type caused-by
 
    The `<RUN_ID>` is the run_id this Brief carries; copy it verbatim. Do not tier
    the finding (the challenger does that); leave tier, by, and impact unset.
+
+   MUST Stamp `dedup_key` as `<surface>:<locus>:<class>` lowercased, and `root_cause` as
+   one phrase, on every finding you file. The challenger dedups mechanically on
+   `dedup_key` (`jq -r '.[].metadata.dedup_key' | sort | uniq -d`) and groups on
+   `root_cause`, so a wisp missing either is invisible to both. Measured: one campaign
+   filed 383 findings and not one carried a `dedup_key`, so that command returned nothing
+   over seven real cross-surface duplicate loci, and every group in the report was built
+   from a key derived at report time from a one-line title. You know the class and the
+   defect; a later pass reconstructing them is guessing.
 6. File one `sab-coverage` wisp on the surface node with `scanners_run`,
-   `scanners_skipped`, `harnesses_run`, `harnesses_total` metadata before returning,
+   `scanners_skipped`, `harnesses_run`, `harnesses_total`, `entry_points_total`, and
+   `entry_points_executed` metadata before returning,
    even on a clean surface. The close-out gate requires it, so a surface without one
    reads as untested. Record a scanner that matched no files as
    `SKIPPED (matched no files)`, not run, since a scan over zero files tested
-   nothing and would otherwise read as clean.
+   nothing and would otherwise read as clean. Stamp a `skips` array of
+   `{tool, reason}` objects alongside the counts: "2 run, 8 skipped" beside "0 invalid"
+   reads as coverage when the reasons are only in prose.
+
+   MUST Probe a tool before recording it as absent, and quote the probe in the reason. A
+   skip reason is a claim about the image, so `command -v <tool>` or
+   `rustup component list --toolchain <pin>` costs one call and settles it. Measured: a node
+   recorded `{"tool":"clippy","reason":"cargo-fmt not installed for toolchain 1.97.1"}` and
+   a HARDENING finding asserting clippy obtained zero lints; clippy was installed in that
+   image the whole time, and when finally run it checked 513 crates and returned zero
+   warnings. Both the gap and the finding were fabricated from an unprobed assumption --
+   one inventing a coverage hole, the other claiming a clean the run had not earned. A
+   reason inherited from an earlier surface's log is not a probe of this image.
+
+   MUST Count `entry_points_total` over the surface and `entry_points_executed` over what
+   you actually reached, and stamp both. A harness ratio measures the harnesses rather
+   than the surface: one node reported 13 of 13 harnesses run against 706 entry points,
+   and another enumerated 199 Tauri command handlers and executed 0 of them. Both read as
+   complete coverage from the harness numbers alone. When the count is blocked, stamp
+   `entry_points_executed: 0` with the mechanism in `not_executed_reason` rather than
+   omitting the field, because an absent ratio is the same blank as a full one.
+
+## Tool-integrity certification (mandatory, in your return)
+An exit code is not evidence a tool ran. Certify each line with the command output
+that produced it, and mark any line you could not establish as UNVERIFIED:
+
+| Line | Evidence to cite |
+|---|---|
+| the compiler or interpreter is the real one | absolute path plus `--version` output, checked for a host wrapper that shadows it |
+| the test binaries ran | binary count at nonzero test counts, with test names |
+| nothing reported zero tests | `grep -c 'running 0 tests'` equals 0 |
+| each scanner produced a result | parsed JSON with a file count, never the exit status |
+| no result rests on a wrapper exit code | name each wrapper used and the positive in-container output it produced |
+
+A surface whose certification is absent is a gap in that surface, and a wrapper that
+returned 0 while running nothing was measured three separate ways in one run.
+
+## If a premise in this Brief turns out to be false
+Say so in your return under a `PREMISE CORRECTIONS` heading, and comment it on the
+surface node. Do not bury it in a code comment or work around it silently. Premises
+in this Brief are the orchestrator's reading of the code, and several per run are
+wrong: a claimed coverage gap that was a doc-comment line, a data-flow claim off by
+one layer, a reachability note half wrong in both directions.
 
 ## What you MUST NOT do
 - Edit, patch, or fix anything, including a harness that looks wrong. Report a
-  broken harness as INVALID and move on.
+  broken harness as INVALID, file the re-author wisp, and move on.
+- Drop a defect you found outside your scope globs. File it under the surface node
+  whose globs contain the locus, per `references/beads-store.md`.
+- Re-file a locus another surface already filed. Cite their wisp with `relates-to`.
 - Raise the budget, or continue past the cap.
 - Touch a network target, a shared service, or anything outside this repo.
 - File a finding without a file:line, or a crash without a persisted input.
@@ -122,11 +263,15 @@ catalogue.
 ## Rules
 MUST Tier a stock pack match at HARDENING unless the Brief's trust map places it on a reachable path, since a generic match carries no knowledge of this repo.
 MUST Re-verify each synthesized rule against its known-positive fixture before trusting a zero-match result, and report the rule as INVALID when the fixture does not match, because a rule that matches nothing is indistinguishable from a repo with no findings.
-MUST Report which findings came from synthesized rules against stock packs, because a campaign carried entirely by stock packs did no real recon and the report must say so.
+MUST Report which findings came from synthesized rules against stock packs, because a campaign carried entirely by stock packs skipped real recon and the report must say so.
+MUST Report a harness result as UNTESTED with no verdict when its benign control also failed. A hostile-vector failure alongside a failing control says nothing about the guard: the failure may be the guard working, the harness being wrong, or the fixture not building. This holds in reverse for an expected-to-pass harness whose control never ran.
+MUST Say which build profile produced a panic before reporting one. A `debug_assert!` and an arithmetic overflow both measure the profile rather than the invariant when the release profile sets no `overflow-checks`, so the same input wraps silently in the shipped binary. Assert the value, and re-run against a release build where the consequence matters.
+MUST Report a zero-match structural scan as "0 matches, with the engine's blind spot named", never as a clean surface. Pair the rule with a textual count when the pattern can appear inside a construct the parser treats as opaque, and report both numbers.
 
 ## Return
 The Gremlin Output format from your agent definition: a coverage block naming
-every tool run, skipped, or invalid; the wisp ids you filed; and a findings table.
+every tool run, skipped, or invalid; the wisp ids you filed; a findings table; a
+`RE-AUTHOR REQUESTED` list; and a `PREMISE CORRECTIONS` list.
 Do not tier the findings; the challenger does that.
 ```
 

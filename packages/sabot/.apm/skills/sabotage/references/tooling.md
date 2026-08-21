@@ -12,33 +12,71 @@ The tools live in the surface image, not on the host; see `references/isolation.
 
 Every recipe in a surface doc assumes these, so they are not repeated there:
 
-1. **Every recipe runs in the container.** A surface doc's recipe is the tool
+- **There is no network. Ever.** Every target-touching tool runs in a container started
+   with `--network none`: no DNS, no egress, no proxy, no package registry, no rule
+   registry. This is the skill's own rule (`isolation.md`, No network), not a property of
+   one host, so it holds on every run. "Local host access" means loopback *inside* the
+   container, for a server the campaign itself started there; a host, LAN, or public
+   endpoint is out of scope regardless of who asks. Consequences that decide which flags
+   a recipe passes:
+   - Any tool that fetches at run time **cannot run**. `opengrep`/`semgrep` registry
+     packs -- `p/rust` and every other `p/*` -- fail with `OG_RC=2`.
+   - Self-updating vulnerability databases (osv-scanner, trivy, grype, cargo-audit's
+     advisory DB) read the copy baked into the image, named by an explicit flag. See
+     `isolation.md`, Baked offline databases, for the flag per tool.
+   - `cargo`, `npm`/`pnpm`, and `pip` pass their offline flags. A build that reaches the
+     network does not run slowly; it fails.
+- **Every recipe runs in the container.** A surface doc's recipe is the tool
    invocation; `run-contained.sh` wraps it, so the tool runs against the target
    mounted read-only at `/target`, never on the host. This holds for text scanners
    (`opengrep`, `shellcheck`, `ast-grep`) as well as compiling ones (`clippy`,
    `gosec`) and fuzzers: a compiling scanner builds the crate and so runs the
    target's own build code, which must be confined. The host runs only the agent and
    `bd`/`git`/the runtime.
-2. **cwd is `/scratch`, the target is read at `/target`.** The container's writable
+- **cwd is `/scratch`, the target is read at `/target`.** The container's writable
    cwd is `/scratch`; pass the resolved file set as paths under `/target` (e.g.
-   `opengrep --config p/python /target/src`), and let builds write to `/scratch`
+   `opengrep --config /opt/sabot-db/semgrep-rules/python /target/src`), and let builds write to `/scratch`
    (`CARGO_TARGET_DIR` etc. are set for you).
-2. **Shipped assets are absolute.** Reference `corpora/` and any recon-synthesized
+- **Shipped assets are absolute.** Reference `corpora/` and any recon-synthesized
    rule by absolute path, since cwd is the target and a skill-relative path silently
    matches nothing.
-3. **Project config wins.** When the repo configures a scanner, run it so that
+- **Project config wins.** When the repo configures a scanner, run it so that
    config governs. The recipe's flags are the no-project-config form.
-4. **Exit codes are a contract.** For most scanners, non-zero means findings
+- **Exit codes are a contract.** For most scanners, non-zero means findings
    rather than failure. Distinguish 0 (clean), N (findings, so parse the output),
    and a usage or crash error (INVALID, so fix the invocation and rerun). A
    sub-second run from a tool that must compile is also INVALID.
-5. **Flag exactly as written.** Go tools use single-dash `-format`, others use
+- **Flag exactly as written.** Go tools use single-dash `-format`, others use
    `--`. Copy the recipe verbatim rather than normalizing it.
-6. **Suppress default noise the project never opted into.** When a scanner's
+- **Suppress default noise the project never opted into.** When a scanner's
    defaults are stricter than the repo's own rules and no project config exists,
    the recipe states its own suppression.
+- **An output file is evidence only when this run wrote it.** A crashed scanner leaves
+   the previous invocation's JSON in place, and a caller that parses it records a clean
+   scan for a run that scanned nothing. Pass the output path as
+   `run-contained.sh --expect-json <path>`: the wrapper deletes it before the command and
+   afterwards requires a fresh file, parseable JSON, and a nonzero scanned-file count,
+   failing with exit 7 and `executed=0` otherwise.
 
+MUST Require a nonzero scanned-file count before recording any zero-finding result, since every scanner reports "resolved no files" and "found no problems" as the same empty output. `opengrep`'s count is `paths.scanned`.
 MUST Never substitute a regex grep for a scanner. A missing tool is a reported coverage gap, and a guess dressed as a finding is worse than a gap.
+
+## Structurally closed classes short-circuit tool selection
+
+Check whether a repo has closed a whole finding class by construction BEFORE picking tools
+for it. A closed class needs a one-line citation, not a scanner and not a role.
+
+| Signal | Class it closes | What to do |
+|---|---|---|
+| `unsafe_code = "forbid"` in every crate, and zero `unsafe` blocks | Rust memory safety | cite the lint, skip the memory-safety fuzz phase, and report the class as closed by construction |
+| a pure-safe dependency set with no FFI and no C build script | native memory safety | same |
+| the repo's own `dep-audit` / `secrets-scan` packages in CI | dependency CVEs, secrets | see the overlap map |
+
+Measured: a campaign spent 15 node-runs and an entire triage role on a target that forbade
+`unsafe` at the workspace root, and produced 0 crash wisps. That result was decided by the
+lint before the first harness was written.
+
+MUST Record a structurally closed class as closed with its citation, distinct from both "clean" and "not covered", because a reader cannot otherwise tell a proof from an absence of evidence.
 
 ## Analysis class
 
@@ -96,12 +134,15 @@ duplicates a registry pack and rots silently (a mixed-language rule that passes
 
 | Source | What | Coverage |
 |---|---|---|
-| Registry packs | `p/python`, `p/bash`, `p/command-injection`, bandit, gosec, clippy, shellcheck | generic dangerous patterns, maintained upstream |
+| Baked rule packs | the semgrep rule trees under `/opt/sabot-db/semgrep-rules/<lang>`, plus bandit, gosec, clippy, shellcheck | generic dangerous patterns, at the revision baked into the image |
 | Recon-synthesized | rules `scout` writes and validates during recon, from this repo's own invariants and the agentic-pattern list in `surfaces/agents.md` | this repo's contracts, and agentic patterns no registry pack covers |
 | Shipped corpora | `corpora/prompt-injection.md`, `scripts/fuzz-cli.py` | payload classes and the decision-contract harness |
 
-MUST Select a registry pack that fits the detected language rather than `opengrep --config auto`, since auto fetches an unpredictable set over the network and its result is not reproducible.
+MUST Point `--config` at the baked tree for the detected language (`/opt/sabot-db/semgrep-rules/<lang>`). A registry shorthand (`p/rust`, `p/python`, `--config auto`) resolves over the network, so under `--network none` it exits `OG_RC=2` having scanned nothing. Record that as NOT EXECUTED, "requires network", and never as zero findings or a retry.
+MUST Pass `--metrics off`. Four nodes measured `opengrep` exiting 2 on the metrics call alone, before any rule ran.
+MUST Confirm the rule tree resolved to a nonzero file count, since a `--config` path that names no loadable rule scans every file against nothing and reports clean.
 MUST Run a recon-synthesized rule against a known-positive from this repo before trusting a zero-match result, since a rule that matches nothing reads exactly like a clean repo.
+MUST Run every scanner under a UTF-8 locale, which `run-contained.sh` sets (`LANG=LC_ALL=C.UTF-8`, `PYTHONUTF8=1`). Measured: a synthesized rule file containing one curly quote made `opengrep` raise `'ascii' codec can't decode byte 0xe2` from `config_resolver.py:241` and exit 2 with 0 files scanned; the same invocation under a UTF-8 locale returned 41 findings across 14 files. A hand-rolled `docker run` that skips the wrapper reintroduces this.
 ## Out of scope: LLM red-teaming
 
 `garak` and `promptfoo` are excluded by design. Both measure whether a *model* can be

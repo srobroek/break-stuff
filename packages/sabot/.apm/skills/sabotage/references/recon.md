@@ -95,16 +95,25 @@ rules:
 
 MUST Write the rule against the invariant discovered here rather than against a generic pattern, since a rule that encodes this repo's own contract has a false-positive rate the generic ruleset cannot match.
 MUST Validate every synthesized rule before use, with `opengrep --validate` or `ast-grep scan --dry-run`, because an invalid rule matches nothing and looks clean.
-MUST Test each rule against a known-positive and a known-negative from the repo, so a rule that matches everything or nothing is caught before it produces a report.
+MUST Prove each rule fires on a known-positive and stays quiet on a known-negative, both drawn from this repo by `file:line`, and stamp both counts on the rule wisp. Validation is a precondition of the rule being usable: an unfired rule supports no finding, and an untested-quiet rule supports no clean result. See `scout-brief.md` for the fixture table and the stamp.
+MUST Read `rules_loaded` out of the tool's own output and compare it against the number of rules in the file. A rule that parses and loads zero, which is what a fully commented-out rule file does, reports zero findings and reads as clean.
+MUST Keep rule files pure ASCII, verified with `LC_ALL=C grep -n '[^ -~]' <file>`. One non-ASCII byte aborted opengrep at rc=2 over 0 files while a stale result JSON stayed on disk.
 MUST Write synthesized rules into the artifacts dir and list them in the report, since they are the campaign's most reusable output.
 DEFAULT Prefer `ast-grep` for a structural deviation, and `opengrep` when the rule needs dataflow or several languages.
 
 ### 5. Aim the standard rulesets
 
-Use every mature ruleset available: semgrep's registry packs, bandit's and gosec's
-built-ins, clippy's lint groups. These are well-tested detectors and rewriting them
-wastes the campaign's time. The package ships no generic rules of its own, because a
-hand-maintained generic rule duplicates a pack and can rot silently.
+Use every mature ruleset available: the semgrep rules baked into the image at
+`/opt/sabot-db/semgrep-rules/<lang>`, bandit's and gosec's built-ins, clippy's lint
+groups. These are well-tested detectors and rewriting them wastes the campaign's
+time. The package doesn't ship generic rules of its own, because a hand-maintained
+generic rule duplicates a pack and can rot silently.
+
+Name the baked path, never the registry shorthand. `p/rust`, `p/javascript`, and
+`--config auto` resolve over the network, so under `--network none` they exit
+`OG_RC=2` having scanned nothing, and a rule aimed by recon at a pack that never ran
+measures nothing at all. A curated pack with no baked equivalent (`p/trailofbits`)
+belongs to the network stage; see `references/network-stage.md`.
 
 What recon builds is the **harness around them**. It decides which packs run
 against which paths, which of their findings matter here, which of their rules this

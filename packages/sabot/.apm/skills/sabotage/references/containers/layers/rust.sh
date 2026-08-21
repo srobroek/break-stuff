@@ -54,14 +54,24 @@ export RUSTUP_HOME=/usr/local/rustup
 export CARGO_HOME=/usr/local/cargo
 export PATH=/usr/local/cargo/bin:$PATH
 
+# The GTK/webkit stack is here because a Tauri app's own crate cannot COMPILE without
+# it, so its absence is not a missing linter but an unbuildable target. Measured on
+# platevault: `tauri = { features = ["wry"] }` pulls webkit2gtk-sys -> gtk-sys ->
+# glib-sys, whose build script shells `pkg-config glib-2.0 >= 2.70`. The image carried
+# /usr/bin/pkg-config and ZERO matching .pc files, so every one of 199 Tauri command
+# handlers was NOT EXECUTED -- and under --network none apt cannot repair it at run
+# time. `test` feature plus MockRuntime were already wired in the target's own tests, so
+# this apt line is the whole distance between 0 and 134 handlers executable.
 apt-get update -q
-apt-get install -y --no-install-recommends gcc g++ libc6-dev pkg-config libssl-dev
+apt-get install -y --no-install-recommends \
+	gcc g++ libc6-dev pkg-config libssl-dev \
+	libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev
 rm -rf /var/lib/apt/lists/*
 
 # rustup detects the host arch itself, so the download is arch-correct with no map.
 curl -fsSL https://sh.rustup.rs |
 	sh -s -- -y --no-modify-path --profile minimal \
-		--default-toolchain "$RUST_STABLE" --component clippy
+		--default-toolchain "$RUST_STABLE" --component clippy --component rustfmt
 rustup toolchain install "$RUST_NIGHTLY" --profile minimal
 rustup component add --toolchain "$RUST_NIGHTLY" rust-src
 
@@ -70,6 +80,17 @@ rustup component add --toolchain "$RUST_NIGHTLY" rust-src
 # network, which fails under --network none.
 ln -sfn "$RUSTUP_HOME/toolchains/${RUST_NIGHTLY}-"* \
 	"$RUSTUP_HOME/toolchains/nightly-$(rustc -vV | sed -n 's/^host: //p')"
+
+# The same alias for `stable`, and for the same reason. A target that pins
+# `channel = "stable"` in its own rust-toolchain.toml overrides this image's default
+# toolchain by NAME, and rustup then tries to sync `stable` over the network -- which
+# under --network none fails before a single crate compiles. Measured: the desktop_shell
+# crate could not be built at all until RUSTUP_TOOLCHAIN was forced by hand on the docker
+# command line, which is a repair no recipe carries and no gremlin would think to add.
+# The pinned stable IS what the image installed, so the alias makes the target's own
+# pin resolve to it rather than to a fetch.
+ln -sfn "$RUSTUP_HOME/toolchains/${RUST_STABLE}-"* \
+	"$RUSTUP_HOME/toolchains/stable-$(rustc -vV | sed -n 's/^host: //p')"
 
 cargo install cargo-fuzz --locked --version "$CARGO_FUZZ_VERSION"
 cargo install cargo-audit --locked --version "$CARGO_AUDIT_VERSION"
@@ -127,13 +148,23 @@ EOF
 mkdir -p "$FUZZDEPS/src"
 : > "$FUZZDEPS/src/lib.rs"
 (cd "$FUZZDEPS" && CARGO_HOME=/deps/cargo cargo fetch)
-rm -rf "$FUZZDEPS"
+rm -rf "${FUZZDEPS:?}"
 chown -R 1000:1000 /deps
 
 # World-readable so the non-root user reads the toolchain, registry cache, and db.
 chmod -R a+rX /usr/local/rustup /usr/local/cargo /usr/local/advisory-db /deps
 
 rustc --version
+cargo fmt --version
+cargo clippy --version
+# Assert pkg-config RESOLVES the GTK stack, not just that pkg-config exists. The two are
+# what made 199 handlers unmeasurable: the binary answered and no .pc file was installed,
+# which surfaces as a glib-sys build-script failure a gremlin reads as a target defect.
+for pc in glib-2.0 gtk+-3.0 webkit2gtk-4.1 libsoup-3.0; do
+	pkg-config --exists "$pc" ||
+		{ echo "rust.sh: pkg-config cannot resolve $pc; a Tauri target cannot build" >&2; exit 1; }
+done
+echo "pkg-config resolves the GTK/webkit stack"
 cargo +nightly --version
 cargo-fuzz --version
 cargo-audit --version

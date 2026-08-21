@@ -102,3 +102,22 @@ def test_generator_scopes_first_party_to_this_repo():
         "first-party membership must be derived from packages/, not a hardcoded slug"
     assert 'srobroek/agentic-packages/packages/([\\w-]+)' not in gen, \
         "the hardcoded first-party repo slug is back"
+
+
+def test_every_shipped_script_with_a_shebang_is_executable():
+    """The docs invoke these by bare path, so a 644 mode is a hard failure.
+
+    Measured by the self-run: `workflow.md` step 9 says to run
+    `scripts/report-json.py --epic <id>`, and the file shipped 644, so the documented
+    command died `Permission denied`. Ten of fifteen scripts were affected while five
+    siblings were 755, which is the shape a git mode bit takes when nothing asserts it.
+    """
+    scripts = sorted((PKG / ".apm/skills/sabotage/scripts").iterdir())
+    assert scripts, "no shipped scripts found"
+    bad = [
+        p.name for p in scripts
+        if p.is_file()
+        and p.read_bytes().startswith(b"#!")
+        and not p.stat().st_mode & 0o111
+    ]
+    assert not bad, f"shebang present but not executable: {bad}"

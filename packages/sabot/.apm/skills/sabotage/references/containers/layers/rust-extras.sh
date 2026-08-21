@@ -213,7 +213,7 @@ EOF
 	grep -q RUSTSEC-2020-0071 "$probe/out.txt"
 	echo "cargo-deny reads the baked advisory-db offline (RUSTSEC-2020-0071, no network)"
 )
-rm -rf "$probe"
+rm -rf "${probe:?}"
 
 # LAST, not earlier: `cargo careful setup` above writes a sysroot into rustup, and the
 # probe build wrote to the cargo registry. A chmod before them leaves the new files
