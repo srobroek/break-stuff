@@ -1,0 +1,54 @@
+name: Tests
+
+# Runs the sabot pytest suite (packages/sabot/tests).
+#
+# release-please.yml calls this workflow via workflow_call and gates its release job
+# on it, so a release cannot be tagged from a tree whose tests fail. Blocking a
+# pull request additionally requires "Tests / pytest" to be listed as a required
+# status check in the repository's branch-protection rules; that is a repo setting,
+# not something this file can assert.
+#
+# The suite is hermetic: it needs bash, git, and the pinned Python only. No test
+# invokes a container runtime, so every collected test runs here and none is
+# excluded or marked as unrunnable.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version-file: .python-version
+
+      - name: Install test dependencies
+        run: python -m pip install --group test
+
+      # An empty or uncollectable suite is a failure, not a pass. `set -o pipefail`
+      # plus the grep means a parse miss also exits non-zero rather than reporting 0.
+      - name: Report collected test count
+        run: |
+          set -euo pipefail
+          count="$(python -m pytest --collect-only -q | tail -1 | grep -oE '^[0-9]+')"
+          echo "Collected $count tests." | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::Zero tests collected; failing rather than reporting green."
+            exit 1
+          fi
+
+      # pytest exits 5 on no-tests-collected and 1 on any failure; both fail the job.
+      - name: Run tests
+        run: python -m pytest

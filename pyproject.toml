@@ -1,0 +1,11 @@
+# Repo-level test configuration. This is not a distributable package: there is no
+# [project] or [build-system] table, only pytest config and the test dependency group.
+# The interpreter is pinned in .python-version, which mise/pyenv and the CI
+# setup-python step both read.
+
+[dependency-groups]
+test = ["pytest==9.1.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/sabot/tests"]
+addopts = "--strict-markers --strict-config -ra"
