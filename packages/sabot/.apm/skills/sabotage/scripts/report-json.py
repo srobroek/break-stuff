@@ -500,6 +500,21 @@ def not_executed_register(findings, coverage, surfaces, harnesses=()):
             register.append({"kind": "scanner-skipped", "id": c.get("id"),
                              "surface": c.get("surface"), "locus": None,
                              "reason": str(name)})
+        # `scanners_run` carries the same mis-stamp and matters for the same reason from the
+        # other direction: a run list of `7` claims coverage that names no tool, so nothing
+        # can check the claim against what the image holds or against a finding's `source`.
+        # Measured: 23 of 27 coverage records stamped it as a count, one as a string, while
+        # findings on two surfaces recorded `source: stock-pack` for lints that clippy
+        # actually produced -- a mismatch no reader could have caught either way.
+        ran = c.get("scanners_run")
+        if isinstance(ran, (int, float, str)):
+            register.append({
+                "kind": "scanner-run-list-not-stamped", "id": c.get("id"),
+                "surface": c.get("surface"), "locus": None,
+                "reason": f"scanners_run is {ran!r}, not a list of scanner names, so this "
+                          "record claims coverage without naming a single tool that "
+                          "produced it and no finding's source can be checked against it",
+            })
         run, total = c.get("harnesses_run"), c.get("harnesses_total")
         if isinstance(run, int) and isinstance(total, int) and run < total:
             register.append({

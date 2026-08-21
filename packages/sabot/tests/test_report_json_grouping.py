@@ -555,6 +555,28 @@ def coverage_wisp(bid, **meta):
     }
 
 
+def test_a_scanner_run_list_stamped_as_a_count_is_registered(bd_factory):
+    """`scanners_run: 7` claims coverage while naming no tool that produced it.
+
+    Measured: 23 of 27 coverage records stamped it as a count and one as a string, while
+    findings on two surfaces recorded `source: stock-pack` for lints clippy actually
+    produced. Neither claim could be checked against the other.
+    """
+    doc, _ = report(bd_factory, export([finding("e.1.1")], coverage=False) +
+                    [coverage_wisp("e.1.98", scanners_run=7, entry_points_total=10,
+                                   entry_points_executed=10)])
+    entry = next(r for r in doc["not_executed"]
+                 if r["kind"] == "scanner-run-list-not-stamped")
+    assert entry["id"] == "e.1.98"
+
+
+def test_a_scanner_run_list_of_names_is_not_flagged(bd_factory):
+    doc, _ = report(bd_factory, export([finding("e.1.1")], coverage=False) +
+                    [coverage_wisp("e.1.99", scanners_run=["clippy", "opengrep"],
+                                   entry_points_total=10, entry_points_executed=10)])
+    assert not any(r["kind"] == "scanner-run-list-not-stamped" for r in doc["not_executed"])
+
+
 def test_an_absent_entry_point_ratio_is_registered_not_read_as_full_coverage(bd_factory):
     """The unstamped-ratio check needed two ints to fire, so omitting the field passed.
 
