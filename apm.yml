@@ -1,5 +1,5 @@
 name: sabot
-version: 0.2.0
+version: 0.3.0
 description: >-
   Offensive and robustness auditing for code, scripts, hooks, and agents.
   Marketplace for the sabot package.
