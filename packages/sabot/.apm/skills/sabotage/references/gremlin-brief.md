@@ -209,6 +209,16 @@ catalogue.
    `{tool, reason}` objects alongside the counts: "2 run, 8 skipped" beside "0 invalid"
    reads as coverage when the reasons are only in prose.
 
+   MUST Probe a tool before recording it as absent, and quote the probe in the reason. A
+   skip reason is a claim about the image, so `command -v <tool>` or
+   `rustup component list --toolchain <pin>` costs one call and settles it. Measured: a node
+   recorded `{"tool":"clippy","reason":"cargo-fmt not installed for toolchain 1.97.1"}` and
+   a HARDENING finding asserting clippy obtained zero lints; clippy was installed in that
+   image the whole time, and when finally run it checked 513 crates and returned zero
+   warnings. Both the gap and the finding were fabricated from an unprobed assumption --
+   one inventing a coverage hole, the other claiming a clean the run had not earned. A
+   reason inherited from an earlier surface's log is not a probe of this image.
+
    MUST Count `entry_points_total` over the surface and `entry_points_executed` over what
    you actually reached, and stamp both. A harness ratio measures the harnesses rather
    than the surface: one node reported 13 of 13 harnesses run against 706 entry points,

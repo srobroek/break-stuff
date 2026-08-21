@@ -41,6 +41,7 @@ the wrong cwd or an empty store, not a run without findings); 4 no beads for run
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -462,6 +463,52 @@ def not_executed_register(findings, coverage, surfaces):
                 "reason": f"{ep_total - ep_run} of {ep_total} entry point(s) on this "
                           "surface were never executed, whatever the harness count says",
             })
+    # A finding asserting a scanner found nothing, on a surface whose own coverage says
+    # that scanner was SKIPPED, is a clean nobody earned. Measured: one node stamped
+    # clippy as "not installed for toolchain 1.97.1" AND filed a HARDENING finding that
+    # clippy obtained zero lint findings on the crate. Clippy was installed the whole
+    # time; run later it checked 513 crates and returned zero warnings. The conclusion
+    # happened to be right, which is precisely why nothing caught it -- so the check is on
+    # the contradiction, never on whether the claim looks plausible.
+    for c in coverage:
+        skipped = c.get("scanners_skipped")
+        if not isinstance(skipped, list):
+            continue
+        names = set()
+        for entry in skipped:
+            tool = entry.get("tool") if isinstance(entry, dict) else entry
+            if isinstance(tool, str) and tool.strip():
+                names.add(tool.strip().lower())
+        if not names:
+            continue
+        for f in findings:
+            if f.get("surface") != c.get("surface"):
+                continue
+            text = f"{f.get('title') or ''}. {f.get('root_cause') or ''}".lower()
+            # Match the clean-claim within the CLAUSE naming the tool, not anywhere in the
+            # finding. One real title read "clippy obtains zero lint findings ... and
+            # rustfmt plus cargo-nextest are absent from the image": a whole-string match
+            # blamed nextest, which that title calls absent -- agreeing with the skip
+            # rather than contradicting it. The contradiction was clippy's, and naming the
+            # wrong tool in a gap register is its own fail-open.
+            for clause in re.split(r"[.;]|,\s*(?:and|plus|but)\s+", text):
+                claims_clean = any(p in clause for p in (
+                    "zero", "no finding", "0 finding", "clean", "nothing", "no lint"))
+                if not claims_clean:
+                    continue
+                for tool in sorted(names):
+                    if tool not in clause:
+                        continue
+                    register.append({
+                        "kind": "clean-claimed-for-a-skipped-scanner", "id": f.get("id"),
+                        "surface": f.get("surface"), "locus": f.get("locus"),
+                        "reason": f"this finding asserts {tool} found nothing, while "
+                                  f"coverage wisp {c.get('id')} records {tool} as SKIPPED "
+                                  "on the same surface. A tool that did not run cannot "
+                                  "have produced a clean result, so one of the two is "
+                                  "wrong and neither may be reported as coverage",
+                    })
+
     covered = {c.get("surface") for c in coverage if c.get("surface")}
     for s in surfaces:
         name = s.get("surface")

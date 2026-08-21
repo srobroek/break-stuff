@@ -354,6 +354,89 @@ def test_a_scanner_skip_count_is_a_register_line_and_never_a_traceback(bd_factor
     assert not any(r["kind"] == "scanner-skipped" for r in doc["not_executed"])
 
 
+def test_clean_claimed_for_a_skipped_scanner_reaches_the_register(bd_factory):
+    """A tool that did not run cannot have produced a clean result.
+
+    Measured: one node stamped clippy as "not installed for toolchain 1.97.1" AND filed a
+    finding that clippy obtained zero lint findings on the crate. Clippy was installed the
+    whole time -- run later it checked 513 crates and returned zero warnings. The
+    conclusion was right, which is exactly why nothing caught the fabrication.
+    """
+    lines = export([
+        finding("e.1.1", tier="HARDENING", impact="LOW",
+                title="clippy obtains zero lint findings on desktop_shell"),
+    ], coverage=False)
+    lines.append({
+        "id": "e.1.90", "issue_type": "task", "title": "coverage", "status": "open",
+        "metadata": {"run_id": "run-A", "surface": "code",
+                     "scanners_run": ["opengrep"],
+                     "scanners_skipped": [{"tool": "clippy", "reason": "not installed"}],
+                     "harnesses_run": 2, "harnesses_total": 2},
+        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
+    })
+    doc, _ = report(bd_factory, lines)
+    bad = [r for r in doc["not_executed"]
+           if r["kind"] == "clean-claimed-for-a-skipped-scanner"]
+    assert bad, doc["not_executed"]
+    assert "clippy" in bad[0]["reason"]
+    assert bad[0]["id"] == "e.1.1"
+
+
+def test_the_contradiction_names_the_tool_whose_clause_claims_the_clean(bd_factory):
+    """A finding may name several tools, agreeing with the skip for some of them.
+
+    Measured, from a real title: "clippy obtains zero lint findings on desktop_shell ...
+    and rustfmt plus cargo-nextest are absent from the image". Matching the clean-claim
+    anywhere in the string blamed cargo-nextest, which this title calls ABSENT -- agreeing
+    with the coverage record rather than contradicting it. The contradiction is clippy's,
+    and naming the wrong tool in a gap register is its own fail-open.
+    """
+    lines = export([
+        finding("e.1.1", tier="HARDENING", impact="LOW",
+                title="clippy obtains zero lint findings on desktop_shell, "
+                      "and rustfmt plus cargo-nextest are absent from the image"),
+    ], coverage=False)
+    lines.append({
+        "id": "e.1.90", "issue_type": "task", "title": "coverage", "status": "open",
+        "metadata": {"run_id": "run-A", "surface": "code",
+                     "scanners_run": ["opengrep"],
+                     "scanners_skipped": [{"tool": "clippy", "reason": "not installed"},
+                                          {"tool": "rustfmt", "reason": "absent"},
+                                          {"tool": "cargo-nextest", "reason": "absent"}],
+                     "harnesses_run": 2, "harnesses_total": 2},
+        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
+    })
+    doc, _ = report(bd_factory, lines)
+    bad = [r for r in doc["not_executed"]
+           if r["kind"] == "clean-claimed-for-a-skipped-scanner"]
+    assert bad, doc["not_executed"]
+    reasons = " ".join(r["reason"] for r in bad)
+    assert "clippy" in reasons
+    assert "cargo-nextest" not in reasons, "a tool the finding calls absent is no contradiction"
+
+
+def test_a_clean_claim_for_a_scanner_that_actually_ran_is_not_flagged(bd_factory):
+    # The check is on the contradiction, not on the word "zero": a tool that ran and
+    # found nothing is a legitimate result and must not be registered as a gap.
+    lines = export([
+        finding("e.1.1", tier="HARDENING", impact="LOW",
+                title="clippy obtains zero lint findings on desktop_shell"),
+    ], coverage=False)
+    lines.append({
+        "id": "e.1.90", "issue_type": "task", "title": "coverage", "status": "open",
+        "metadata": {"run_id": "run-A", "surface": "code",
+                     "scanners_run": ["clippy"], "scanners_skipped": [],
+                     "harnesses_run": 2, "harnesses_total": 2},
+        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
+    })
+    doc, _ = report(bd_factory, lines)
+    assert not any(r["kind"] == "clean-claimed-for-a-skipped-scanner"
+                   for r in doc["not_executed"])
+
+
 # --- stamping discipline ----------------------------------------------------
 
 
