@@ -106,6 +106,8 @@ Note `--label`, singular: the plural form returns nothing silently. Claim each w
 you have re-run it without the label and compared the counts, per
 `references/beads-store.md`.>
 
+MUST Release every wisp you claimed back to `open` with its state stamped, as `bd update <wisp> --status open --metadata '{"state":"executed"}'`. You cannot close a wisp and you must not leave one claimed: resume reads `--status in_progress` as in-flight, and the discovery query above filters on `--status open`. Measured: 161 of 193 harness wisps in one campaign were left `in_progress` at the end of the run. A resumed campaign would have read all 161 as still running and discovered none of them as work, so a claim never released is the same as a harness lost.
+
 Before running anything, `ls -l` every `harness_path` and `control_path` on the
 wisps you claimed.
 

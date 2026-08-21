@@ -460,6 +460,23 @@ def not_executed_register(findings, coverage, surfaces, harnesses=()):
                           "rc before and after, and cannot run at all without it",
             })
 
+    # A wisp still claimed at report time is a claim nobody released. An agent cannot close
+    # a wisp, so the release is a status change back to `open`, and resume reads
+    # `in_progress` as in-flight while the gremlin's discovery query filters on `open`.
+    # Measured: 161 of 193 harness wisps were left claimed at the end of one campaign. A
+    # resumed run would have read all 161 as still running and discovered none as work, so a
+    # claim never released is the same as a harness lost.
+    for h in harnesses:
+        if h.get("status") == "in_progress":
+            register.append({
+                "kind": "wisp-left-claimed", "id": h.get("id"),
+                "surface": h.get("surface"), "locus": h.get("entry_point"),
+                "reason": "this wisp is still in_progress at report time, so a resumed run "
+                          "reads it as in-flight and the gremlin's open-status discovery "
+                          "query will not find it. Release a claim back to open with the "
+                          "state stamped once the harness has run",
+            })
+
     # A harness the gremlin found broken leaves its entry point uncovered, and the brief
     # requires a re-author wisp naming what to rewrite. Nothing enforced that. Measured: one
     # campaign ran roughly a dozen harnesses that reported themselves broken -- one at rc=3
