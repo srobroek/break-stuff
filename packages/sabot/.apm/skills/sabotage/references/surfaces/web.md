@@ -22,7 +22,7 @@ frontend with native IPC behind it.
 | retire.js | default-on | local | `npx retire --outputformat json` | known-vulnerable JS libraries shipped in the bundle | complements osv-scanner with browser-lib CVEs |
 | nuclei | opt-in | dynamic | `nuclei -u <local-url> -json -o <artifacts>/nuclei.json` | live findings against the running app: headers, exposures, known CVEs | dynamic; needs the dev server up |
 | ZAP baseline | opt-in | dynamic | `zap-baseline.py -t <local-url> -J <artifacts>/zap.json` | passive scan: CSP, cookie flags, missing headers, mixed content | dynamic; passive by default |
-| Playwright probe | opt-in | dynamic | the repo's own Playwright, driven per `harnesses.md` | DOM XSS that only fires after render, `postMessage` origin gaps | dynamic; the skill already ships Playwright access |
+| Playwright probe | opt-in | dynamic | `require("playwright")` from `NODE_PATH`, `chromium.launch({args:["--no-sandbox"]})`, driven per `harnesses.md` | DOM XSS that only fires after render, `postMessage` origin gaps | **chromium is baked into `sabot/node:1`** and launches offline against `127.0.0.1`. Pass `--no-sandbox`, because chromium's sandbox needs privileges the container drops, and keep the `TMPDIR` that `run-contained.sh` points at the `/scratch` tmpfs, since the root filesystem is read-only. Missing either fails at `launch()` |
 
 MUST Treat every dynamic-class tool as gated by the dev-server section below, since it cannot run without a live instance.
 NOT A live DAST tool pointed at any host other than the project's own dev server is out of scope, matching the rest of the skill.

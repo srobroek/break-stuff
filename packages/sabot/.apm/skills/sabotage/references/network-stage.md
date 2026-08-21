@@ -29,7 +29,7 @@ NOT Never run this stage against a network host, public endpoint, or third-party
 | action drift | has a tag-pinned action MOVED since it was pinned | `pinact run --check` |
 | registry rule packs | the curated `p/*` packs with no baked equivalent (`p/trailofbits`, and anything the baked tree lacks) | `opengrep --config p/<pack>` |
 
-MUST Bake a downloadable-once artifact into the image rather than routing it here. A missing Playwright browser cost one campaign 7 of its 13 DAST probes, and that was an image defect: the probes drive `127.0.0.1` and need no egress once the browser exists. The same holds for CodeQL packs, a `cargo-fuzz` toolchain, and any tool whose install step is the only networked part of it.
+MUST Bake a downloadable-once artifact into the image rather than routing it here. A missing Playwright browser cost one campaign 7 of its 13 DAST probes, and that was an image defect: the probes drive `127.0.0.1` and don't touch the network once the browser exists. The same holds for CodeQL packs, a `cargo-fuzz` toolchain, and any tool whose install step is the only networked part of it.
 
 MUST Re-run this stage's DB-backed scanners against the SAME target the offline pass scanned, and report the delta rather than replacing the offline result. A fresh DB finding that the baked DB missed is a finding about the image's freshness as much as about the target, and both belong in the report.
 MUST State the fetch timestamp for every database this stage refreshes. "Current as of" is the claim being made, and without a timestamp the report implies today.

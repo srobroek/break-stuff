@@ -203,9 +203,9 @@ Run in order. `references/workflow.md` holds the full procedure; LOAD it first.
      across nodes is the campaign's strongest statement, and no per-finding row
      states it.
    - **8.6. Network stage, only when the user opted in.** LOAD
-     `references/network-stage.md`. Four questions can only be answered by a remote
-     service: is this leaked credential live, is the baked OSV/trivy DB stale, is the
-     `cargo-audit` advisory DB stale, what do the registry-only rule packs say. This
+     `references/network-stage.md`. Only a remote service can say whether a leaked
+     credential is live, whether the baked OSV/trivy and `cargo-audit` databases are
+     stale, and what the registry-only rule packs report. This
      stage runs in a container WITH egress, performs lookups rather than attacks, and
      is DECLINED-by-default with the gaps recorded. A tool that only needs to DOWNLOAD
      something (a Playwright browser, a CodeQL pack) belongs in the image instead: it
