@@ -61,7 +61,7 @@ Memory and disk are **safety** limits: exceeding either destroys the run and the
 runtime with it, so the wrapper enforces both and refuses rather than asks. Time is a
 **budget** and belongs to the user, so a campaign is not time-capped by default.
 
-There is no `total_s` MUST any more. The former campaign-wide ceiling was unobservable -- a
+There is no `total_s` MUST any more. The former campaign-wide ceiling was unobservable — a
 21-node run overran it by roughly fiftyfold and nothing noticed, because the phases are
 parallel subagents with no shared clock and no supervisor holding the deadline. An
 unenforceable MUST is the same defect this skill audits targets for, so it is deleted
@@ -84,23 +84,25 @@ never as a target defect, a finding, or a clean scan:
 | `ld` killed, or `cargo` exit 101 with a signal-killed linker child | link memory, not a missing library. Escalate to `build_mem_mb` once. |
 | `signal: 9, SIGKILL` on a mid-sized crate (`syn`, `redb`) at a cap the workspace built under before | the cap is not the whole budget. See below. |
 | `No space left on device`, ENOSPC | host disk. Stop the campaign; do not retry. |
+| `input/output error` on a containerd blob, or "image not found" on an image that exists | the runtime's content store is corrupt, downstream of a full disk. HALT; no host fallback. |
+| copy-out refused or timed out | the evidence stayed in the container, so the run reads exactly like one that never happened. INVALID. |
 
-#### The cap is not the budget: check the VM, and do not put the build tree in a tmpfs
+#### The cap is not the budget: check the VM, and keep the build tree out of a tmpfs
 
 `--memory` bounds the container, but on macOS and Windows the container runtime is itself a
 VM with a fixed allocation, and a `--tmpfs` is charged to that same pool as it fills.
 
-Measured: a Docker VM held 7.7 GB against a 48 GB host. An 8 GB `--tmpfs /scratch` holding
-the build tree left rustc competing with the tmpfs for one budget, and `syn`, `redb`, and
-one workspace crate were SIGKILLed at a cap the same workspace had compiled under before.
-Moving the tree to a named volume, dropping the tmpfs to 512m, and capping `build_jobs=2`
-compiled it in 8m26s with a 5.34 GiB peak.
+| Measured | Value |
+|---|---|
+| host memory | 48 GB |
+| what the Docker VM actually held | 7.7 GB |
+| `--tmpfs /scratch` holding the build tree | 8 GB |
+| result | `syn`, `redb`, and one workspace crate SIGKILLed at a cap that workspace had compiled under before |
+| after moving the tree to a volume, tmpfs to 512m, `build_jobs=2` | compiled in 8m26s, 5.34 GiB peak |
 
 MUST Read the runtime's OWN memory total before setting `build_mem_mb`, not the host's. `docker info --format '{{.MemTotal}}'` reports the VM. A cap above what the VM has is not a cap; it is an unbounded build with a number written next to it.
-MUST Put a build or target directory on a named volume, never in a `--tmpfs`. A tmpfs holding build output is charged to the same memory the compiler needs, so the tree competes with the process producing it, and the failure surfaces as a SIGKILL that reads like a link-memory problem.
+MUST Put a build or target directory on a volume, never in a `--tmpfs`. A tmpfs holding build output is charged to the same memory the compiler needs, so the tree competes with the process producing it. The runner then reports a SIGKILL, which reads like a link-memory problem.
 NOT Never read a SIGKILL as a target defect or a harness result. It measured nothing.
-| `input/output error` on a containerd blob, or "image not found" on an image that exists | the runtime's content store is corrupt, downstream of a full disk. HALT; no host fallback. |
-| copy-out refused or timed out | the evidence stayed in the container, so the run reads exactly like one that never happened. INVALID. |
 
 ## Runners
 

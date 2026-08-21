@@ -97,6 +97,8 @@ harness that EXECUTES it. A destructive-looking payload is data the target parse
    `control_path` on the wisp. One control per assertion, and never two assertions in
    one test: a shared test stops at the first panic and leaves the second assertion
    unfired while appearing to have run.
+
+   MUST Stamp `control_path` on every harness wisp, as the literal string `none` when the harness asserts no guard. Omitting the field and deliberately having no control are the same blank to every later reader, and the challenger's tiering rule turns on telling them apart. Measured: 245 harness wisps across one 21-surface campaign, and not one carried the field; two briefs required it, the report dropped it from its kept metadata, and every guard assertion on the run was untierable without anything saying so.
 5. One harness wisp per harness, filed with the command below (not from memory).
    `--parent <surface>` and `run_id` are both required, or the harness is invisible
    to the gremlin's discovery query and never runs:
@@ -138,7 +140,7 @@ findings; finding them is the gremlin's job.
 - **One surface per fuzzer is the floor.** Split a surface exceeding roughly 5k
   LOC across several fuzzers by subtree or crate, each with a narrowed file list.
 - **Pass the entry points, not a hypothesis.** `fuzzer` decides which invariant
-  fits each entry point; handing it your guess about where the bug lives narrows
+  fits each entry point; handing it your guess about which function is at fault narrows
   the search wrongly.
 - **State the convention explicitly.** A fuzzer that guesses the fuzz-target
   location writes files the project's test command never finds.

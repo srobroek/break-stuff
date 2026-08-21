@@ -498,6 +498,52 @@ def test_a_crash_stamped_under_invented_key_names_is_a_gap_not_a_blank_record(bd
     assert doc["summary"]["stamping_gaps"] >= 1
 
 
+def harness(bid, **meta):
+    return {
+        "id": bid, "issue_type": "task", "title": f"harness {bid}", "status": "open",
+        "metadata": dict({"run_id": "run-A"}, **meta),
+        "labels": ["sab-harness", "sab-surface"],
+        "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
+    }
+
+
+def test_a_harness_with_no_control_path_is_a_gap_not_a_silent_untierable_result(bd_factory):
+    """`control_path` decides whether a hostile result carries a verdict at all.
+
+    Measured: 23 of 23 harness wisps in one campaign omitted it, two briefs MUST it, and
+    KEEP_META dropped the field anyway -- so a challenger asking for the control had
+    nowhere to read it and every guard assertion on the run was untierable in silence.
+    """
+    doc, _ = report(bd_factory, export([harness("e.1.60",
+        entry_point="src/native.rs:114", harness_path="/fuzz/reveal.rs", runner="cargo fuzz",
+    )]))
+    gap = next(g for g in doc["stamping_gaps"] if g["bucket"] == "harnesses")
+    assert "control_path" in gap["issue"] and "expected" in gap["issue"]
+
+
+def test_a_control_path_that_is_stamped_reaches_the_report(bd_factory):
+    doc, _ = report(bd_factory, export([harness("e.1.61",
+        entry_point="src/native.rs:114", harness_path="/fuzz/reveal.rs", runner="cargo fuzz",
+        control_path="/fuzz/reveal_control.rs", expected="fail", input_shape="path",
+        state="open",
+    )]))
+    assert doc["harnesses"][0]["control_path"] == "/fuzz/reveal_control.rs"
+    assert not any(g["bucket"] == "harnesses" for g in doc["stamping_gaps"])
+
+
+def test_control_path_none_is_accepted_for_a_harness_asserting_no_guard(bd_factory):
+    """"none" is the deliberate answer, and it must not read as an omission.
+
+    A harness that asserts a parser does not panic has no guard to control for, so
+    demanding a control file there would push authors to stamp a path that does not exist.
+    """
+    doc, _ = report(bd_factory, export([harness("e.1.62",
+        entry_point="src/parse.rs:20", harness_path="/fuzz/parse.rs", runner="cargo fuzz",
+        control_path="none", expected="pass",
+    )]))
+    assert not any(g["bucket"] == "harnesses" for g in doc["stamping_gaps"])
+
+
 def test_an_explicit_null_is_accepted_where_a_field_does_not_apply(bd_factory):
     doc, _ = report(bd_factory, export([finding("e.1.1", repro=None, path=None)]))
     assert not any("required field" in g["issue"] for g in doc["stamping_gaps"])
