@@ -71,6 +71,17 @@ arrives twice with two wisp ids and two titles:
 
 Every key printed by that command is a duplicate set to collapse before you tier.
 
+An EMPTY result from it is a broken query until you have checked that the keys exist:
+
+    jq -r '[.[] | select(.metadata.dedup_key)] | length' /tmp/f.json
+
+Zero there means the gremlins filed without the key, so `uniq -d` had nothing to compare
+and the surface reads as duplicate-free. Fall back to `locus` plus defect class, stamp
+`dedup_key` on every finding you judge so the next pass has it, and report the missing
+key as a gap. Measured: one campaign filed 383 findings with no `dedup_key` on any of
+them, over seven genuine cross-surface duplicate loci that the prescribed command could
+not see.
+
 MUST Re-verify a dedup claim you inherited. One run carried an unverified dedup between two surfaces because the wisp list was unreadable at the time, and the tiering pass owns that check.
 
 ## Group by root cause, and tier the group once

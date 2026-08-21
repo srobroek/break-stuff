@@ -184,20 +184,38 @@ catalogue.
    the report. Persist every crashing input and record the exact reproduce command.
 
      FINDING=$(bd create "finding: <one-line claim>" --parent <surface-bead> --labels sab-finding --json \
-       --metadata '{"run_id":"<RUN_ID>","source":"<synthesized-rule|stock-pack|harness|read>","locus":"<file:line>","surface":"<surface>","path":"<entry to sink>"}' | jq -r '.id')
+       --metadata '{"run_id":"<RUN_ID>","source":"<synthesized-rule|stock-pack|harness|read>","locus":"<file:line>","surface":"<surface>","path":"<entry to sink>","dedup_key":"<surface>:<locus>:<class>","root_cause":"<one phrase>"}' | jq -r '.id')
      bd dep add "$FINDING" <harness-bead> --type discovered-from
      # a crash instead: bd dep add <crash-bead> <harness-bead> --type caused-by
 
    The `<RUN_ID>` is the run_id this Brief carries; copy it verbatim. Do not tier
    the finding (the challenger does that); leave tier, by, and impact unset.
+
+   MUST Stamp `dedup_key` as `<surface>:<locus>:<class>` lowercased, and `root_cause` as
+   one phrase, on every finding you file. The challenger dedups mechanically on
+   `dedup_key` (`jq -r '.[].metadata.dedup_key' | sort | uniq -d`) and groups on
+   `root_cause`, so a wisp missing either is invisible to both. Measured: one campaign
+   filed 383 findings and not one carried a `dedup_key`, so that command returned nothing
+   over seven real cross-surface duplicate loci, and every group in the report was built
+   from a key derived at report time from a one-line title. You know the class and the
+   defect; a later pass reconstructing them is guessing.
 6. File one `sab-coverage` wisp on the surface node with `scanners_run`,
-   `scanners_skipped`, `harnesses_run`, `harnesses_total` metadata before returning,
+   `scanners_skipped`, `harnesses_run`, `harnesses_total`, `entry_points_total`, and
+   `entry_points_executed` metadata before returning,
    even on a clean surface. The close-out gate requires it, so a surface without one
    reads as untested. Record a scanner that matched no files as
    `SKIPPED (matched no files)`, not run, since a scan over zero files tested
    nothing and would otherwise read as clean. Stamp a `skips` array of
    `{tool, reason}` objects alongside the counts: "2 run, 8 skipped" beside "0 invalid"
    reads as coverage when the reasons are only in prose.
+
+   MUST Count `entry_points_total` over the surface and `entry_points_executed` over what
+   you actually reached, and stamp both. A harness ratio measures the harnesses rather
+   than the surface: one node reported 13 of 13 harnesses run against 706 entry points,
+   and another enumerated 199 Tauri command handlers and executed 0 of them. Both read as
+   complete coverage from the harness numbers alone. When the count is blocked, stamp
+   `entry_points_executed: 0` with the mechanism in `not_executed_reason` rather than
+   omitting the field, because an absent ratio is the same blank as a full one.
 
 ## Tool-integrity certification (mandatory, in your return)
 An exit code is not evidence a tool ran. Certify each line with the command output

@@ -65,8 +65,12 @@ KEEP_META = {
     "findings": ["tier", "by", "source", "impact", "locus", "path", "cwe", "repro",
                  "surface", "node", "evidence", "control_passed", "dedup_key",
                  "root_cause", "not_executed_reason"],
+    # entry_points_* is the ratio a harness count cannot express: "13 of 13 harnesses ran"
+    # beside 706 entry points is a 2% surface reported as complete. Measured: one node
+    # enumerated 199 Tauri handlers and executed 0, and with only the harness counts kept
+    # here that number reached no part of the report.
     "coverage": ["scanners_run", "scanners_skipped", "harnesses_run", "harnesses_total",
-                 "surface"],
+                 "entry_points_total", "entry_points_executed", "surface"],
 }
 
 # Every one of these must be PRESENT on a finding wisp, with an explicit null where it
@@ -417,6 +421,17 @@ def not_executed_register(findings, coverage, surfaces):
                 "surface": c.get("surface"), "locus": None,
                 "reason": f"{total - run} of {total} authored harness(es) never executed",
             })
+        # A harness ratio measures the harnesses, not the surface. "13 of 13 ran" beside
+        # 706 entry points is 2% coverage reported as complete, and one node enumerated
+        # 199 handlers and executed 0 of them.
+        ep_run, ep_total = c.get("entry_points_executed"), c.get("entry_points_total")
+        if isinstance(ep_run, int) and isinstance(ep_total, int) and ep_run < ep_total:
+            register.append({
+                "kind": "entry-points-unexecuted", "id": c.get("id"),
+                "surface": c.get("surface"), "locus": None,
+                "reason": f"{ep_total - ep_run} of {ep_total} entry point(s) on this "
+                          "surface were never executed, whatever the harness count says",
+            })
     covered = {c.get("surface") for c in coverage if c.get("surface")}
     for s in surfaces:
         name = s.get("surface")
@@ -550,6 +565,14 @@ def main():
                     "must equal instances. A mismatch means a finding was dropped "
                     "between the graph and the report.",
         },
+        # A group built on a key this script derived is the finder's judgment reconstructed
+        # from a title, and it reads in the report exactly like a stamped one. Measured: a
+        # 383-finding campaign stamped `dedup_key` on none of them, so every group was
+        # derived and the challenger's prescribed `uniq -d` dedup returned nothing over
+        # seven real cross-surface duplicate loci.
+        "groups_on_a_derived_dedup_key": sum(
+            1 for g in report["groups"] if g["dedup_key_derived"]
+        ),
         "coverage_gaps": gaps,
         "surfaces_without_a_coverage_record": missing_records,
         "not_executed_count": len(report["not_executed"]),

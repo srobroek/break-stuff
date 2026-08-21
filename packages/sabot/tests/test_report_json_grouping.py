@@ -134,6 +134,23 @@ def test_a_derived_dedup_key_is_marked_as_derived(bd_factory):
     assert doc["groups"][0]["dedup_key_derived"] is True
 
 
+def test_the_summary_counts_groups_resting_on_a_derived_key(bd_factory):
+    """A per-group flag nothing totals is invisible in a 383-finding report.
+
+    Measured: one campaign filed 383 findings and stamped `dedup_key` on none of them,
+    so every group was built from a key this script reconstructed at report time and the
+    challenger's prescribed `uniq -d` dedup returned nothing over seven real
+    cross-surface duplicate loci. The per-group `dedup_key_derived` flag was already
+    correct; nobody reading the summary could see that it was set everywhere.
+    """
+    doc, _ = report(bd_factory, export([
+        finding("e.1.1", dedup_key=None),
+        finding("e.1.2", dedup_key="code:b.rs:9:cwe-22", locus="b.rs:9"),
+    ]))
+    assert doc["summary"]["groups_on_a_derived_dedup_key"] == 1
+    assert doc["summary"]["counts"]["groups"] == 2
+
+
 def test_distinct_keys_stay_distinct_groups(bd_factory):
     doc, _ = report(bd_factory, export([
         finding("e.1.1", dedup_key="code:a.rs:1:cwe-190"),
@@ -279,6 +296,37 @@ def test_unrun_harnesses_and_skipped_scanners_reach_the_register(bd_factory):
     assert {"scanner-skipped", "harnesses-unrun"} <= kinds
     assert any("13 of 13" in r["reason"] or "13 authored" in r["reason"]
                for r in doc["not_executed"] if r["kind"] == "harnesses-unrun")
+
+
+def test_entry_points_never_executed_reach_the_register_though_every_harness_ran(bd_factory):
+    """A harness ratio measures the harnesses, not the surface.
+
+    Measured: one node reported 13 of 13 harnesses run against 706 entry points, and
+    another enumerated 199 Tauri command handlers and executed 0 of them because the
+    image could not compile the crate. Both read as complete coverage from
+    `harnesses_run == harnesses_total` alone, and with only the harness counts kept in
+    KEEP_META the 199 reached no part of the report.
+    """
+    lines = export([finding("e.1.1")], coverage=False)
+    lines.append({
+        "id": "e.1.90", "issue_type": "task", "title": "coverage", "status": "open",
+        "metadata": {"run_id": "run-A", "surface": "code",
+                     "scanners_run": ["opengrep"], "scanners_skipped": [],
+                     # every authored harness ran, so the harness ratio is silent
+                     "harnesses_run": 13, "harnesses_total": 13,
+                     "entry_points_total": 199, "entry_points_executed": 0},
+        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
+    })
+    doc, _ = report(bd_factory, lines)
+    assert not any(r["kind"] == "harnesses-unrun" for r in doc["not_executed"])
+    gaps = [r for r in doc["not_executed"] if r["kind"] == "entry-points-unexecuted"]
+    assert gaps, doc["not_executed"]
+    assert "199 of 199" in gaps[0]["reason"]
+    # and the raw ratio survives shape() into the coverage record itself
+    cov = next(c for c in doc["coverage"] if c["id"] == "e.1.90")
+    assert cov["entry_points_total"] == 199
+    assert cov["entry_points_executed"] == 0
 
 
 # --- stamping discipline ----------------------------------------------------

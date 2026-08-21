@@ -1,7 +1,7 @@
 # Surface: Web and frontend
 
 The client-side and HTTP surface `code.md` structurally misses. `code.md` traces
-server-side taint to a sink; this surface owns the DOM sinks and the running app's
+server-side taint to a sink; this surface covers the DOM sinks and the running app's
 HTTP responses under the browser trust model. A static half reads frontend source,
 and a dynamic half scans the project's own dev server.
 
@@ -40,7 +40,7 @@ starts it, scanned locally, and torn down. It is not a remote target.
 4. Scan that URL only.
 5. Stop the server by its PID, and confirm the port is closed.
 
-MUST Bind the dev server to `127.0.0.1`/`localhost` only. That loopback URL is the sole scan target; a dev server reachable off-host is its own finding and stays out of remote-scan scope regardless.
+MUST Bind the dev server to `127.0.0.1`/`localhost` only. That loopback URL is the one scan target; a dev server reachable off-host is its own finding and stays out of remote-scan scope regardless.
 MUST Launch the server through the repo's declared start command. An invented invocation describes nothing the project intended.
 MUST Confine a payload-submitting scan to a worktree or scratch checkout, since an active scan mutates whatever state the app writes.
 MUST Stop the server at the end and confirm the port is closed. A campaign that leaves a dev server running has changed the developer's machine.
@@ -61,11 +61,11 @@ NOT Never scan a staging, production, or shared URL, even one the user pastes. T
 | 9 | Clickjacking | missing `X-Frame-Options`/`frame-ancestors` | check the live headers |
 | 10 | Open redirect | a redirect target from a parameter | supply an external host and see if it redirects |
 | 11 | Source map or debug artifact shipped | `.map` files, a debug route, verbose errors on the live server | request them against the running instance |
-| 12 | Tauri/Electron IPC from the webview | `code.md` owns the native side; here, what the webview is allowed to invoke | enumerate the exposed IPC and whether the webview input is trusted |
+| 12 | Tauri/Electron IPC from the webview | `code.md` covers the native handler bodies; here, what the webview is allowed to invoke | enumerate the exposed IPC and whether the webview input is trusted |
 
 ## Harness patterns
 
-**Static** needs no server: run the eslint/opengrep/retire.js tools and trace DOM
+**Static** doesn't need a server: run the eslint/opengrep/retire.js tools and trace DOM
 sinks by reading, exactly like `code.md`.
 
 **Dynamic** drives the running instance. `fuzzer` writes the scan config and, when
