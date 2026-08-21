@@ -116,6 +116,44 @@ CRASH_REQUIRED = ["state", "kind", "minimized_path", "repro_cmd", "repro_rc", "d
 HARNESS_REQUIRED = ["entry_point", "harness_path", "runner", "control_path", "expected",
                     "state"]
 
+# Every campaign bead carries this label, so a bead belonging to an audit is separable
+# from the project's own backlog by one query. Without it a project's "close every bead"
+# release gate counts the audit's own records as outstanding work: measured, one campaign
+# left 680 beads in a product repo's store, of which only 351 were product defects, and
+# the gate blocked on its own bookkeeping.
+AUDIT_LABEL = "sab-audit"
+
+# Buckets that are never a product defect. A harness, a crash record, a coverage record,
+# and a surface root are all audit bookkeeping, so each carries `non-work` as well as its
+# own label. Measured: 22 surface roots, 24 coverage records, and 6 crash records reached
+# the end of one campaign with no `non-work` label, because the label rule named only
+# harness, crash, and coverage wisps and nothing checked any of them.
+NON_DEFECT_BUCKETS = ("harnesses", "crashes", "coverage", "surfaces")
+
+# A finding whose locus is inside the run's own artifacts dir is a defect in the AUDIT, not
+# in the product: a synthesized rule that misfires, a scanner substitute that emits nothing.
+# It is worth keeping and worth fixing, and it must never be counted as a product finding.
+# Measured: 6 findings in one campaign had a locus under `.sabot/run-<id>/artifacts/`, all
+# 6 tiered PROVEN or REACHABLE, none labelled, and only 2 of the 6 carried the `TOOLING:`
+# title prefix -- so the title is not the detector and the locus is.
+AUDIT_TOOLING_LOCUS = (".sabot/", "/artifacts/")
+
+# Priority derived from the two axes, so it carries the information the axes carry rather
+# than the creating agent's default. Measured: 14 of 21 surfaces in one campaign were 100%
+# P2, and the two worst findings in the whole run sat at P2 beside 82 MEDIUM ones -- a
+# reader sorting by priority saw nothing. A tier and an impact are already on every
+# finding, so the priority is a function of them and never an independent judgement.
+PRIORITY_BY_TIER_IMPACT = {
+    ("PROVEN", "CRITICAL"): 0, ("REACHABLE", "CRITICAL"): 0,
+    ("PROVEN", "HIGH"): 1, ("REACHABLE", "HIGH"): 1,
+    ("PROVEN", "MEDIUM"): 2, ("REACHABLE", "MEDIUM"): 2,
+    ("PROVEN", "LOW"): 3, ("REACHABLE", "LOW"): 3,
+    ("HARDENING", "CRITICAL"): 2, ("HARDENING", "HIGH"): 2,
+    ("HARDENING", "MEDIUM"): 3, ("HARDENING", "LOW"): 4,
+    ("REFUTED", "CRITICAL"): 4, ("REFUTED", "HIGH"): 4,
+    ("REFUTED", "MEDIUM"): 4, ("REFUTED", "LOW"): 4,
+}
+
 # Ranking, in order. Five keys, because a run producing hundreds of findings is read
 # top-down and then abandoned; the reader's attention is the scarce resource.
 TIER_RANK = {"PROVEN": 0, "REACHABLE": 1, "HARDENING": 2, "REFUTED": 4}
@@ -215,6 +253,54 @@ def bucket_of(bead):
     return None, False
 
 
+def audit_tooling(bead):
+    """True when this finding's locus is inside the run's own artifacts, which makes it a
+    defect in the audit rather than in the product. Read from the locus, not the title:
+    only 2 of 6 such findings in one campaign announced themselves in their title."""
+    locus = parse_meta(bead).get("locus")
+    return isinstance(locus, str) and any(p in locus for p in AUDIT_TOOLING_LOCUS)
+
+
+def label_gaps(bead, bucket):
+    """The labels this bead should carry and does not.
+
+    Kept separate from the emitted record: `labels` and `priority` are noise a report never
+    renders, so they are read off the raw bead here and dropped by `shape`.
+    """
+    labels = set(bead.get("labels") or [])
+    want = []
+    if AUDIT_LABEL not in labels:
+        want.append(AUDIT_LABEL)
+    non_defect = bucket in NON_DEFECT_BUCKETS or (
+        bucket == "findings"
+        and (parse_meta(bead).get("tier") == "REFUTED" or audit_tooling(bead))
+    )
+    if non_defect and "non-work" not in labels:
+        want.append("non-work")
+    return want
+
+
+def priority_gap(bead, bucket):
+    """The priority this finding should carry and does not, or None.
+
+    Only findings are ranked. A bookkeeping record has no severity to express, so leaving
+    its priority alone is correct rather than an omission.
+    """
+    if bucket != "findings":
+        return None
+    meta = parse_meta(bead)
+    want = PRIORITY_BY_TIER_IMPACT.get((meta.get("tier"), meta.get("impact")))
+    if want is None:
+        return None
+    have = bead.get("priority")
+    if isinstance(have, str):
+        try:
+            have = int(have.lstrip("Pp"))
+        except ValueError:
+            have = None
+    return None if have == want else want
+
+
 def shape(bead, bucket):
     meta = parse_meta(bead)
     kept = {k: meta[k] for k in KEEP_META.get(bucket, []) if k in meta}
@@ -225,6 +311,12 @@ def shape(bead, bucket):
         "parent": parent(bead),
         **kept,
     }
+    if "sab-chain" in set(bead.get("labels") or []):
+        # A chain is an escalation built from findings already counted, so it is a real
+        # result and not an additional defect. Read from the label, not the title: one
+        # campaign had one bead labelled `sab-chain` and a DIFFERENT one titled "CHAIN",
+        # so the two signals named disjoint beads and neither was complete.
+        rec["chain"] = True
     ce = edges(bead)
     if ce:
         rec["edges"] = ce
@@ -234,15 +326,51 @@ def shape(bead, bucket):
     return rec
 
 
-def parent_of(bead):
-    """The parent-child dependency target, else None. Falls back to the id prefix
-    (bd ids are hierarchical: a child of `sab-x.1` is `sab-x.1.n`), so parentage is
-    recoverable even from a bead whose edge did not serialize."""
+def parents_of(bead):
+    """Every candidate parent: the `parent-child` edge targets AND the id prefix.
+
+    Both, never one. bd ids are hierarchical (a child of `x.1` is `x.1.n`), and the edge
+    is supposed to agree with the prefix. When it does not, preferring the edge silently
+    detaches the whole subtree from the epic. Measured: a 680-bead campaign's 21 surface
+    nodes carried ids under the run epic and `parent-child` edges pointing at twelve
+    unrelated project beads, so a walk that trusted the edge alone reached 0 of 680 and
+    the report rendered an empty run at exit 0 -- a clean audit, by the bytes.
+    """
+    out = []
     for d in bead.get("dependencies") or []:
         if d.get("type") == "parent-child" and d.get("depends_on_id"):
-            return d["depends_on_id"]
+            out.append(d["depends_on_id"])
     bid = bead.get("id") or ""
-    return bid.rsplit(".", 1)[0] if "." in bid else None
+    if "." in bid:
+        prefix = bid.rsplit(".", 1)[0]
+        if prefix not in out:
+            out.append(prefix)
+    return out
+
+
+def parent_of(bead):
+    """The single parent a record renders, preferring the edge."""
+    p = parents_of(bead)
+    return p[0] if p else None
+
+
+def misparented(bead, run_ids):
+    """The edge targets that disagree with this bead's id prefix.
+
+    An audit bead parented into the project's own tree is how a campaign's records become
+    indistinguishable from the project's backlog, and it is what detaches a subtree from
+    the epic. Returned for the register rather than silently repaired.
+    """
+    bid = bead.get("id") or ""
+    if "." not in bid:
+        return []
+    prefix = bid.rsplit(".", 1)[0]
+    return [
+        d["depends_on_id"]
+        for d in (bead.get("dependencies") or [])
+        if d.get("type") == "parent-child" and d.get("depends_on_id")
+        and d["depends_on_id"] != prefix
+    ]
 
 
 def resolve_epic(beads, epic_id, run_id):
@@ -263,8 +391,7 @@ def descendants(beads, epic_id):
     descends from the epic, not because an agent remembered to stamp run_id."""
     children = {}
     for b in beads:
-        p = parent_of(b)
-        if p:
+        for p in parents_of(b):
             children.setdefault(p, []).append(b.get("id"))
     by_id = {b.get("id"): b for b in beads}
     out, stack = {}, [epic_id]
@@ -477,6 +604,22 @@ def not_executed_register(findings, coverage, surfaces, harnesses=()):
                           "state stamped once the harness has run",
             })
 
+    # A REFUTED finding the audit itself disproved and left open outlives the run as
+    # apparent work. The no-delete rule keeps the wisp and its refutation; it does not ask
+    # for the wisp to stay open. Measured: 35 of 36 REFUTED findings in one campaign were
+    # still open at report time, so a third of the run's "outstanding" findings were ones it
+    # had already dismissed.
+    for f in findings:
+        if f.get("tier") == "REFUTED" and f.get("status") != "closed":
+            register.append({
+                "kind": "refuted-finding-left-open", "id": f.get("id"),
+                "surface": f.get("surface"), "locus": f.get("locus"),
+                "reason": "this finding is REFUTED and still open, so it reads as outstanding "
+                          "work in every backlog query. Close it with reason `refuted`, "
+                          "keeping the wisp and its refutation, which is what the no-delete "
+                          "rule requires",
+            })
+
     # A harness the gremlin found broken leaves its entry point uncovered, and the brief
     # requires a re-author wisp naming what to rewrite. Nothing enforced that. Measured: one
     # campaign ran roughly a dozen harnesses that reported themselves broken -- one at rc=3
@@ -686,7 +829,49 @@ def main():
         bucket, mislabeled = bucket_of(bead)
         if not bucket:
             continue
-        report[bucket].append(shape(bead, bucket))
+        rec = shape(bead, bucket)
+        if bucket == "findings" and audit_tooling(bead):
+            # Flagged on the record so the report can total product defects apart from the
+            # audit's own. A tiered defect in a synthesized rule is real work and belongs in
+            # the report; counted among the product's findings it inflates them.
+            rec["audit_tooling"] = True
+        report[bucket].append(rec)
+
+        stray = misparented(bead, run_id)
+        if stray:
+            report["stamping_gaps"].append({
+                "id": bid, "bucket": bucket,
+                "issue": f"parent-child edge(s) point at {stray}, which is not this bead's id "
+                         f"prefix. An audit bead parented into the project's own tree is "
+                         "indistinguishable from the project's backlog, and a walk that "
+                         "trusted the edge alone reached 0 of 680 beads on one campaign and "
+                         "rendered an empty report at exit 0. Reparent it under its surface "
+                         "node with `bd dep add`.",
+            })
+
+        want_labels = label_gaps(bead, bucket)
+        if want_labels:
+            report["stamping_gaps"].append({
+                "id": bid, "bucket": bucket,
+                "issue": f"bead missing label(s): {want_labels}. Every campaign bead carries "
+                         f"{AUDIT_LABEL!r} so a project's own release gate can exclude an "
+                         "audit's records from its backlog, and every bookkeeping record "
+                         "carries 'non-work' so it is not counted as a defect. Measured: one "
+                         "campaign left 680 beads in a product repo, 329 of them non-defects, "
+                         "and the project's \"close every bead\" gate blocked on them.",
+            })
+
+        want_priority = priority_gap(bead, bucket)
+        if want_priority is not None:
+            report["stamping_gaps"].append({
+                "id": bid, "bucket": bucket,
+                "issue": f"priority is {bead.get('priority')!r} and this finding's tier and "
+                         f"impact make it P{want_priority}. Priority is a function of the two "
+                         "axes, never a separate judgement. Measured: 14 of 21 surfaces in one "
+                         "campaign were entirely P2, and the run's two worst findings sat at P2 "
+                         "beside 82 MEDIUM ones, so sorting by priority ordered nothing.",
+            })
+
         bead_run = parse_meta(bead).get("run_id")
         if bead_run != run_id:
             report["stamping_gaps"].append(
@@ -781,6 +966,19 @@ def main():
         # this repo, and the rule requiring the report to say so had nothing computing it.
         "stock_pack_only": bool(by_source) and set(by_source) <= {"stock-pack"},
         "findings_from_recon_rules": by_source.get("synthesized-rule", 0),
+        # The count a reader actually wants, and the one a bare finding total misstates. A
+        # REFUTED finding is one the run disproved, an audit-tooling finding is a defect in
+        # the run's own rules, and a chain composes findings already counted -- none of the
+        # three is a product defect. Measured: a campaign reporting 641 hardening beads held
+        # 351 product defects, and the difference was read as a backlog.
+        "product_defects": sum(
+            1 for f in report["findings"]
+            if f.get("tier") != "REFUTED" and not f.get("audit_tooling")
+            and not f.get("chain")
+        ),
+        "refuted": by_tier.get("REFUTED", 0),
+        "audit_tooling_findings": sum(1 for f in report["findings"] if f.get("audit_tooling")),
+        "chains": sum(1 for f in report["findings"] if f.get("chain")),
         "counts": {
             "groups": len(report["groups"]),
             "instances": instance_count,
