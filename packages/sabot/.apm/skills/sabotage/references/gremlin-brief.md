@@ -204,7 +204,7 @@ catalogue.
 6. File one `sab-coverage` wisp on the surface node with `scanners_run`,
    `scanners_skipped`, `harnesses_run`, `harnesses_total`, `entry_points_total`, and
    `entry_points_executed` metadata before returning,
-   even on a clean surface. The close-out gate requires it, so a surface without one
+   even on a clean surface. The coverage gate requires it, so a surface without one
    reads as untested. Record a scanner that matched no files as
    `SKIPPED (matched no files)`, not run, since a scan over zero files tested
    nothing and would otherwise read as clean. Stamp a `skips` array of

@@ -310,6 +310,8 @@ JSON rather than from the agents' replies. The script reads the finding set from
 beads export, so the report matches the durable graph. Cite bead IDs, list every
 written artifact by path, and state every coverage gap.
 
+MUST Emit the report with the gaps unresolved. This step has no precondition: an unrun harness, a surface with no coverage record, an untiered finding, and an INVALID run are what the report is FOR, so waiting for them to be fixed withholds it exactly when it says the most. The coverage gate in `beads-store.md` governs closing a surface node, never this step, and fixing anything is step 10, on explicit approval.
+MUST Fix a stamping gap here rather than reporting it. A campaign bead missing `sab-audit`, a non-defect record missing `non-work`, a priority disagreeing with the tier-impact table, and a REFUTED finding left open each cost one `bd update`, and none is evidence about the target, so none belongs in the NOT-EXECUTED register. `report-json.py` lists them under `stamping_gaps` for exactly that pass.
 MUST Manage the run by reading the graph, not by holding agent returns. Every agent returns a thin pointer (counts, bead ids, artifact paths) and writes its findings to wisps and artifacts, so the orchestrator's context stays flat across any number of surfaces and never compacts. Read the fat payloads from the wisps the returns point at, only when the report needs them.
 
 ## Step 10: patch

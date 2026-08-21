@@ -255,6 +255,7 @@ Suppression accounting, since the unreasoned count is itself a finding:
 
 ## Rules for filling it
 
+MUST Write the report with every gap still open. This document exists to state them: an unrun harness, an uncovered surface, an untiered finding, and an INVALID run each get a row here, and step 10 fixes them on explicit approval. A report withheld until its run came back clean would only ever describe a clean run.
 MUST Put coverage before findings. A report that leads with findings and buries its gaps reads as complete when it is not.
 MUST Fill the NOT-EXECUTED register with a reason on every row, even on a run that found plenty. A dimension the campaign never exercised is a limit on its central claim, and a limit stated only as a count reads as coverage.
 MUST Separate NOT EXECUTED from UNTESTED from INVALID from clean. A locus whose benign control failed has no verdict; a locus whose harness was never written was never tested; a locus whose scanner crashed was not scanned. All three read as clean when collapsed into one number.
