@@ -121,7 +121,7 @@ wisps you claimed.
 You may not fix a harness, and a broken harness must not leave its entry point
 silently uncovered. File the re-authoring request into the graph:
 
-    RE=$(bd create "re-author: <harness title>" --parent <surface-bead> --labels sab-harness,non-work --json \
+    RE=$(bd create "re-author: <harness title>" --parent <surface-bead> --labels sab-harness,sab-audit,non-work --json \
       --metadata '{"run_id":"<RUN_ID>","entry_point":"<file:line>","reason":"<absent|fails-in-own-fixture|unsound-assertion>","supersedes":"<original wisp id>"}' | jq -r '.id')
     bd dep add "$RE" <original-wisp> --type discovered-from
 
@@ -185,7 +185,7 @@ catalogue.
    detached from the run graph, and one without `run_id` reads as a stamping gap in
    the report. Persist every crashing input and record the exact reproduce command.
 
-     FINDING=$(bd create "finding: <one-line claim>" --parent <surface-bead> --labels sab-finding --json \
+     FINDING=$(bd create "finding: <one-line claim>" --parent <surface-bead> --labels sab-finding,sab-audit --json \
        --metadata '{"run_id":"<RUN_ID>","source":"<synthesized-rule|stock-pack|harness|read>","locus":"<file:line>","surface":"<surface>","path":"<entry to sink>","dedup_key":"<surface>:<locus>:<class>","root_cause":"<one phrase>"}' | jq -r '.id')
      bd dep add "$FINDING" <harness-bead> --type discovered-from
      # a crash instead: bd dep add <crash-bead> <harness-bead> --type caused-by

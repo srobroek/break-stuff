@@ -61,11 +61,11 @@ concurrent campaigns. The `run_id` field scopes every rollup to one run.
 | Object | Beads representation |
 |---|---|
 | Run | one **epic** bead; metadata `run_id`, `target`, `base_sha`, `budget` (JSON), `artifacts` (abs dir), `remediation_route` (`harden`\|`ticket`\|`both`\|`report only`), and on the `ticket` route `tracker` (JSON: system, access method, destination, whether public) |
-| Surface node | **task** bead, `--parent <epic>`, label `sab-surface`, metadata `run_id`, `surface`, `scope` (JSON array of globs) |
-| Harness wisp | **task** bead, `--parent <surface>`, labels `sab-harness` + `non-work`, metadata `run_id`, `entry_point`, `runner`, `harness_path`, `input_shape` |
-| Crash wisp | **task** bead, `--parent <surface>`, labels `sab-crash` + `non-work`, metadata `run_id`, `input_path`, `stack_hash` |
-| Finding wisp | **task** bead, `--parent <surface>`, label `sab-finding`, metadata `run_id`, `tier`, `by`, `source`, `impact`, `locus`, `surface`, `path`, and after step 10 `ticket_id` (the created ticket, so a resumed run cannot file it twice) |
-| Coverage record | **task** bead, `--parent <surface>`, label `sab-coverage` + `non-work`, metadata `run_id`, `scanners_run`, `scanners_skipped`, `harnesses_run`, `harnesses_total`, one per surface node |
+| Surface node | **task** bead, `--parent <epic>`, labels `sab-surface` + `sab-audit` + `non-work`, metadata `run_id`, `surface`, `scope` (JSON array of globs) |
+| Harness wisp | **task** bead, `--parent <surface>`, labels `sab-harness` + `sab-audit` + `non-work`, metadata `run_id`, `entry_point`, `runner`, `harness_path`, `input_shape` |
+| Crash wisp | **task** bead, `--parent <surface>`, labels `sab-crash` + `sab-audit` + `non-work`, metadata `run_id`, `input_path`, `stack_hash` |
+| Finding wisp | **task** bead, `--parent <surface>`, labels `sab-finding` + `sab-audit` (plus `non-work` once tiered REFUTED, or when the locus is inside the artifacts dir), metadata `run_id`, `tier`, `by`, `source`, `impact`, `locus`, `surface`, `path`, and after step 10 `ticket_id` (the created ticket, so a resumed run cannot file it twice) |
+| Coverage record | **task** bead, `--parent <surface>`, labels `sab-coverage` + `sab-audit` + `non-work`, metadata `run_id`, `scanners_run`, `scanners_skipped`, `harnesses_run`, `harnesses_total`, one per surface node |
 | Decision | **decision** bead under the epic, for an accepted-risk or scope ruling that outlives one finding |
 
 ```
@@ -77,11 +77,38 @@ EPIC=$(bd create "sabot run-<id>" --type epic --json \
   --metadata '{"run_id":"run-<id>","target":"<resolved target>","base_sha":"<sha>","budget":{"wall_s":60,"jobs":4,"mem_mb":2048},"artifacts":"<abs>/.sabot/run-<id>/artifacts"}' \
   | jq -r '.id')
 # Every child carries run_id=run-<id> too, since rollups filter on it (see below).
-S1=$(bd create "surface: shell" --parent "$EPIC" --labels sab-surface --json \
+S1=$(bd create "surface: shell" --parent "$EPIC" --labels sab-surface,sab-audit,non-work --json \
   --metadata '{"run_id":"run-<id>","surface":"shell","scope":["packages/*/scripts/**","**/*.sh"]}' \
   | jq -r '.id')
 bd dep cycles                 # must stay clean
 ```
+
+### An audit's beads are not the project's backlog
+
+A campaign writes hundreds of beads into a store the project also uses for its own
+work. Nothing about a `sab-*` label tells a project's tooling that the bead belongs
+to an audit, so the project's own queries return all of them, including its release
+gates.
+
+MUST Label EVERY campaign bead `sab-audit`, alongside its own `sab-*` label. This is the one label a project's own queries can exclude on, so it is what separates an audit's records from the project's work. Measured: one campaign left 680 beads in a product repo's store, of which 329 were not product defects, and the project's "close every bead" release gate blocked on the audit's own bookkeeping.
+MUST Label every non-defect record `non-work` too: harness, crash, and coverage wisps, AND surface nodes, AND a finding tiered REFUTED, AND a finding whose locus is inside the run's own artifacts dir. Measured: 22 surface roots, 24 coverage records, and 6 crash records finished one campaign with no `non-work` label, because the rule named only three of the buckets and nothing checked any of them.
+MUST File a defect in the audit's OWN tooling as a finding with its locus inside the artifacts dir, labelled `non-work`. A misfiring synthesized rule is real and worth fixing, and it is not a defect in the product. Measured: 6 such findings in one campaign were tiered PROVEN or REACHABLE and counted among the product's, and only 2 of the 6 announced it in their title, so the locus is the signal and the title is not.
+MUST Parent every campaign bead under its own surface node, and verify the edge target matches the bead's id prefix. Measured: one campaign's 21 surface nodes carried ids under the run epic while their `parent-child` edges pointed at twelve unrelated project beads, one of them a task titled "epic: test execution gaps". `report-json.py` walked the edge, reached 0 of 680 beads, and rendered an empty report at exit 0, so a whole campaign read as a clean audit.
+
+### Priority states the two axes, or it states nothing
+
+A finding already states its tier and its impact, so its priority is a function of
+those two and never a separate judgement. Left to each creating agent's default it
+converges on one value and stops ordering anything.
+
+| Tier | CRITICAL | HIGH | MEDIUM | LOW |
+|---|---|---|---|---|
+| PROVEN / REACHABLE | P0 | P1 | P2 | P3 |
+| HARDENING | P2 | P2 | P3 | P4 |
+| REFUTED | P4 | P4 | P4 | P4 |
+
+MUST Set `-p` from the table above whenever you stamp or change a tier or an impact. Measured: 14 of 21 surfaces in one campaign were entirely P2, and the run's two worst findings (an unauthenticated MCP bridge on `0.0.0.0:9223` reaching 204 commands, and that bridge compiled into release builds) sat at P2 beside 82 MEDIUM ones, so sorting by priority ordered nothing.
+MUST Close a REFUTED finding with reason `refuted`, keeping the wisp and its refutation. The no-delete rule preserves the RECORD, not its open status. Measured: 35 of 36 REFUTED findings in one campaign were still open at report time, so findings the run had itself disproved read as outstanding work in every backlog query.
 
 MUST Capture a bead id with `bd create ... --json | jq -r '.id'`, never with `--silent`. On bd 1.1.2 `--silent` prints a status block rather than a bare id, so the capture is garbage and the run graph is silently broken from the first child.
 MUST Stamp `run_id` on every campaign bead, matching the epic's. Rollups filter on it (see Reading the run), and a bead created without it is invisible to every rollup, so its harness never runs or its finding never reports.
@@ -199,7 +226,7 @@ Every finding carries both axes plus its locus, written as metadata so the repor
 generator reads structure rather than prose:
 
 ```
-FINDING=$(bd create "finding: <one-line claim>" --parent <surface> --labels sab-finding --json \
+FINDING=$(bd create "finding: <one-line claim>" --parent <surface> --labels sab-finding,sab-audit --json \
   --metadata '{"run_id":"run-<id>","tier":"PROVEN","by":"challenger","source":"synthesized-rule","impact":"HIGH","locus":"src/auth/token.rs:88","surface":"code","node":"<surface node bead>","cwe":"CWE-190","repro":"<abs path to minimized input>","path":"handle_post -> parse_body -> alloc @ api.rs:41","evidence":"<abs artifact path or exact command>","control_passed":true,"dedup_key":"code:src/auth/token.rs:88:CWE-190","root_cause":"unchecked arithmetic at the IPC boundary","not_executed_reason":null}' \
   | jq -r '.id')
 ```
@@ -259,12 +286,14 @@ their own label scoped to the run with `--metadata-field run_id=<id>`.
 |---|---|
 | campaign status | `bd list --label sab-surface --parent <epic> --all --json` |
 | all findings by tier | `bd list --label sab-finding --metadata-field run_id=<id> --all --json` then group by `metadata.tier` |
+| a project's own backlog, audit excluded | the project's query plus `--exclude-label sab-audit`, which is why every campaign bead carries it |
+| audit beads missing the audit label | `bd list --metadata-field run_id=<id> --all --json` filtered to those whose `labels` lack `sab-audit` |
 | one finding's story | `bd show <bead> --json` with `bd comments <bead>` |
 | unexecuted harnesses | `bd list --label sab-harness --metadata-field run_id=<id> --status open --json` |
 | coverage record per surface | `bd list --label sab-coverage --metadata-field run_id=<id> --all --json` |
 | coverage gaps | harnesses and findings carrying `state:budget_exhausted` or `state:invalid`: `bd list --metadata-field run_id=<id> --all --json` filtered on the `state:` label |
 | resume after crash | in-flight = `bd list --metadata-field run_id=<id> --status in_progress --all --json`; agent handle = bead `assignee` |
-| close-out gate | `bd dep cycles` clean AND every detected surface node has a `sab-coverage` record AND no `sab-harness` wisp left `open` or `blocked` AND every `sab-finding` carries a `tier` |
+| close-out gate | `bd dep cycles` clean AND every detected surface node has a `sab-coverage` record AND no `sab-harness` wisp left `open`, `blocked`, or `in_progress` AND every `sab-finding` carries a `tier` AND every REFUTED finding is `closed` AND every campaign bead carries `sab-audit` AND every non-defect record carries `non-work` AND every finding's priority matches the tier-impact table |
 
 MUST Roll up grandchildren with `--metadata-field run_id=<id>`, never `--parent <epic>`. On bd 1.1.2 `--parent` returns direct children only, so an epic-parent query for findings or harnesses returns an empty set and the close-out gate passes over unrun, untiered work.
 MUST Gate close-out on a `sab-coverage` record existing for every detected surface. A gremlin that died before writing coverage leaves a surface untested, and without this check the report omits it and reads as clean.

@@ -40,7 +40,7 @@ def finding(bid, **over):
     return {
         "id": bid, "issue_type": "task", "title": over.pop("title", f"finding {bid}"),
         "status": "open", "metadata": meta,
-        "labels": ["sab-finding", "sab-surface"],
+        "labels": ["sab-finding", "sab-surface", "sab-audit"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     }
 
@@ -57,7 +57,7 @@ def export(extra, threat="memory safety at the IPC boundary", coverage=True,
             "id": f"e.{i}", "issue_type": "task", "title": f"surface: {name}",
             "status": "open",
             "metadata": {"run_id": "run-A", "surface": name, "scope": ["**/*"]},
-            "labels": ["sab-surface"],
+            "labels": ["sab-surface", "sab-audit", "non-work"],
             "dependencies": [{"depends_on_id": "e", "type": "parent-child"}],
         })
     if coverage:
@@ -66,7 +66,7 @@ def export(extra, threat="memory safety at the IPC boundary", coverage=True,
             "metadata": {"run_id": "run-A", "surface": "code",
                          "scanners_run": ["opengrep"], "scanners_skipped": [],
                          "harnesses_run": 2, "harnesses_total": 2},
-            "labels": ["sab-coverage", "sab-surface", "non-work"],
+            "labels": ["sab-coverage", "sab-surface", "sab-audit", "non-work"],
             "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
         })
     return lines + list(extra)
@@ -288,7 +288,7 @@ def test_unrun_harnesses_and_skipped_scanners_reach_the_register(bd_factory):
         "metadata": {"run_id": "run-A", "surface": "code",
                      "scanners_run": ["opengrep"], "scanners_skipped": ["codeql"],
                      "harnesses_run": 0, "harnesses_total": 13},
-        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "labels": ["sab-coverage", "sab-surface", "sab-audit", "non-work"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     })
     doc, _ = report(bd_factory, lines)
@@ -315,7 +315,7 @@ def test_entry_points_never_executed_reach_the_register_though_every_harness_ran
                      # every authored harness ran, so the harness ratio is silent
                      "harnesses_run": 13, "harnesses_total": 13,
                      "entry_points_total": 199, "entry_points_executed": 0},
-        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "labels": ["sab-coverage", "sab-surface", "sab-audit", "non-work"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     })
     doc, _ = report(bd_factory, lines)
@@ -343,7 +343,7 @@ def test_a_scanner_skip_count_is_a_register_line_and_never_a_traceback(bd_factor
         "metadata": {"run_id": "run-A", "surface": "code",
                      "scanners_run": 4, "scanners_skipped": 9,
                      "harnesses_run": 2, "harnesses_total": 2},
-        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "labels": ["sab-coverage", "sab-surface", "sab-audit", "non-work"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     })
     doc, _ = report(bd_factory, lines)          # rc 0: no traceback
@@ -372,7 +372,7 @@ def test_clean_claimed_for_a_skipped_scanner_reaches_the_register(bd_factory):
                      "scanners_run": ["opengrep"],
                      "scanners_skipped": [{"tool": "clippy", "reason": "not installed"}],
                      "harnesses_run": 2, "harnesses_total": 2},
-        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "labels": ["sab-coverage", "sab-surface", "sab-audit", "non-work"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     })
     doc, _ = report(bd_factory, lines)
@@ -405,7 +405,7 @@ def test_the_contradiction_names_the_tool_whose_clause_claims_the_clean(bd_facto
                                           {"tool": "rustfmt", "reason": "absent"},
                                           {"tool": "cargo-nextest", "reason": "absent"}],
                      "harnesses_run": 2, "harnesses_total": 2},
-        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "labels": ["sab-coverage", "sab-surface", "sab-audit", "non-work"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     })
     doc, _ = report(bd_factory, lines)
@@ -429,7 +429,7 @@ def test_a_clean_claim_for_a_scanner_that_actually_ran_is_not_flagged(bd_factory
         "metadata": {"run_id": "run-A", "surface": "code",
                      "scanners_run": ["clippy"], "scanners_skipped": [],
                      "harnesses_run": 2, "harnesses_total": 2},
-        "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "labels": ["sab-coverage", "sab-surface", "sab-audit", "non-work"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     })
     doc, _ = report(bd_factory, lines)
@@ -453,7 +453,7 @@ def crash(bid, **meta):
     return {
         "id": bid, "issue_type": "task", "title": f"crash {bid}", "status": "open",
         "metadata": dict({"run_id": "run-A"}, **meta),
-        "labels": ["sab-crash", "sab-surface"],
+        "labels": ["sab-crash", "sab-surface", "sab-audit", "non-work"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     }
 
@@ -502,7 +502,7 @@ def harness(bid, **meta):
     return {
         "id": bid, "issue_type": "task", "title": f"harness {bid}", "status": "open",
         "metadata": dict({"run_id": "run-A"}, **meta),
-        "labels": ["sab-harness", "sab-surface"],
+        "labels": ["sab-harness", "sab-surface", "sab-audit", "non-work"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     }
 
@@ -550,7 +550,7 @@ def coverage_wisp(bid, **meta):
     base.update(meta)
     return {
         "id": bid, "issue_type": "task", "title": "coverage", "status": "open",
-        "metadata": base, "labels": ["sab-coverage", "sab-surface", "non-work"],
+        "metadata": base, "labels": ["sab-coverage", "sab-surface", "sab-audit", "non-work"],
         "dependencies": [{"depends_on_id": "e.1", "type": "parent-child"}],
     }
 
@@ -765,3 +765,131 @@ def test_a_failing_bd_names_the_repo_root_requirement(tmp_path):
     )
     assert r.returncode == 3
     assert "repo root" in r.stderr
+
+
+def test_a_bead_with_no_sab_audit_label_is_a_gap(bd_factory):
+    """The label a project's own queries exclude on.
+
+    Without it every campaign bead sits in the project's backlog. Measured: 680 beads in a
+    product repo's store, 329 of them not product defects, and the project's "close every
+    bead" release gate blocked on the audit's own bookkeeping.
+    """
+    f = finding("e.1.2")
+    f["labels"] = ["sab-finding", "sab-surface"]
+    doc, _ = report(bd_factory, export([f]))
+    gap = next(g for g in doc["stamping_gaps"] if "sab-audit" in g["issue"])
+    assert gap["id"] == "e.1.2"
+
+
+def test_a_fully_labelled_bead_is_not_flagged(bd_factory):
+    f = finding("e.1.2")
+    f["labels"] = ["sab-finding", "sab-surface", "sab-audit"]
+    f["priority"] = 1
+    doc, _ = report(bd_factory, export([f]))
+    assert not any(g["id"] == "e.1.2" for g in doc["stamping_gaps"])
+
+
+def test_a_refuted_finding_needs_non_work_as_well(bd_factory):
+    """REFUTED is a record the run disproved, so it is not a defect to close out."""
+    f = finding("e.1.2", tier="REFUTED", impact="LOW")
+    f["labels"] = ["sab-finding", "sab-surface", "sab-audit"]
+    f["priority"] = 4
+    doc, _ = report(bd_factory, export([f]))
+    gap = next(g for g in doc["stamping_gaps"] if g["id"] == "e.1.2")
+    assert "non-work" in gap["issue"]
+
+
+def test_a_finding_inside_the_artifacts_dir_is_audit_tooling_not_a_product_defect(bd_factory):
+    """A misfiring synthesized rule is real and worth fixing, and it is not a product bug.
+
+    Detected from the locus, because only 2 of the 6 such findings in one campaign said so
+    in their title.
+    """
+    doc, _ = report(bd_factory, export([
+        finding("e.1.2", locus=".sabot/run-A/artifacts/rules-code.yml"),
+        finding("e.1.3", locus="src/a.rs:1"),
+    ]))
+    tooling = {f["id"] for f in doc["findings"] if f.get("audit_tooling")}
+    assert tooling == {"e.1.2"}
+    assert doc["summary"]["audit_tooling_findings"] == 1
+    assert doc["summary"]["product_defects"] == 1
+
+
+def test_a_refuted_finding_left_open_is_registered(bd_factory):
+    """The no-delete rule keeps the wisp and its refutation, not its open status.
+
+    Measured: 35 of 36 REFUTED findings in one campaign were still open at report time.
+    """
+    doc, _ = report(bd_factory, export([finding("e.1.2", tier="REFUTED", impact="LOW")]))
+    kinds = [r["kind"] for r in doc["not_executed"]]
+    assert "refuted-finding-left-open" in kinds
+
+
+def test_a_closed_refuted_finding_is_not_registered(bd_factory):
+    f = finding("e.1.2", tier="REFUTED", impact="LOW")
+    f["status"] = "closed"
+    doc, _ = report(bd_factory, export([f]))
+    assert not any(r["kind"] == "refuted-finding-left-open" for r in doc["not_executed"])
+
+
+def test_priority_that_disagrees_with_the_two_axes_is_a_gap(bd_factory):
+    """Measured: 14 of 21 surfaces entirely P2, with the run's two worst findings there too.
+
+    A PROVEN CRITICAL is P0 by the table, so a P2 on one is a gap naming the value it wants.
+    """
+    f = finding("e.1.2", tier="PROVEN", impact="CRITICAL")
+    f["labels"] = ["sab-finding", "sab-surface", "sab-audit"]
+    f["priority"] = 2
+    doc, _ = report(bd_factory, export([f]))
+    gap = next(g for g in doc["stamping_gaps"] if "priority" in g["issue"])
+    assert "P0" in gap["issue"]
+
+
+def test_a_priority_matching_the_table_is_not_flagged(bd_factory):
+    f = finding("e.1.2", tier="HARDENING", impact="LOW")
+    f["labels"] = ["sab-finding", "sab-surface", "sab-audit", "non-work"]
+    f["priority"] = 4
+    doc, _ = report(bd_factory, export([f]))
+    assert not any("priority" in g["issue"] for g in doc["stamping_gaps"])
+
+
+def test_a_p_prefixed_priority_string_is_read_as_its_number(bd_factory):
+    """bd accepts `P0` and `0`, so a string form must not read as a mismatch."""
+    f = finding("e.1.2", tier="PROVEN", impact="HIGH")
+    f["labels"] = ["sab-finding", "sab-surface", "sab-audit"]
+    f["priority"] = "P1"
+    doc, _ = report(bd_factory, export([f]))
+    assert not any("priority" in g["issue"] for g in doc["stamping_gaps"])
+
+
+def test_a_chain_finding_is_not_counted_as_an_additional_product_defect(bd_factory):
+    """A chain composes findings already counted.
+
+    Read from the `sab-chain` label, not the title: one campaign had one bead labelled
+    `sab-chain` and a DIFFERENT one titled "CHAIN", so the two signals named disjoint beads.
+    """
+    c = finding("e.1.9")
+    c["labels"] = ["sab-finding", "sab-surface", "sab-chain"]
+    doc, _ = report(bd_factory, export([finding("e.1.2"), c]))
+    assert doc["summary"]["chains"] == 1
+    assert doc["summary"]["product_defects"] == 1
+
+
+def test_a_subtree_whose_parent_edge_points_elsewhere_is_still_reached(bd_factory):
+    """The defect that rendered a 680-bead campaign as an empty report at exit 0.
+
+    21 surface nodes carried ids under the run epic while their `parent-child` edges pointed
+    at unrelated project beads. A walk trusting the edge alone reached 0 of 680, so the
+    prefix is walked as well as the edge, and the disagreement is reported.
+    """
+    f = finding("e.1.2")
+    f["dependencies"] = [{"depends_on_id": "unrelated-project-bead", "type": "parent-child"}]
+    doc, _ = report(bd_factory, export([f]))
+    assert [x["id"] for x in doc["findings"]] == ["e.1.2"], "the finding must still be found"
+    gap = next(g for g in doc["stamping_gaps"] if "parent-child edge" in g["issue"])
+    assert "unrelated-project-bead" in gap["issue"]
+
+
+def test_an_agreeing_parent_edge_is_not_flagged(bd_factory):
+    doc, _ = report(bd_factory, export([finding("e.1.2")]))
+    assert not any("parent-child edge" in g["issue"] for g in doc["stamping_gaps"])

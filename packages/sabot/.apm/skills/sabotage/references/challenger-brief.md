@@ -111,8 +111,17 @@ agent def, so it is stated once and cannot drift from it.
 For each finding, stamp the wisp with a single merging `--metadata` blob (never
 `--set-metadata`, which `beads-store.md` bans because it clobbers sibling keys) and
 record the reasoning:
-  bd update <wisp> --metadata '{"tier":"<TIER>","impact":"<LEVEL>","by":"challenger"}'
+  bd update <wisp> --metadata '{"tier":"<TIER>","impact":"<LEVEL>","by":"challenger"}' -p <P>
   bd comment <wisp> "TIERED tier=<TIER> impact=<LEVEL> by=challenger because=<one line> evidence=<file:line or command>"
+
+Set `-p` in the SAME update, from the tier-impact table in `beads-store.md`: PROVEN and
+REACHABLE map CRITICAL/HIGH/MEDIUM/LOW to P0/P1/P2/P3, HARDENING to P2/P2/P3/P4, and
+REFUTED to P4 throughout. You own the tier, so you own the priority; nobody downstream
+can derive it once the run ends.
+
+MUST Set the priority from the table every time you stamp a tier. Measured: 14 of 21 surfaces in one campaign came out entirely P2, and its two worst findings sat at P2 beside 82 MEDIUM ones, so a reader sorting by priority saw the run in no useful order.
+MUST Close a finding you REFUTE, with reason `refuted`, in the same pass that stamps the tier: `bd close <wisp> --reason refuted`. The no-delete rule keeps the wisp and its refutation; it does not ask you to leave it open. Measured: 35 of 36 REFUTED findings in one campaign were still open at report time, so a third of the run's apparently outstanding findings were ones it had already disproved.
+MUST Label a finding `non-work` when you tier it REFUTED, and when its locus is inside the run's own artifacts dir (a defect in the audit's own rules, not in the product). Both are real records and neither is a product defect. Measured: 6 audit-tooling findings were counted among the product's, and only 2 of the 6 said so in their title.
 Then read the wisp back, because a tier that failed to write leaves the report
 claiming evidence it does not have. Stamp `by=challenger` so the report marks the
 finding independently challenged; a self-tier (`by=self`) is the inline-only path in

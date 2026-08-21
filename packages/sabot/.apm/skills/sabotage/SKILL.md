@@ -249,6 +249,8 @@ MUST Detect with real tools from `references/tooling.md` and `references/fuzz-to
 MUST Aim the standard rulesets with recon rather than running them unaimed. Stock packs are the borrowed detectors, and the harness around them is derived per repo, so a campaign whose findings all came from stock packs skipped recon, and the report says so.
 MUST Graduate every rule behind a confirmed finding into the repo's own lint config, since the regression test guards that one instance and only the rule guards the next.
 MUST Route every handoff through a bead or wisp per `references/beads-store.md`. A finding that exists only in an agent's reply dies with the session.
+MUST Label every campaign bead `sab-audit`, and every non-defect record `non-work` as well, so the project whose store this is can exclude an audit's records from its own backlog and release gates. A campaign that leaves its bookkeeping indistinguishable from the project's work blocks the project's own gates on it.
+MUST Set every finding's priority from the tier-impact table in `references/beads-store.md`, and close a REFUTED finding with reason `refuted` while keeping its wisp and refutation. A uniform priority orders nothing, and a disproved finding left open reads as outstanding work forever.
 DEFAULT Resolve language and area filters by detected-surface glob rather than directory path.
 DEFAULT Write a regression test for every PROVEN finding, beside the repo's existing tests.
 NOT A proof-of-concept that damages state is banned: destructive filesystem writes; fork bombs; exhausting the developer's machine past the approved cap.
