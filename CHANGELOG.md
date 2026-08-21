@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/srobroek/sabot/compare/v0.3.0...v0.3.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **sabot:** separate an audit's beads from the project's backlog ([#37](https://github.com/srobroek/sabot/issues/37)) ([227d16f](https://github.com/srobroek/sabot/commit/227d16fee337023b53d7d806858add8174b101f6))
+
 ## [0.3.0](https://github.com/srobroek/sabot/compare/v0.2.0...v0.3.0) (2026-08-21)
 
 
