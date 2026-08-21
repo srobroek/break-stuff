@@ -690,11 +690,19 @@ def main():
         report["findings"], report["coverage"], report["surfaces"], report["harnesses"]
     )
 
-    by_tier, by_impact = {}, {}
+    by_tier, by_impact, by_source = {}, {}, {}
     for f in report["findings"]:
         by_tier[f.get("tier", "UNTIERED")] = by_tier.get(f.get("tier", "UNTIERED"), 0) + 1
         if f.get("impact"):
             by_impact[f["impact"]] = by_impact.get(f["impact"], 0) + 1
+        # A skill rule requires the report to SAY when a campaign was carried by stock
+        # packs, because stock packs are the borrowed detectors and a run relying on them
+        # did no recon. `source` was kept per finding and totalled nowhere, so the rule had
+        # no mechanism: nobody reads 386 findings to compute the mix by hand.
+        src = f.get("source") or "unstamped"
+        for part in str(src).split("+"):
+            part = part.strip() or "unstamped"
+            by_source[part] = by_source.get(part, 0) + 1
 
     # Coverage gaps come from a set DIFFERENCE against the detected surfaces, not from a
     # walk of the records that happen to exist: a surface that filed no coverage record
@@ -712,6 +720,12 @@ def main():
     report["summary"] = {
         "by_tier": by_tier,
         "by_impact": by_impact,
+        "by_source": by_source,
+        # The recon question, answered as a fraction rather than left to a reader's
+        # impression. A campaign whose findings all came from stock packs aimed nothing at
+        # this repo, and the rule requiring the report to say so had nothing computing it.
+        "stock_pack_only": bool(by_source) and set(by_source) <= {"stock-pack"},
+        "findings_from_recon_rules": by_source.get("synthesized-rule", 0),
         "counts": {
             "groups": len(report["groups"]),
             "instances": instance_count,

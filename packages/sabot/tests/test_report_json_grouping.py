@@ -544,6 +544,32 @@ def test_control_path_none_is_accepted_for_a_harness_asserting_no_guard(bd_facto
     assert not any(g["bucket"] == "harnesses" for g in doc["stamping_gaps"])
 
 
+def test_the_summary_totals_where_findings_came_from(bd_factory):
+    """A skill rule requires the report to say when stock packs carried the campaign.
+
+    `source` was kept per finding and totalled nowhere, so the rule had no mechanism:
+    nobody reads 386 findings to compute the mix by hand. A combined stamp counts toward
+    both halves, because `harness+synthesized-rule` did use a recon rule.
+    """
+    doc, _ = report(bd_factory, export([
+        finding("e.1.90", source="stock-pack", dedup_key="k1"),
+        finding("e.1.91", source="synthesized-rule", dedup_key="k2", locus="b.rs:2"),
+        finding("e.1.92", source="harness+synthesized-rule", dedup_key="k3", locus="c.rs:3"),
+    ]))
+    assert doc["summary"]["by_source"] == {
+        "stock-pack": 1, "synthesized-rule": 2, "harness": 1}
+    assert doc["summary"]["findings_from_recon_rules"] == 2
+    assert doc["summary"]["stock_pack_only"] is False
+
+
+def test_a_campaign_carried_entirely_by_stock_packs_says_so(bd_factory):
+    # Stock packs are the borrowed detectors and carry no knowledge of this repo, so a run
+    # resting on them alone aimed nothing and did no recon.
+    doc, _ = report(bd_factory, export([finding("e.1.93", source="stock-pack")]))
+    assert doc["summary"]["stock_pack_only"] is True
+    assert doc["summary"]["findings_from_recon_rules"] == 0
+
+
 def test_a_reproduce_command_stamped_under_repro_cmd_reaches_the_report(bd_factory):
     """The brief asked for "the reproduce command" and named no key.
 
