@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0](https://github.com/srobroek/sabot/compare/v0.2.0...v0.3.0) (2026-08-21)
+
+
+### Features
+
+* choose whether findings become patches or tickets, and stop reporting unrun checks as clean ([#32](https://github.com/srobroek/sabot/issues/32)) ([d0fdfec](https://github.com/srobroek/sabot/commit/d0fdfec8ad3ba7cab23a18b480a01b194f2ea54b))
+
+
+### Bug Fixes
+
+* release a claimed wisp, and name the scanners a coverage record claims ([#36](https://github.com/srobroek/sabot/issues/36)) ([5bcd7cd](https://github.com/srobroek/sabot/commit/5bcd7cd0cf8a8cd541caa55ca0f1522ecb83075f))
+* route a broken harness back, and keep the reproduce command ([#34](https://github.com/srobroek/sabot/issues/34)) ([167a168](https://github.com/srobroek/sabot/commit/167a16849b0b4d841e6e5c4af063f09492e302cc))
+* **sabot:** require the control a harness result is tiered against ([#33](https://github.com/srobroek/sabot/issues/33)) ([d80f18f](https://github.com/srobroek/sabot/commit/d80f18f5cd7e960465e705ea0a78da07e2294f68))
+* total the coverage numbers a campaign is required to report ([#35](https://github.com/srobroek/sabot/issues/35)) ([efa00da](https://github.com/srobroek/sabot/commit/efa00daacb0c06fa02a1130cae4b123556ce666d))
+
+
+### Documentation
+
+* drop the orphaned separators the last README edit left in the diagram ([#30](https://github.com/srobroek/sabot/issues/30)) ([86605b5](https://github.com/srobroek/sabot/commit/86605b54d5654d37df688047ba8b7f4d98e5c9ce))
+
 ## [0.2.0](https://github.com/srobroek/sabot/compare/v0.1.0...v0.2.0) (2026-08-19)
 
 
