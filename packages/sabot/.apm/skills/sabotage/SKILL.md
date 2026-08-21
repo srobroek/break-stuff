@@ -10,7 +10,7 @@ reproducing input, and report on two axes: evidence and impact. Product code sta
 untouched until step 10, which requires explicit approval; harnesses and regression
 tests are written freely.
 
-Run state lives in beads. Agents hand work to each other through wisps, so a
+Beads hold the run state. Agents hand work to each other through wisps, so a
 campaign survives a crash and resumes from the durable graph. LOAD
 `references/beads-store.md` before creating anything.
 
@@ -141,7 +141,7 @@ neither judges its own output.
 
 ## Workflow
 
-Run in order. The full procedure lives in `references/workflow.md`; LOAD it first.
+Run in order. `references/workflow.md` holds the full procedure; LOAD it first.
 
 1. **Open the run.** Create the run epic and one surface node per detected surface
    per `references/beads-store.md`. Every later handoff attaches to this graph.
@@ -199,7 +199,7 @@ Run in order. The full procedure lives in `references/workflow.md`; LOAD it firs
    are grouped, tiered once, and reported with an instance count.
    - **8.5. Synthesize the systemic patterns.** Query the tiered finding set for a
      `root_cause` spanning two or more nodes, and file each as a pattern wisp on the
-     epic with its instance ids. The main thread owns this step. A shape repeating
+     epic with its instance ids. The main thread performs this step. A shape repeating
      across nodes is the campaign's strongest statement, and no per-finding row
      states it.
 9. **Report.** Emit via `references/report-template.md`, citing bead IDs so
@@ -238,7 +238,7 @@ MUST Treat a patch approval and a ticket approval as separate authorizations. Ap
 MUST Prove a hardened finding gone by re-running that finding's own recorded `repro_cmd` and quoting the exit code before and after. A green test suite is not the evidence, since the suite was green while the bug was live.
 MUST Treat robustness findings as first-class: a crash on malformed input with no attacker path is a real finding, tiered by impact.
 MUST Detect with real tools from `references/tooling.md` and `references/fuzz-tools.md`. A regex grep is no substitute for a scanner, a hand-written corpus is no substitute for a generator, and a missing tool becomes a reported coverage gap.
-MUST Aim the standard rulesets with recon rather than running them unaimed. Stock packs are the borrowed detectors, and the harness around them is derived per repo, so a campaign whose findings all came from stock packs did no recon and the report says so.
+MUST Aim the standard rulesets with recon rather than running them unaimed. Stock packs are the borrowed detectors, and the harness around them is derived per repo, so a campaign whose findings all came from stock packs skipped recon, and the report says so.
 MUST Graduate every rule behind a confirmed finding into the repo's own lint config, since the regression test guards that one instance and only the rule guards the next.
 MUST Route every handoff through a bead or wisp per `references/beads-store.md`. A finding that exists only in an agent's reply dies with the session.
 DEFAULT Resolve language and area filters by detected-surface glob rather than directory path.
