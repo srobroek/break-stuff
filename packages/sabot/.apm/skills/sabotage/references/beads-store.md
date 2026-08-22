@@ -29,7 +29,7 @@ empty database.
 | Trap | Symptom | Rule |
 |---|---|---|
 | `--labels` on a query | `bd list --labels sab-harness` returns nothing or errors, and the agent concludes no work exists | **`--label` (singular) on every query.** `--labels` (plural) exists only on `bd create` and `--add-label`. See the flag table below. |
-| `--label-pattern` or `--label-regex` | the flag is accepted and filters NOTHING, so the query returns the WHOLE store and every count in the report is the store's size rather than the campaign's | **Never use either flag.** Use `--label` (AND) or `--label-any` (OR) with the labels enumerated. Measured on bd 1.2.2: `--label-pattern 'sab-*'` returned all 927 beads where `--label sab-finding` correctly returned 386, and `--label-pattern 'zzz-nonsense:*'` also returned all 927 -- a nonsense pattern and a correct one are indistinguishable. This is the more dangerous direction of the `--labels` trap above: that one returns nothing and reads as "no work exists", while this one returns everything and reads as a successful query. |
+| `--label-pattern` or `--label-regex` | the flag is accepted and filters NOTHING, so the query returns the WHOLE store and every count in the report is the store's size rather than the campaign's | **Never use either flag.** Use `--label` (AND) or `--label-any` (OR) with the labels enumerated. Measured on bd 1.2.2: `--label-pattern 'sab-*'` returned all 927 beads where `--label sab-finding` correctly returned 386, and `--label-pattern 'zzz-nonsense:*'` also returned all 927, so a nonsense pattern and a correct one are indistinguishable. This is the more dangerous direction of the `--labels` trap above: that one returns nothing and reads as "no work exists", while this one returns everything and reads as a successful query. |
 | Wrong cwd | `bd` resolves the database from the repo root, so a call from a subdirectory or a worktree reads a different or absent store | `cd` to the repo root before any `bd` call, and state that root in every Brief |
 | Output interception | a token-savings or logging hook truncates `bd show`/`bd list` and spills the body to a file, so the agent parses a summary as the whole answer | Capture with `--json` redirected to a file under the artifacts dir, then read the file. Never parse `bd` output straight out of the terminal. |
 
@@ -69,7 +69,7 @@ against a store with correct edges:
 
 So a gremlin claiming its harnesses wants `bd ready --parent <node> --label
 sab-harness --claim`, which reaches grandchildren and claims atomically. A rollup
-over a whole campaign still wants `--metadata-field run_id`, because
+over a whole campaign needs `--metadata-field run_id`, because
 `bd list --parent <epic>` stops at the surface nodes.
 
 | Object | Beads representation |
