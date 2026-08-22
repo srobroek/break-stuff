@@ -160,29 +160,45 @@ def test_every_gate_step_is_a_table_and_names_a_type(path):
 
 
 @pytest.mark.parametrize("path", formulas(), ids=lambda p: p.name)
-def test_every_gate_has_a_wiring_row_in_the_pour_script(path):
-    # A poured `[steps.gate]` bead attaches to the molecule root by parent-child ALONE,
-    # with no blocking edge, so the approval blocks nothing (verified on bd 1.2.2).
-    # `scripts/pour-campaign.sh` adds the missing edges, and it can only wire a gate it
-    # has a row for -- so a gate added to the formula and not to the script is an
-    # approval that silently does not gate.
+def test_no_gate_outlives_the_step_it_approves(path):
+    # Measured on a live pour: `remediation_route=report only` filtered out step 15 while
+    # its approval gate, conditioned only on `autonomous == no`, poured anyway. The result
+    # is an open gate bead with nothing to approve, which reads as a run awaiting a human.
+    #
+    # A gate is only ever reachable through the step it guards, so its condition has to be
+    # at least as restrictive as that step's.
     doc = load(path)
-    gates = [s for s in doc["steps"] if s.get("gate")]
+    steps = doc["steps"]
+    conditions = {s["id"]: s.get("condition") for s in steps}
+    gates = [s for s in steps if s.get("gate")]
     if not gates:
         pytest.skip("no gates in this formula")
-    script = (FORMULA_DIR.parent / "scripts/pour-campaign.sh").read_text()
-    for step in gates:
-        # The script's GATE_TARGETS rows key on a leading "step N gate" fragment, which is
-        # what `bd list` can match a poured title against.
-        match = re.match(r"(step \d+ gate)", step["title"])
-        assert match, (
-            f"{step['id']}: a gate step's title must start with 'step N gate' so the "
-            f"pour script can match the poured bead; got {step['title']!r}"
-        )
-        assert match.group(1) in script, (
-            f"{step['id']}: no wiring row in pour-campaign.sh for {match.group(1)!r}; "
-            "the gate would pour inert"
-        )
+
+    orphaned = []
+    for gate in gates:
+        # A gate guards whichever step names it in `needs`, or the step that shares its
+        # number when nothing does.
+        guarded = [s for s in steps if gate["id"] in (s.get("needs") or [])]
+        if not guarded:
+            num = re.match(r"step (\d+)", gate["title"])
+            if num:
+                guarded = [s for s in steps
+                           if s is not gate
+                           and s["title"].startswith(f"step {num.group(1)} ")
+                           and not s.get("gate")]
+        for target in guarded:
+            for values in combinations():
+                gate_on = step_is_active(conditions.get(gate["id"]), values)
+                target_on = step_is_active(conditions.get(target["id"]), values)
+                if gate_on and not target_on:
+                    orphaned.append((gate["id"], target["id"], dict(values)))
+                    break
+
+    assert not orphaned, (
+        "gate(s) pour while the step they approve does not, leaving an open approval with "
+        f"nothing to approve: {orphaned}. Make each gate's condition at least as "
+        "restrictive as its target's."
+    )
 
 
 def _report_json():
