@@ -1,6 +1,6 @@
 # Gremlin Brief Template
 
-Construct one Brief per surface node for step 5. `gremlin` executes scanners and
+Construct one Brief per surface node for step 8. `gremlin` executes scanners and
 the harnesses `fuzzer` wrote, then reads for what neither can see. It edits
 nothing.
 
@@ -24,6 +24,9 @@ they miss. You do not edit any file.
 - Surface node bead: <bead id -- your claim target and the parent for every wisp>
 - run_id: <the epic's run_id -- stamp it on every wisp you create, verbatim>
 - Artifacts dir: <absolute path -- scanner JSON, crash inputs, and logs go here>
+- operational-notes.md: <absolute path -- the lateral channel, readable and appendable.
+  Read it before your first tool call and again before filing coverage. Append any
+  fact that changes what a sibling gremlin would do.>
 
 ## Trust map recon produced
 <the boundaries for this surface with a file:line each, and what the code assumes
@@ -94,7 +97,7 @@ left off and why, so their absence is a recorded decision rather than an oversig
 line. A tool not listed here is NOT available: record it as a coverage gap rather
 than attempting it.>
 
-## Project security config found in step 3.5 (honor it)
+## Project security config found in step 4 (honor it)
 <baselines, suppressions, # nosec / #[allow] / .semgrepignore entries, accepted-risk
 docs. A rule the project disabled with a stated reason caps at HARDENING.>
 

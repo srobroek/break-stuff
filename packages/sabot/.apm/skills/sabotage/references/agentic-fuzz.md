@@ -166,6 +166,7 @@ MUST Report a case the live agent resisted as evidence-backed. A rule proven und
 MUST Ask which specific skill or agent to invoke, and never infer the set. The user names each target, because spawning an agent the user did not name runs attacks nobody authorized.
 MUST Restrict live-spawn to a PR, commit, or range target. A whole-repo run spawns every skill and agent present, which is neither scoped nor affordable; refuse it and say why.
 MUST Declare the case count, the agent turns, and the containment before the first spawn, then wait. Each case costs a full agent turn.
+MUST Record step 9 in the report as GRANTED, DECLINED, or NOT-OFFERED. A step 9 with no disposition line reads the same as a step 9 that ran and found nothing.
 NOT Never escalate to live-spawn on the strength of a REACHABLE finding alone. The escalation is the user's call.
 
 ### Containment

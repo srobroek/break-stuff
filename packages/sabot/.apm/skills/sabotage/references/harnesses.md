@@ -129,7 +129,7 @@ Every PROVEN finding gets a regression test in the repo's own suite, holding the
 minimized input as a fixture:
 
 MUST Write the regression test so it fails against the current code and passes after the fix, since a test that passes before the fix proves nothing.
-MUST Write the regression test even in audit-only mode. A test that reproduces a finding describes the bug rather than fixing it, so it is the deliverable audit-only wants; only the product-code change that makes it pass is withheld until step 10.
+MUST Write the regression test even in audit-only mode. A test that reproduces a finding describes the bug rather than fixing it, so it is the deliverable audit-only wants; only the product-code change that makes it pass is withheld until step 15.
 MUST Place it in the repo's existing test file for that module, since the fuzz corpus sits outside the normal test run.
 DEFAULT Name it for the bug rather than the input, so a future reader knows what broke.
 

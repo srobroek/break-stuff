@@ -1,6 +1,6 @@
 # Scout Brief Template
 
-Construct one Brief per surface for step 4. `scout` derives this repo's own threat
+Construct one Brief per surface for step 5. `scout` derives this repo's own threat
 model. Pass facts only, and no hypothesis about where the bugs are, since a scout
 told what to look for stops looking.
 
@@ -36,7 +36,7 @@ spot, which is exactly what recon exists to avoid.>
 the test dirs. Read these BEFORE the code: a violated documented promise is a
 finding with its severity already argued.>
 
-## Project security config found in step 3.5
+## Project security config found in step 4
 <suppressions, baselines, accepted-risk records. A rule the project disabled with a
 stated reason is a decision to respect, and one disabled with no reason is itself
 worth recording.>

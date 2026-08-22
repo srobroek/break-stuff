@@ -1,18 +1,18 @@
-# Remediation: what step 10 does with a confirmed finding
+# Remediation: what step 15 does with a confirmed finding
 
-Step 9 emits the report. Step 10 acts on it, and the route was pinned in the
+Step 14 emits the report. Step 15 acts on it, and the route was pinned in the
 interview (`references/interview.md`, core question 4) rather than decided here. Two
 routes exist and they compose: patch the code, or file the work in the user's
 tracker. Both need approval, and approving one is not approving the other.
 
 | Route | What runs | Approval needed |
 |---|---|---|
-| `harden` | `hardener` per finding, then steps 6 and 7 re-run to prove it gone | per-finding, on the patch |
+| `harden` | `hardener` per finding, then the attack and triage steps (8 and 10) re-run to prove it gone | per-finding, on the patch |
 | `ticket` | one ticket per root cause in the user's tracker | on the tracker, the access method, and the destination |
 | `both` | ticket first, then harden the approved subset, stamping the ticket id in the patch | both |
 | `report only` | nothing | none |
 
-MUST Read the route off the epic rather than choosing one here. A run that reaches step 10 without a pinned route asks the user then, and records the late question as a gap.
+MUST Read the route off the epic rather than choosing one here. A run that reaches step 15 without a pinned route asks the user then, and records the late question as a gap.
 
 ## Route `harden`: patch, then prove the finding is gone
 
@@ -54,7 +54,7 @@ NOT Never create a ticket for a REFUTED finding. The refutation belongs in the r
 
 ### One ticket per root cause
 
-Findings sharing a `root_cause` were already grouped and tiered once at step 8.5.
+Findings sharing a `root_cause` were already grouped and tiered once at step 11.
 Filing them individually undoes that work and buries the group's strongest instance
 among its weakest.
 
@@ -86,7 +86,7 @@ NOT Never paste a credential, token, or key into a ticket body. A finding about 
 
 ## Resuming without double-filing
 
-Step 10 is interruptible, so it must be idempotent. The finding bead's stamped
+Step 15 is interruptible, so it must be idempotent. The finding bead's stamped
 ticket id is the only reliable record; the tracker's own search is the fallback.
 
 | State | Action |

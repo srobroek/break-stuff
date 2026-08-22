@@ -1,0 +1,585 @@
+# sabot-campaign -- the sabot workflow as a poured molecule, one bead per step.
+#
+# Install: copy this file into <target-repo>/.beads/formulas/ (or ~/.beads/formulas/).
+# Pour one molecule per campaign:
+#   bd mol pour sabot-campaign --var run_id=run-20260101a --var target=whole-repo
+#
+# Why this exists: the workflow was 16 steps of prose, and prose can be skipped
+# silently. One live run went from tiering straight to the report and lost the
+# synthesis step; nothing noticed, because no artifact was missing and no query
+# came back wrong. A step that is a bead stays `open` and `bd ready` names it.
+#
+# What a formula carries as DATA rather than prose: the ordering (`needs`), whether
+# a step runs at all (`condition`), where a human decides (`[steps.gate]`), and
+# which agent takes it (`labels` plus `[steps.metadata]`). Preconditions, method,
+# and acceptance stay inside each `description`, and the win is that they arrive
+# attached to a claimed bead at the moment the step runs.
+#
+# Every join is written for this step set rather than inherited. Each step's `needs`
+# names at least one UNCONDITIONAL step: a step whose whole `needs` list is filtered
+# out by a condition keeps only its parent edge and pours immediately ready, in
+# parallel with step 1, and neither `bd cook` nor `bd mol pour` reports an error.
+# `tests/test_formula_anchors.py` sweeps every var combination for exactly that.
+#
+# AFTER POURING, WIRE THE GATES. Verified on bd 1.2.2: a `[steps.gate]` step pours a
+# gate bead attached to the molecule root by parent-child ALONE, with no blocking edge,
+# so the approval it represents blocks nothing and the run walks straight past it.
+# Ordinary `needs` edges pour correctly as `blocks`, so this is specific to gates. Run
+# scripts/pour-campaign.sh instead of `bd mol pour` directly; it pours, then adds the
+# missing `bd dep` edges, then asserts that each gate blocks its target.
+
+formula = "sabot-campaign"
+description = "Sabot campaign {{run_id}} against {{target}}: attack across five surfaces, prove or refute each finding, report on two axes, and patch only on approval"
+type = "workflow"
+
+[vars.run_id]
+required = true
+pattern = "^run-[0-9a-z-]+$"
+
+[vars.target]
+required = true
+
+# full | quick | audit-only | harness-only. Governs which steps exist at all rather
+# than which are skipped at runtime, so a harness-only pour has no attack step to
+# leave hanging open.
+[vars.scope_mode]
+default = "full"
+
+# Human approval, or explicit permission to run without one. Default "no" keeps the
+# approval gates in the DAG. "yes" filters them out for a CI or cron run, because
+# `bd gate check` does not resolve a human gate and the molecule would otherwise
+# stall with `bd ready` empty and nothing to say why.
+#
+# Skipping a gate does not skip its judgement: record on the preceding step's bead
+# what the user would have been asked, and that the default was taken.
+[vars.autonomous]
+default = "no"
+
+# The two blast-radius opt-ins. Each runs real payloads through real grants, so each
+# is its own var and each defaults OFF. A step filtered out here still owes the
+# report a disposition of NOT-OFFERED or DECLINED; an unmentioned stage reads as
+# coverage that never happened.
+[vars.live_spawn]
+default = "no"
+
+[vars.network_stage]
+default = "no"
+
+# harden | ticket | both | report only. Pinned at the interview and read a session
+# later by step 15, never re-decided there.
+[vars.remediation_route]
+default = "report only"
+
+[[steps]]
+id = "preconditions"
+title = "step 0 preconditions {{run_id}}"
+type = "task"
+labels = ["sab-audit", "non-work"]
+description = """Step 0. LOAD references/workflow.md.
+
+Resolve the mode (interactive or non-interactive) and the scope mode ({{scope_mode}}).
+
+HARD PRECONDITIONS, neither degradable: a container runtime must be present, and `bd`
+must be on PATH. ABORT the whole campaign loudly with a non-zero exit when either is
+absent. Do NOT fall back to the host and do NOT run a static-only subset -- a run that
+skipped its container is a run whose isolation claim is false.
+
+Completion: both preconditions verified and quoted, and the mode recorded."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_mode = "interactive"
+
+[[steps]]
+id = "open-run"
+title = "step 1 open the run {{run_id}}"
+type = "task"
+needs = ["preconditions"]
+labels = ["sab-audit", "non-work"]
+description = """Step 1. LOAD references/beads-store.md.
+
+Create the run epic and stamp `run_id`, `target`, `base_sha`, `artifacts` (absolute
+dir), `remediation_route` ({{remediation_route}}), `threat` (the user's stated fear),
+and on the ticket route `tracker`. A caller-supplied artifacts dir wins over the
+default.
+
+Stamp the artifacts dir BEFORE spawning anything: an agent with no stamped dir writes
+its output where the next reader will not look.
+
+Completion: the epic exists, every field above is present or an explicit null, and the
+artifacts dir exists on disk."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+
+[[steps]]
+id = "surfaces"
+title = "step 2 resolve target and detect surfaces {{run_id}}"
+type = "task"
+needs = ["open-run"]
+labels = ["sab-audit", "non-work"]
+description = """Step 2. LOAD references/targeting.md and references/surfaces/index.md.
+
+Resolve {{target}} to an explicit file list plus a base ref. Choose in-place or a
+worktree checkout and record the checkout path on the epic. Detect surfaces and create
+one surface node per surface, labelled `sab-surface,sab-audit,non-work`.
+
+Record every entry point as a bare `file:line` with NO threat annotation: annotating
+here is the scout's judgement borrowed early, and it aims recon at what the dispatcher
+already believed.
+
+Then size the nodes: stamp `coverage_ratio` on every node before anything spawns. A
+node covering 13 of 706 entry points is a 2 percent audit, and without the ratio the
+report calls it complete. Split a node rather than sampling it.
+
+Completion: `robustness` is among the surfaces, every entry point is recorded, and
+every node carries `coverage_ratio`."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+
+[[steps]]
+id = "probe-propose"
+title = "step 3 probe tools and propose budget {{run_id}}"
+type = "task"
+needs = ["surfaces"]
+labels = ["sab-audit", "non-work"]
+description = """Step 3. LOAD references/tooling.md and references/installer.md.
+
+Run scripts/install-tools.sh --probe as a host preflight. DELEGATE the image build,
+the dev-dep bake, and --assert-tools to a provisioner agent, which returns success
+ONLY when every manifest tool answered in-image. A provisioned image on a partial
+tool set is a coverage gap that reports as coverage.
+
+Propose the tool set per surface as a tiered table (default-on ON, opt-in OFF with a
+reason) together with a budget table: wall-clock per harness, parallel jobs, memory
+cap. Stamp `budget` on the epic.
+
+Do NOT list an action the hard rules forbid, even as unavailable.
+
+Completion: `budget` stamped, and the provisioner's per-image assert results written
+to the artifacts dir."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_mode = "interactive"
+
+[[steps]]
+id = "tools-approval"
+title = "step 3 gate: approve tools and budget {{run_id}}"
+type = "task"
+needs = ["probe-propose"]
+labels = ["sab-audit", "non-work"]
+condition = "{{autonomous}} == no"
+description = """Human gate on the proposed tool set and fuzz budget.
+
+Close this gate only after the user replies. "go" accepts the budget and installs every
+missing default-on tool. `bd gate check` does not resolve a human gate, so an
+unattended run parks here rather than assuming consent -- which is the correct
+direction for a step that authorises real resource use.
+
+Resolve with `bd close <gate-id>` or `bd gate resolve <gate-id>`; both work."""
+
+[steps.gate]
+type = "human"
+
+[[steps]]
+id = "pre-pass"
+title = "step 4 repo-global pre-pass {{run_id}}"
+type = "task"
+needs = ["probe-propose"]
+labels = ["sab-audit", "non-work"]
+description = """Step 4. Several facts are identical for every surface, so computing
+them per surface runs the same work N times.
+
+DELEGATE the whole step to ONE spawned pre-pass agent, which writes every output to the
+artifacts dir and returns only stamp values as paths and counts: `global_scan_refs`,
+`baseline_test_ref`, `self_read_ref`, and the suppression list. Tool output must never
+enter the orchestrator's context.
+
+Included here: every whole-tree scanner (deps, secrets), the union of cross-surface
+scanner invocations, the baseline test suite, the repo self-read, AND the project's own
+security config -- baselines, suppressions, `# nosec`, `#[allow]`, `.semgrepignore`,
+accepted-risk docs. A rule the project disabled WITH a stated reason caps a related
+finding at HARDENING. Report the unreasoned-suppression count as its own HARDENING
+finding.
+
+Completion: all four stamp values on the epic, and four suppression counts recorded."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_agent_type = "general-purpose"
+
+[[steps]]
+id = "recon"
+title = "step 5 recon {{run_id}}"
+type = "task"
+needs = ["pre-pass"]
+labels = ["sab-audit", "non-work", "agent:scout"]
+description = """Step 5. LOAD references/recon.md; Brief from references/scout-brief.md.
+
+Spawn one `scout` per surface, in parallel. Each derives THIS repo's own threat model:
+what it claims about itself, where its trust boundaries sit, how it does things and
+which places deviate. Each writes and validates repo-specific semgrep or ast-grep
+rules, and files a rule wisp per rule.
+
+Recon before authoring, always. A fuzzer with no invariants writes harnesses that
+assert nothing but absence of panics.
+
+Every invariant needs a `file:line`. Every rule must fire on a known-positive fixture
+and stay quiet on a known-negative one, with BOTH counts pasted from the real tool;
+`rules_loaded` comes from the tool's own output, never from the file count. A rule that
+failed its fixtures is stamped `validated:false` and handed forward DISABLED.
+
+The scout reads and never edits, scans for no findings, and reports no
+vulnerabilities.
+
+Completion: recon artifacts in the artifacts dir, and a rule wisp per rule carrying
+all seven fields."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_agent_type = "sabot:scout"
+
+[[steps]]
+id = "closed-classes"
+title = "step 6 census the structurally closed classes {{run_id}}"
+type = "task"
+needs = ["recon"]
+labels = ["sab-audit", "non-work"]
+description = """Step 6. Some finding classes cannot exist in this repo at all.
+
+Census the class rather than asserting it: `unsafe_code = \"forbid\"` plus a counted 0
+`unsafe` blocks over N crates is a closed memory-safety class. "We found no X" and "X
+is impossible here" are different claims and only the second is worth reading.
+
+Re-aim the campaign when a class is closed, and keep the class in the report with its
+census and which role it left with nothing to do. A closed memory-safety class makes
+step 10 a probable no-op.
+
+Completion: each asserted class carries its census counts."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+
+[[steps]]
+id = "author-harnesses"
+title = "step 7 author the attack plan {{run_id}}"
+type = "task"
+needs = ["closed-classes"]
+labels = ["sab-audit", "non-work", "agent:fuzzer"]
+condition = "{{scope_mode}} != quick"
+description = """Step 7. Brief from references/fuzzer-brief.md; patterns in
+references/harnesses.md.
+
+Spawn `fuzzer` per surface to write harnesses, seed corpora, and attack scenarios for
+every reachable entry point, mirroring the repo's own convention for where fuzz targets
+live. Each harness asserts an invariant recon discovered.
+
+The fuzzer EXECUTES NOTHING. An agent that grades its own output hides its own bugs.
+
+Stamp a harness wisp per harness with `entry_point`, `runner`, `harness_path`,
+`control_path`, `expected`, `input_shape`, and `state:pending`. `control_path` takes the
+literal "none" when the harness asserts no guard -- the challenger's tiering rule turns
+on knowing which of those two it is, and a blank field reads as neither.
+
+Paste `wc -l` output for every claimed path, and verify every stamped path appears in
+it. Verify the wisps are discoverable by the gremlin's exact documented query, and
+report the VERIFIED count rather than the intended one.
+
+`harness-only` mode stops here."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_agent_type = "sabot:fuzzer"
+
+[[steps]]
+id = "attack"
+title = "step 8 attack {{run_id}}"
+type = "task"
+needs = ["closed-classes"]
+labels = ["sab-audit", "non-work", "agent:gremlin"]
+condition = "{{scope_mode}} != harness-only"
+description = """Step 8. Brief from references/gremlin-brief.md.
+
+Create <artifacts>/operational-notes.md BEFORE the fan-out: parallel gremlins have no
+DAG edge to each other, and this file is their only channel. Validate an environment
+fact on ONE node before writing it into every Brief; a wrong fact broadcast to all
+nodes once filled the host disk. A retraction quotes the original wording.
+
+Spawn one `gremlin` per surface node, in parallel. Each runs its surface's scanners plus
+the rules recon synthesized, claims its harness wisps with `bd ready --parent <node>
+--label sab-harness --claim` (atomic, so no verify-then-steal race), executes them
+inside the approved budget against LOCAL code only, and reads for what scanners miss:
+trust boundaries, authz logic, guard bypasses, prompt-injection paths, unbounded work.
+
+The gremlin edits nothing, including a harness it finds broken. A broken, absent, or
+self-reported-broken harness gets a re-author wisp stamped `supersedes`, routed back to
+`fuzzer`. That back-edge is prose and not a formula edge, because a DAG cannot express
+it.
+
+An absent tool is skipped, warned about, and recorded with an install hint. PROBE before
+recording a tool as absent and quote the probe. A scanner crash is `state:invalid`,
+since reporting it as "0 findings" hides the gap.
+
+File findings UNTIERED with `source`, `locus`, `surface`, `node`, `evidence`,
+`dedup_key`, and `root_cause`; leave `tier`, `by`, and `impact` unset. Pass
+`--no-inherit-labels`, or the surface node's `non-work` label follows the finding down
+and drops a real defect out of the project's queue.
+
+File one `sab-coverage` wisp per node with `entry_points_total` and
+`entry_points_executed` -- a harness count cannot express "13 of 706". Release every
+claimed wisp back to `open` with `state` stamped. Certify tool integrity, or every
+tool-sourced finding on the surface caps at HARDENING."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_agent_type = "sabot:gremlin"
+
+[[steps]]
+id = "live-spawn"
+title = "step 9 live-spawn agentic fuzzing (opt-in) {{run_id}}"
+type = "task"
+# `closed-classes` anchors this against a harness-only pour, which filters out `attack`.
+# The consequence was the worst of the four: a step that fires real payloads through
+# real grants, ready before the container preconditions in step 0 had been checked.
+needs = ["attack", "closed-classes"]
+labels = ["sab-audit", "non-work"]
+condition = "{{live_spawn}} == yes"
+description = """Step 9. LOAD references/agentic-fuzz.md. OPT-IN ONLY.
+
+Runs generated attacks against a live hook, skill, or agent inside a Worktrunk lease.
+REFUSE on a whole-repo target: the blast radius is the grant, not the file list.
+
+Read the canaries BEFORE discarding the lease. A lease torn down unread proves nothing
+either way.
+
+Record this stage in the report as GRANTED, DECLINED, or NOT-OFFERED. An unmentioned
+opt-in reads as coverage."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_mode = "interactive"
+
+[[steps]]
+id = "triage"
+title = "step 10 triage crashes {{run_id}}"
+type = "task"
+needs = ["attack"]
+labels = ["sab-audit", "non-work", "agent:triager"]
+condition = "{{scope_mode}} != harness-only"
+description = """Step 10. Brief from references/triager-brief.md.
+
+Skip as a no-op when step 6 closed the memory-safety class, and record it as
+`skipped-because-closed` rather than as a clean triage.
+
+`triager` claims each crash batch, re-runs the recorded command FIRST and quotes both
+exit codes, dedups by normalized stack, and minimizes each crash to its smallest
+reproducing input. Check `wc -c` and refuse a 0-byte result. Keep the original input
+beside the minimized one and stamp both paths.
+
+State what you normalized: stripping an in-function line offset is defensible, stripping
+the panic message is not.
+
+Stamp `state:minimized`, `kind`, `minimized_path`, `minimized_bytes`, `original_path`,
+`repro_cmd`, `repro_rc`, and `dedup_key`, copying those key names VERBATIM -- a triager
+that invented `min_input` and `triage_class` once wrote seven files to disk that no part
+of the report could reach. Read every wisp back and paste the missing-key diff.
+
+The triager tiers nothing, edits nothing, and never re-fuzzes to find a fresh crash."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_agent_type = "sabot:triager"
+
+[[steps]]
+id = "tier"
+title = "step 11 prove or refute {{run_id}}"
+type = "task"
+# `closed-classes` is the unconditional co-anchor. Without it, a harness-only pour
+# filters out `triage` and this step keeps only its parent edge, so it pours READY in
+# parallel with step 0 and a challenger tiers findings that no gremlin has produced.
+# Measured on a real pour: 16 issues, `bd ready` returned step 11 beside step 0, and
+# both `bd cook` and `bd mol pour` reported success.
+needs = ["triage", "closed-classes"]
+labels = ["sab-audit", "non-work", "agent:challenger"]
+condition = "{{scope_mode}} != quick"
+description = """Step 11. Brief from references/challenger-brief.md.
+
+`challenger` claims the finding wisps and sets each evidence tier: PROVEN, REACHABLE,
+HARDENING, or REFUTED. Read-only diagnostics only.
+
+REFUSE to tier a finding from a resource-limited run, and refuse where the benign
+control failed -- a hostile failure beside a failing control confirms and refutes
+nothing. Raw scanner output caps at HARDENING until a path or a repro is traced. An
+absent tool-integrity certification caps every tool-sourced finding on that surface.
+A reasoned project suppression caps a related finding.
+
+Normalize `root_cause` to one phrase per group BEFORE tiering, tier the representative,
+and inherit onto instances -- but never collapse instances that differ in tier or in
+fix. Stamp `group_role`, `group_of`, and `instance_count`.
+
+Stamp `tier`, `impact`, `by=challenger`, and set `-p` from the tier-impact table in the
+SAME update; the priority is a function of the two axes and never an independent
+judgement. Close every REFUTED finding with reason `refuted` and label it `non-work`,
+in the same pass. Re-read each wisp after stamping.
+
+Keep every finding. A refuted finding is recorded as REFUTED with its refutation, never
+deleted."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_agent_type = "sabot:challenger"
+
+[[steps]]
+id = "synthesize"
+title = "step 12 synthesize the systemic patterns {{run_id}}"
+type = "task"
+needs = ["tier"]
+labels = ["sab-audit", "non-work"]
+condition = "{{scope_mode}} != quick"
+description = """Step 12. THE STEP THAT GETS SKIPPED. It was numbered 8.5, read as an
+appendix to tiering, and one live run went from step 11 straight to the report -- 388
+tiered findings, zero patterns, and nothing detected the omission.
+
+Histogram `root_cause` across the tiered findings (`bd list --label sab-finding
+--metadata-field run_id=<id>`). File a pattern wisp per `root_cause` spanning two or
+more nodes, stamped `kind`, `instances`, `nodes`, `impact`, `root_cause`, and labelled
+`sab-pattern,sab-audit,non-work`.
+
+Rank a pattern by instance count and node span. NEVER let a pattern replace its
+instances: the instances keep their own rows and the pattern is an additional finding.
+
+Say so when `root_cause` is missing on part of the set -- the histogram is then partial
+and the report must state the fraction it covers.
+
+Runs on every campaign whose findings span more than one node. Assign it explicitly to
+an owner; a step everyone could do is a step nobody does."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+
+[[steps]]
+id = "network-stage"
+title = "step 13 network stage (opt-in) {{run_id}}"
+type = "task"
+# Two conditional steps in a row is how the anchor is lost quietly: this step is itself
+# conditional AND its only named predecessor was, so a quick pour left an
+# egress-enabled step ready in parallel with step 0. Found by the exhaustive sweep on 32
+# of 128 combinations, after single-variable testing had passed.
+needs = ["synthesize", "closed-classes"]
+labels = ["sab-audit", "non-work"]
+condition = "{{network_stage}} == yes"
+description = """Step 13. LOAD references/network-stage.md. OPT-IN ONLY, and separate
+from every other consent.
+
+Runs once in a container WITH egress, and performs LOOKUPS rather than attacks: secret
+liveness, a fresh advisory DB against the baked one, action-tag drift, registry-only
+rule packs. Never probe, fuzz, or attack anything remote. A tool that only needs a
+one-time DOWNLOAD belongs in the image instead.
+
+Verifying a secret sends it to the provider, so that needs its own second consent, and
+a third party's key is never verified at all. Never print a credential: report
+location, type, and `file:line`.
+
+Plant a canary before, and revoke it after. State every fetch timestamp.
+
+Record as GRANTED, DECLINED, or NOT-OFFERED."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_mode = "interactive"
+
+[[steps]]
+id = "report"
+title = "step 14 report {{run_id}}"
+type = "task"
+# `closed-classes` is the unconditional co-anchor, and it matters most here: a quick
+# pour filters out `synthesize`, and with `needs` naming only that, the report poured
+# READY in parallel with step 0 -- a campaign that emits its findings before it has
+# attacked anything. Measured on a real pour: 15 issues, `bd ready` returned step 14
+# beside step 0, and nothing in bd reported a problem.
+needs = ["synthesize", "closed-classes"]
+labels = ["sab-audit", "non-work"]
+description = """Step 14. LOAD references/report-template.md.
+
+Generate with scripts/report-json.py --epic <epic> --run-id {{run_id}}, emit the raw
+run-<id>.jsonl beside it, and render every table FROM the beads query rather than from
+agent replies.
+
+EMIT THE REPORT WITH ITS GAPS UNRESOLVED. This step has no precondition. An unrun
+harness, an uncovered surface, an untiered finding, and an INVALID run are what the
+report is FOR, so waiting for them to be fixed withholds it exactly when it says the
+most. The coverage gate governs closing a surface node, never this step.
+
+FIX a stamping gap here rather than reporting it: a missing `sab-audit`, a missing
+`non-work`, a priority disagreeing with the table, a REFUTED finding left open. Each
+costs one `bd update` and none is evidence about the target. `report-json.py` lists them
+under `stamping_gaps` for exactly that pass.
+
+Put coverage BEFORE findings, and systemic patterns ABOVE individual findings. Fill the
+NOT-EXECUTED register with a reason on every row. Separate NOT EXECUTED from UNTESTED
+from INVALID from clean -- all four read as clean when collapsed into one number. Cite
+a bead ID on every finding. State the budget used against the budget approved.
+
+Close the surface nodes here, and nowhere earlier."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+
+[[steps]]
+id = "patch-approval"
+title = "step 15 gate: approve remediation {{run_id}}"
+type = "task"
+needs = ["report"]
+labels = ["sab-audit", "non-work"]
+condition = "{{autonomous}} == no"
+description = """Human gate on remediation. Product code has been untouched for
+fourteen steps and this is where that ends.
+
+Quote the approval verbatim and name the finding ids it covers. A patch approval and a
+ticket approval are SEPARATE authorizations, and a question about whether to patch is
+not an approval to patch.
+
+A ticket describing an unpatched reachable finding on a public tracker is a disclosure,
+which is the user's deliberate decision and never inferred from the git remote.
+
+Leave this gate open on the `report only` route."""
+
+[steps.gate]
+type = "human"
+
+[[steps]]
+id = "remediate"
+title = "step 15 patch {{run_id}}"
+type = "task"
+needs = ["report"]
+labels = ["sab-audit", "non-work", "agent:hardener"]
+condition = "{{remediation_route}} != report only"
+description = """Step 15. LOAD references/remediation.md; Brief from
+references/hardener-brief.md. ONLY on the explicit approval recorded at the gate.
+
+Read the route off the epic ({{remediation_route}}); never re-decide it here.
+
+Spawn one `hardener` per approved finding. Each quotes `repro_cmd`'s exit code BEFORE
+and AFTER the patch. An unchanged rc means NOT FIXED and the finding stays open. Assert
+the VALUE rather than the panic. Never edit a check in the direction of accepting the
+defect, and never make a check pass by editing its configuration.
+
+Write a regression test per PROVEN finding, and graduate the rule behind it into the
+repo's own lint config: the test guards that one instance and only the rule guards the
+next. Paste the suppression counts before and after.
+
+Stamp `state:patched`, `patch_files`, `regression_test`, `rule_graduated`,
+`verified_by`, and `verification`. On the ticket route stamp `ticket_id` per finding, so
+a resumed run cannot file twice.
+
+Re-run the attack and triage steps (8 and 10) to verify. Those back-edges are prose, not
+formula edges.
+
+Commit nothing. Every artifact stays uncommitted and listed in the report."""
+
+[steps.metadata]
+skill_hints = "sabot:sabotage"
+execution_agent_type = "sabot:hardener"
+execution_mode = "interactive"

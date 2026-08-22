@@ -49,7 +49,14 @@ import sys
 
 # Which sab-* label sorts a bead into which bucket. Order matters: the first match
 # wins, so sab-surface (inherited by every child) is checked last.
+# Order matters twice over. The first match wins, so the MORE SPECIFIC label is checked
+# first: a pattern wisp is created with `sab-finding,sab-pattern` because it IS a finding
+# (it has a tier, an impact, and a priority), and checking `sab-finding` first sorted all 8
+# patterns on one run into `findings` and left the patterns bucket empty. `sab-surface` is
+# checked last for the opposite reason -- every child inherits it.
 LABEL_BUCKET = [
+    ("sab-pattern", "patterns"),
+    ("sab-rule", "rules"),
     ("sab-harness", "harnesses"),
     ("sab-crash", "crashes"),
     ("sab-finding", "findings"),
@@ -60,7 +67,22 @@ LABEL_BUCKET = [
 # Metadata fields kept per bucket. Everything else in metadata is dropped so the
 # report schema stays stable even when a bead carries extra stamps.
 KEEP_META = {
-    "surfaces": ["surface", "scope"],
+    # `coverage_ratio` is the declared-sample fraction: a node covering 13 of 706 entry
+    # points is a 2% audit, and dropping the ratio here is why one campaign stamped it on
+    # every node under a MUST and no part of the report could state it.
+    "surfaces": ["surface", "scope", "coverage_ratio"],
+    # A rule wisp had no bucket at all: with `sab-rule` absent from LABEL_BUCKET it fell
+    # through to `surfaces` on its inherited `sab-surface` label, kept `surface`/`scope`
+    # (neither of which it carries), and rendered as an empty surface row. `validated`
+    # is the field the gremlin's own MUST turns on -- a rule that failed its fixtures is
+    # handed forward disabled, and the report has to say which.
+    "rules": ["rule_path", "positive_fixture", "positive_matches", "negative_fixture",
+              "negative_matches", "rules_loaded", "validated"],
+    # The step-12 synthesis output. Bucketed `findings` before this existed, so every
+    # pattern tripped FINDING_REQUIRED on ten keys a pattern never has, and its instance
+    # count and node span -- the whole reason a pattern outranks its instances -- were
+    # dropped as unkept metadata.
+    "patterns": ["kind", "instances", "nodes", "impact", "root_cause"],
     # `control_path` and `expected` decide whether a harness result carries a verdict at
     # all: a hostile failure beside a failing control confirms and refutes nothing. Dropping
     # them here is why a challenger asking for the control had nowhere to read it. Measured:
@@ -83,25 +105,135 @@ KEEP_META = {
     # renderer kept only `repro`. Measured: 0 of 386 findings stamped `repro`, 7 stamped
     # `repro_cmd`, and every reproduce command on the run's PROVEN findings was dropped --
     # the same shape as the crash keys, from the same cause of an unnamed field.
+    # `found_by`, the group keys, and the step-15 stamps were each declared by a MUST and
+    # then dropped here. The group keys are the sharpest case: the challenger normalizes
+    # `root_cause` and elects a representative, and this renderer recomputed the grouping
+    # from scratch because the stamps it needed were filtered out one function earlier.
+    # `ticket_id` is the guard against filing the same ticket twice on a resumed run, so
+    # dropping it made the guard unreadable by the only thing that reports it.
     "findings": ["tier", "by", "source", "impact", "locus", "path", "cwe", "repro",
                  "repro_cmd", "repro_rc",
                  "surface", "node", "evidence", "control_passed", "dedup_key",
-                 "root_cause", "not_executed_reason"],
+                 "root_cause", "not_executed_reason", "found_by", "ticket_id",
+                 "group_role", "group_of", "instance_count",
+                 "state", "patch_files", "regression_test", "rule_graduated",
+                 "verified_by", "verification"],
     # entry_points_* is the ratio a harness count cannot express: "13 of 13 harnesses ran"
     # beside 706 entry points is a 2% surface reported as complete. Measured: one node
     # enumerated 199 Tauri handlers and executed 0, and with only the harness counts kept
     # here that number reached no part of the report.
+    # `skips` carries the REASON per skipped tool, which a name in `scanners_skipped`
+    # cannot: "absent" and "declined" and "requires network" are different gaps, and the
+    # NOT-EXECUTED register exists to distinguish them. `not_executed_reason` does the
+    # same for a blocked entry-point count.
     "coverage": ["scanners_run", "scanners_skipped", "harnesses_run", "harnesses_total",
-                 "entry_points_total", "entry_points_executed", "surface"],
+                 "entry_points_total", "entry_points_executed", "surface", "skips",
+                 "not_executed_reason"],
 }
+
+# Every field a MUST in this package requires an agent to stamp, with the file:line that
+# declares it. A MUST with no detector is the root cause behind every measured stamping
+# count in this file's comments: the rule is written, agents follow or ignore it, and
+# nothing reads the result until a human queries the store by hand months later.
+#
+# The declaring citation is part of the data because a gap message that names the rule is
+# actionable, and one that only names a key sends the reader looking for which brief asked
+# for it. `tests/test_report_json_grouping.py` asserts every entry here is either kept by
+# its bucket or checked by a required-list, so a field cannot be declared and then
+# silently dropped -- which is exactly what happened to 13 of them.
+DECLARED_FIELDS = {
+    "surfaces": [
+        ("coverage_ratio", "workflow.md step 2, sizing"),
+    ],
+    # No `findings` entry. Its unconditional fields are already covered by
+    # FINDING_REQUIRED_AT_CREATION and would double-report here, and every remaining
+    # declared finding field is CONDITIONALLY mandatory: `found_by` only on a finding filed
+    # outside its agent's assigned surface, and the group keys only on a finding belonging
+    # to a group. A detector cannot tell "not applicable" from "not stamped" for any of
+    # them. Listed here, `found_by` alone raised a gap on all 395 findings in one campaign
+    # and would bury the unconditional gaps beside it. All four stay in KEEP_META, so a
+    # stamped value still reaches the report.
+    # No `harnesses` or `crashes` entry either: HARNESS_REQUIRED and CRASH_REQUIRED already
+    # cover every unconditional field on both, and a second check would raise two gaps for
+    # one missing stamp. This table exists for the buckets and fields that had NO detector,
+    # which is what leaves it uneven.
+    "coverage": [
+        ("entry_points_total", "gremlin-brief.md, coverage record"),
+        ("entry_points_executed", "gremlin-brief.md, coverage record"),
+        ("skips", "gremlin-brief.md, coverage record"),
+    ],
+    "rules": [
+        ("rule_path", "scout-brief.md, rule wisp"),
+        ("positive_matches", "scout-brief.md, rule wisp"),
+        ("negative_matches", "scout-brief.md, rule wisp"),
+        ("rules_loaded", "scout-brief.md, rule wisp"),
+        ("validated", "scout-brief.md, rule wisp"),
+    ],
+    "patterns": [
+        ("kind", "workflow.md step 12"),
+        ("instances", "workflow.md step 12"),
+        ("nodes", "workflow.md step 12"),
+    ],
+}
+
+# The epic's fields carry the same rule. `remediation_route` and `tracker` are the sharpest
+# case: both are pinned at the interview under a MUST, read a session later by step 15, and
+# measured absent from every epic in one campaign because nothing ever looked.
+DECLARED_EPIC_FIELDS = [
+    ("remediation_route", "interview.md, route selection"),
+    ("artifacts", "workflow.md step 1"),
+    ("global_scan_refs", "workflow.md step 4"),
+    ("baseline_test_ref", "workflow.md step 4"),
+    ("self_read_ref", "workflow.md step 4"),
+]
+
+
+def declared_gaps(rec, bucket):
+    """Fields a MUST requires on this bucket and this record does not carry.
+
+    Reported as one gap per record rather than one per field, because a wisp missing six
+    stamps is one authoring mistake and six rows would rank it above six real defects.
+    """
+    missing = [(k, src) for k, src in DECLARED_FIELDS.get(bucket, []) if k not in rec]
+    return missing
+
+
+# The epic's own keep-list, which was four hardcoded names at the render call. The route
+# and the tracker are what step 15 acts on, pinned at the interview and read a session
+# later, so a report that omits them cannot say what the campaign decided to do with its
+# own findings. The three pre-pass refs are the evidence that the whole-tree scanners,
+# the baseline suite, and the self-read ran at all.
+EPIC_KEEP = ("target", "base_sha", "budget", "artifacts", "remediation_route", "tracker",
+             "threat", "checkout_path", "global_scan_refs", "baseline_test_ref",
+             "self_read_ref")
 
 # Every one of these must be PRESENT on a finding wisp, with an explicit null where it
 # does not apply. A missing key and a deliberate null read identically to a renderer, so
 # an omission becomes a blank column that looks like a considered "not applicable".
-FINDING_REQUIRED = [
-    "tier", "by", "source", "impact", "locus", "surface", "node", "evidence",
-    "control_passed", "dedup_key", "root_cause", "not_executed_reason",
+# Split by PHASE, because the finder and the challenger stamp different halves and a
+# single list made a compliant run fail by construction. `gremlin-brief.md` instructs the
+# finder to leave `tier`, `by`, and `impact` UNSET -- judging its own output is the one
+# thing the role separation forbids -- while this list required all three at creation.
+# Measured: 90 of 388 findings in one campaign carried no `by`, read at the time as 90
+# agents ignoring a MUST; the briefs had in fact been followed and the validator was
+# asking the finder for the challenger's work.
+FINDING_REQUIRED_AT_CREATION = [
+    "source", "locus", "surface", "node", "evidence", "dedup_key", "root_cause",
 ]
+FINDING_REQUIRED_ONCE_TIERED = [
+    "tier", "by", "impact", "control_passed", "not_executed_reason",
+]
+
+# A finding is past the tiering phase once it carries a tier, so the tier is its own phase
+# marker and no separate stamp is needed to know which list applies.
+def finding_required(meta):
+    req = list(FINDING_REQUIRED_AT_CREATION)
+    if meta.get("tier"):
+        req += FINDING_REQUIRED_ONCE_TIERED
+    return req
+
+
+FINDING_REQUIRED = FINDING_REQUIRED_AT_CREATION + FINDING_REQUIRED_ONCE_TIERED
 
 # The same rule for a crash wisp, which is the one bucket whose whole value is a file on
 # disk. A crash with no path to its input is unreproducible whatever its title claims, and
@@ -113,6 +245,13 @@ CRASH_REQUIRED = ["state", "kind", "minimized_path", "repro_cmd", "repro_rc", "d
 # no guard, because the challenger's tiering rule turns on knowing which of those two it is.
 # Measured: 23 of 23 harness wisps in one campaign omitted it while two briefs MUST it, so
 # every guard assertion on the run was untierable and nothing in the pipeline said so.
+# NOT phase-split, unlike the finding list, because a harness has no reliable phase marker.
+# The gremlin RELEASES a claimed wisp back to `open` with `state` stamped, so `open` means
+# either "authored, never claimed" or "claimed, run, and released without the stamp" -- and
+# the second is the defect worth catching. Measured: 161 of 193 wisps in one campaign came
+# back to `open` unstamped, which a status-based split would have read as never-claimed and
+# passed. The fuzzer instead stamps `state:pending` at creation, per the state table in
+# `beads-store.md`, so a compliant create satisfies this list on the first write.
 HARNESS_REQUIRED = ["entry_point", "harness_path", "runner", "control_path", "expected",
                     "state"]
 
@@ -814,14 +953,31 @@ def main():
         "epic": None,
         "surfaces": [], "harnesses": [], "crashes": [],
         "findings": [], "coverage": [],
+        "patterns": [], "rules": [],
         "stamping_gaps": [],
     }
     report["epic"] = shape(epic, "epic")
     report["epic"].update(
         {k: parse_meta(epic).get(k)
-         for k in ("target", "base_sha", "budget", "artifacts")
+         for k in EPIC_KEEP
          if k in parse_meta(epic)}
     )
+
+    # The epic is one bead, so its gaps were never covered by the per-bucket loop below.
+    # Measured: one campaign's epic carried none of remediation_route, tracker,
+    # global_scan_refs, baseline_test_ref, or self_read_ref -- five MUSTs, nothing stamped,
+    # and the report that read the epic asked for four keys and never missed the rest.
+    epic_missing = [(k, src) for k, src in DECLARED_EPIC_FIELDS
+                    if k not in report["epic"]]
+    if epic_missing:
+        names = ", ".join(f"{k} ({src})" for k, src in epic_missing)
+        report["stamping_gaps"].append({
+            "id": report["epic"].get("id"), "bucket": "epic",
+            "issue": f"run epic missing declared field(s): {names}. The remediation route "
+                     "is the sharpest: step 15 reads it off the epic rather than "
+                     "re-deciding it, so an unstamped route means a later session cannot "
+                     "know what the user chose.",
+        })
 
     # Select by descent from the epic, not by a run_id stamp: a properly parented
     # finding is never silently dropped, even when its run_id was not stamped.
@@ -872,6 +1028,20 @@ def main():
                          "beside 82 MEDIUM ones, so sorting by priority ordered nothing.",
             })
 
+        # The generic detector. Every entry it reads is a field some MUST in this package
+        # requires, and before this existed a compliant stamp and a missing one produced
+        # the same report.
+        undeclared = declared_gaps(rec, bucket)
+        if undeclared:
+            names = ", ".join(f"{k} ({src})" for k, src in undeclared)
+            report["stamping_gaps"].append({
+                "id": bid, "bucket": bucket,
+                "issue": f"declared-mandatory field(s) not stamped: {names}. Each is "
+                         "required by the cited rule, and each was unchecked until now: "
+                         "the counts behind these rules were all found by querying a live "
+                         "store by hand, months after the campaign that produced them.",
+            })
+
         bead_run = parse_meta(bead).get("run_id")
         if bead_run != run_id:
             report["stamping_gaps"].append(
@@ -887,7 +1057,7 @@ def main():
     # A field missing from a finding wisp is a blank column the report cannot fill, and
     # it is indistinguishable from a deliberate null unless it is named here.
     for f in report["findings"]:
-        missing = [k for k in FINDING_REQUIRED if k not in f]
+        missing = [k for k in finding_required(f) if k not in f]
         if missing:
             report["stamping_gaps"].append({
                 "id": f.get("id"), "bucket": "findings",

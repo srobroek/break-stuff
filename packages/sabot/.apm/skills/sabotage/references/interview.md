@@ -5,7 +5,7 @@ an unapproved budget wastes the whole run, so the interview exists to remove eve
 ambiguity that would change what gets attacked or how much it costs.
 
 This is not a script to read out. It is a set of facts that MUST be certain before
-step 4, and a way to probe for them that adapts to what the user already said. A
+step 5, and a way to probe for them that adapts to what the user already said. A
 user who names a PR and a threat has answered half of it in one sentence; a user
 who says "check my repo" has answered none of it. Ask for what is still unknown,
 not for what was already given.
@@ -26,7 +26,7 @@ rules forbid.
 | User's threat | 1 | what the user fears decides which surface leads and orders the report | absent: the report prioritizes nothing |
 | Surfaces | 2 | each surface is a parallel gremlin and a cost | detected set never shown to the user to trim or extend |
 | Tools + budget | 3 | decides coverage and wall-clock, and bounds the machine | "go" on an unseen tool set, or a budget the user never approved |
-| Remediation route | 4 | decides what step 10 does with a confirmed finding, and whether the run needs tracker access at all | asked only after the report, when the findings are already stale and the user has lost the context to choose |
+| Remediation route | 4 | decides what step 15 does with a confirmed finding, and whether the run needs tracker access at all | asked only after the report, when the findings are already stale and the user has lost the context to choose |
 
 MUST Resolve all six core facts before spawning a scout. A campaign that starts under an unpinned scope produces findings for the wrong target and a coverage claim it cannot support.
 MUST Record every defaulted fact as a gap in the report. "Whole repo, because none was named" belongs there, since the user may have meant one module.
@@ -34,14 +34,14 @@ MUST Record every defaulted fact as a gap in the report. "Whole repo, because no
 ### Remediation route (core question 4)
 
 Ask what should happen to a confirmed finding, and ask it in the interview rather
-than at step 10. The answer changes work that happens much earlier: a run headed for
+than at step 15. The answer changes work that happens much earlier: a run headed for
 a tracker must capture a reproduction and a proposed fix in a form that survives
 without the session, while a run headed for a patch needs the verification command
 recorded per finding. Both routes may be chosen; neither is the default.
 
-| Route | Step 10 becomes | Requires |
+| Route | Step 15 becomes | Requires |
 |---|---|---|
-| `harden` | `hardener` patches one approved finding, then steps 6 and 7 re-run to prove the finding is gone | per-finding approval, as it always has |
+| `harden` | `hardener` patches one approved finding, then the attack and triage steps (8 and 10) re-run to prove the finding is gone | per-finding approval, as it always has |
 | `ticket` | one ticket per surviving finding in the user's tracker, carrying the evidence, the `file:line`, the repro, and the proposed fix | a tracker and an access method the user named and confirmed |
 | `both` | ticket every finding, then harden the subset the user approves, and note the ticket id in the patch | both of the above |
 | `report only` | nothing. The report is the deliverable | nothing |
@@ -76,8 +76,8 @@ as "N/A" or "unavailable", since a greyed-out option frames a non-choice as a di
 |---|---|---|
 | Live-spawn agentic fuzzing | agent/skill/MCP definitions are in scope AND the user opts in | omitted from the question entirely; the definition-review pass still runs statically |
 | Dev-server DAST | a runnable web server is in scope AND the user opts in | omitted entirely; the static web pass still runs |
-| LLM access for grading | live-spawn or promptfoo grading was opted into | agentic-fuzz is skipped, recorded as a declined opt-in |
-| Network stage (step 8.6) | always applicable, since the campaign is always offline | DECLINED, with all four egress-blocked gaps listed as open (`references/network-stage.md`) |
+| LLM access for grading | live-spawn or promptfoo grading was opted into | agentic-fuzz is skipped, and step 9 is recorded DECLINED or NOT-OFFERED |
+| Network stage (step 13) | always applicable, since the campaign is always offline | DECLINED, with all four egress-blocked gaps listed as open (`references/network-stage.md`) |
 | Secret verification | the network stage was opted into AND a candidate secret was found | live secrets are reported UNVERIFIED by location and type; nothing is sent anywhere |
 
 MUST Ask each blast-radius opt-in as its own question after the core, and only when its triggering surface is in scope. An opt-in offered with no trigger is clutter; an opt-in folded into the core question buries the consent that matters.
@@ -151,8 +151,8 @@ hypothesis.
 MUST Stamp the user's threat on the epic for prioritization and reporting, and keep it out of the scout Brief. A scout handed a suspected bug narrows its census to that guess and misses the deviations that census exists to find.
 
 The remediation route is stamped on the epic too, as `remediation_route` plus, on the
-`ticket` route, the confirmed `tracker`, access method, and destination. Step 10 reads
+`ticket` route, the confirmed `tracker`, access method, and destination. Step 15 reads
 those rather than re-asking, so a campaign resumed days later remediates where the
 user said and not where the git remote points.
 
-MUST Stamp the route and, on the `ticket` route, the confirmed tracker and destination on the epic. Step 10 often runs in a later session than the interview, and a route held only in conversation is a route the resumed run has to guess.
+MUST Stamp the route and, on the `ticket` route, the confirmed tracker and destination on the epic. Step 15 often runs in a later session than the interview, and a route held only in conversation is a route the resumed run has to guess.

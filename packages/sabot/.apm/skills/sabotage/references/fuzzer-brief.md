@@ -1,11 +1,11 @@
 # Fuzzer Brief Template
 
-Construct one Brief per surface for step 4. `fuzzer` writes harnesses, corpora, and
+Construct one Brief per surface for step 7. `fuzzer` writes harnesses, corpora, and
 attack scenarios, and executes nothing. Pass facts only: the surface with its entry
 points and conventions, and the wisp to file against.
 
 Spawn the fuzzers in parallel, one message with several Agent calls, one per
-surface in the step-4 plan.
+surface in the step-5 recon.
 
 ---
 
@@ -24,7 +24,7 @@ write harnesses and corpora. You run nothing.
   repo-convention path, and record which>
 
 ## Invariants recon derived (assert these)
-<the falsifiable claims from step 4: what the code assumes and never checks, each
+<the falsifiable claims from step 5: what the code assumes and never checks, each
 with a file:line. These are what your harnesses assert. An invariant here beats a
 generic never-panics harness, because it catches logic bugs a crash never reveals.>
 
