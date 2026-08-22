@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/srobroek/sabot/compare/v0.3.2...v1.0.0) (2026-08-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sabot:** every step number in the sabot skill has changed. A Brief, prompt, or script citing an old number now points at the wrong step.
+
+### Features
+
+* **sabot:** pour the workflow as a molecule, and flatten the step numbers ([#41](https://github.com/srobroek/sabot/issues/41)) ([65e2013](https://github.com/srobroek/sabot/commit/65e2013792c8ffe54e996053c897dc20e5c61137))
+
 ## [0.3.2](https://github.com/srobroek/sabot/compare/v0.3.1...v0.3.2) (2026-08-21)
 
 
