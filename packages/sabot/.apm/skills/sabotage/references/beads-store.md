@@ -64,7 +64,7 @@ concurrent campaigns. The `run_id` field scopes every rollup to one run.
 | Surface node | **task** bead, `--parent <epic>`, labels `sab-surface` + `sab-audit` + `non-work`, metadata `run_id`, `surface`, `scope` (JSON array of globs) |
 | Harness wisp | **task** bead, `--parent <surface>`, labels `sab-harness` + `sab-audit` + `non-work`, metadata `run_id`, `entry_point`, `runner`, `harness_path`, `input_shape` |
 | Crash wisp | **task** bead, `--parent <surface>`, labels `sab-crash` + `sab-audit` + `non-work`, metadata `run_id`, `input_path`, `stack_hash` |
-| Finding wisp | **task** bead, `--parent <surface>`, labels `sab-finding` + `sab-audit` (plus `non-work` once tiered REFUTED, or when the locus is inside the artifacts dir), metadata `run_id`, `tier`, `by`, `source`, `impact`, `locus`, `surface`, `path`, and after step 10 `ticket_id` (the created ticket, so a resumed run cannot file it twice) |
+| Finding wisp | **task** bead, `--parent <surface>`, labels `sab-finding` + `sab-audit` (plus `non-work` once tiered REFUTED, or when the locus is inside the artifacts dir), metadata `run_id`, `tier`, `by`, `source`, `impact`, `locus`, `surface`, `path`, and after step 15 `ticket_id` (the created ticket, so a resumed run cannot file it twice) |
 | Coverage record | **task** bead, `--parent <surface>`, labels `sab-coverage` + `sab-audit` + `non-work`, metadata `run_id`, `scanners_run`, `scanners_skipped`, `harnesses_run`, `harnesses_total`, one per surface node |
 | Decision | **decision** bead under the epic, for an accepted-risk or scope ruling that outlives one finding |
 
@@ -92,6 +92,7 @@ gates.
 
 MUST Label EVERY campaign bead `sab-audit`, alongside its own `sab-*` label. This is the one label a project's own queries can exclude on, so it is what separates an audit's records from the project's work. Measured: one campaign left 680 beads in a product repo's store, of which 329 were not product defects, and the project's "close every bead" release gate blocked on the audit's own bookkeeping.
 MUST Label every non-defect record `non-work` too: harness, crash, and coverage wisps, AND surface nodes, AND a finding tiered REFUTED, AND a finding whose locus is inside the run's own artifacts dir. Measured: 22 surface roots, 24 coverage records, and 6 crash records finished one campaign with no `non-work` label, because the rule named only three of the buckets and nothing checked any of them.
+MUST Pass `--no-inherit-labels` on every finding create. `bd create --parent` copies the parent's labels onto the child by default, and every surface node carries `non-work`, so a finding parented to one inherits `non-work` and drops out of the project's work queue while the create command that made it named only `sab-finding,sab-audit`. Measured: 51 of 388 findings in one campaign carried `non-work`, of which 36 REFUTED and 6 HARDENING and 2 audit-tooling were correct, leaving 5 PROVEN and 2 REACHABLE product defects excluded from the backlog by a label no agent wrote.
 MUST File a defect in the audit's OWN tooling as a finding with its locus inside the artifacts dir, labelled `non-work`. A misfiring synthesized rule is real and worth fixing, and it is not a defect in the product. Measured: 6 such findings in one campaign were tiered PROVEN or REACHABLE and counted among the product's, and only 2 of the 6 announced it in their title, so the locus is the signal and the title is not.
 MUST Parent every campaign bead under its own surface node, and verify the edge target matches the bead's id prefix. Measured: one campaign's 21 surface nodes carried ids under the run epic while their `parent-child` edges pointed at twelve unrelated project beads, one of them a task titled "epic: test execution gaps". `report-json.py` walked the edge, reached 0 of 680 beads, and rendered an empty report at exit 0, so a whole campaign read as a clean audit.
 
@@ -122,11 +123,11 @@ graph rather than from a parent's prose.
 
 | Step | Writer | Creates | Claimed by |
 |---|---|---|---|
-| 4 | `fuzzer` | harness wisp per entry point | `gremlin` for that surface |
-| 5 | `gremlin` | crash wisp per distinct crash, finding wisp per non-crash finding | `triager` (crashes), `challenger` (findings) |
-| 6 | `triager` | finding wisp per minimized crash, closes the crash wisp | `challenger` |
-| 7 | `challenger` | tier stamp on each finding wisp | main thread at report time |
-| 9 | `hardener` | patch record on the finding wisp | main thread for verification |
+| 7 | `fuzzer` | harness wisp per entry point | `gremlin` for that surface |
+| 8 | `gremlin` | crash wisp per distinct crash, finding wisp per non-crash finding | `triager` (crashes), `challenger` (findings) |
+| 10 | `triager` | finding wisp per minimized crash, closes the crash wisp | `challenger` |
+| 11 | `challenger` | tier stamp on each finding wisp | main thread at report time |
+| 15 | `hardener` | patch record on the finding wisp | main thread for verification |
 
 A `gremlin` discovers its work with:
 
@@ -148,9 +149,9 @@ still parent fine, so the work looks scheduled and never runs.
 | `scout` | `in_progress` while working, back to `open` when its artifacts are filed | `closed`; the fuzzer and gremlin still have to claim it |
 | `fuzzer` | `in_progress`, back to `open` | `closed` |
 | `gremlin` | `in_progress`, back to `open` after filing its `sab-coverage` wisp | `closed` |
-| main thread | `closed`, at step 9 only | close a node before its `sab-coverage` wisp exists |
+| main thread | `closed`, at step 14 only | close a node before its `sab-coverage` wisp exists |
 
-MUST Leave every surface node `open` or `in_progress` until step 9. Only the main thread closes one, and only after the coverage gate passes. A run in which surfaces were closed early spends the rest of the campaign working around a node its own agents cannot claim.
+MUST Leave every surface node `open` or `in_progress` until step 14. Only the main thread closes one, and only after the coverage gate passes. A run in which surfaces were closed early spends the rest of the campaign working around a node its own agents cannot claim.
 MUST Re-read a surface node's status immediately before spawning an agent against it, and reopen it (`bd update <node> --status open`) when something closed it. A node that self-closed twice in one run is the observed case, not the hypothetical one.
 
 ### A handoff you cannot query is not a handoff
@@ -226,12 +227,12 @@ Every finding carries both axes plus its locus, written as metadata so the repor
 generator reads structure rather than prose:
 
 ```
-FINDING=$(bd create "finding: <one-line claim>" --parent <surface> --labels sab-finding,sab-audit --json \
+FINDING=$(bd create "finding: <one-line claim>" --parent <surface> --labels sab-finding,sab-audit --no-inherit-labels --json \
   --metadata '{"run_id":"run-<id>","tier":"PROVEN","by":"challenger","source":"synthesized-rule","impact":"HIGH","locus":"src/auth/token.rs:88","surface":"code","node":"<surface node bead>","cwe":"CWE-190","repro":"<abs path to minimized input>","path":"handle_post -> parse_body -> alloc @ api.rs:41","evidence":"<abs artifact path or exact command>","control_passed":true,"dedup_key":"code:src/auth/token.rs:88:CWE-190","root_cause":"unchecked arithmetic at the IPC boundary","not_executed_reason":null}' \
   | jq -r '.id')
 ```
 
-This blob is the report. Step 8 renders these fields; a field left off the wisp is a
+This blob is the report. Step 14 renders these fields; a field left off the wisp is a
 column the report cannot fill, and prose in an agent's reply is discarded at the end
 of the session.
 
@@ -296,7 +297,7 @@ their own label scoped to the run with `--metadata-field run_id=<id>`.
 | stamping gate | `sab-audit` is set on every campaign bead AND `non-work` on every non-defect record AND every REFUTED finding is `closed` AND every finding's priority matches the tier-impact table. Blocks NOTHING. Each condition is record hygiene that one `bd update` fixes, and none of it is evidence about the target |
 | coverage gate | `bd dep cycles` clean AND every detected surface node has a `sab-coverage` record AND no `sab-harness` wisp left `open`, `blocked`, or `in_progress` AND every `sab-finding` carries a `tier`. Blocks CLOSING A SURFACE NODE, never the report: an unmet condition here is a coverage gap, which is the report's subject matter |
 
-MUST Emit the report whatever the coverage gate says. An unrun harness, a missing coverage record, and an untiered finding are the report's SUBJECT, so a gate that withheld the report until they were resolved would withhold it exactly when it is most worth reading. The report states each one as a gap; step 10 is where a gap gets fixed, and only on explicit approval.
+MUST Emit the report whatever the coverage gate says. An unrun harness, a missing coverage record, and an untiered finding are the report's SUBJECT, so a gate that withheld the report until they were resolved would withhold it exactly when it is most worth reading. The report states each one as a gap; step 15 is where a gap gets fixed, and only on explicit approval.
 MUST Fix a stamping-gate failure rather than reporting it. A missing label, a wrong priority, and a REFUTED finding left open are hygiene on the record and cost one `bd update` each; none of them is evidence about the target, so none belongs in the NOT-EXECUTED register.
 
 MUST Roll up grandchildren with `--metadata-field run_id=<id>`, never `--parent <epic>`. On bd 1.1.2 `--parent` returns direct children only, so an epic-parent query for findings or harnesses returns an empty set and the coverage gate passes over unrun, untiered work.

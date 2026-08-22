@@ -1,6 +1,6 @@
 # Report template
 
-The step-8 output, and a rendering of the finding beads rather than a document
+The step-14 output, and a rendering of the finding beads rather than a document
 authored from the agents' replies. Every column below maps to a field in the finding
 wisp schema in `beads-store.md`; a blank column means a missing field on a wisp, so
 the fix is the stamp rather than the prose.
@@ -66,7 +66,7 @@ Gap reasons, stated precisely:
 - `SKIPPED (not installed)` -- with the install command
 - `SKIPPED (budget)` -- named the tool recon aimed ON that the clock displaced
 - `NOT EXECUTED (requires network)` -- the tool or its ruleset fetches from a
-  registry, and every container runs `--network none`. Say whether the step-8.6
+  registry, and every container runs `--network none`. Say whether the step-13
   network stage was granted, declined, or never offered, since that decides whether
   the gap was closable at all (`references/network-stage.md`)
 - `INVALID` -- the scanner or harness crashed, so nothing was tested
@@ -147,7 +147,7 @@ Finding provenance, which shows whether recon did the work:
 
 ## Systemic patterns
 
-The step-8.5 output, placed above the individual findings because a shape repeating
+The step-12 output, placed above the individual findings because a shape repeating
 across nodes is a stronger statement than any of its instances. Drop the section only
 when the synthesis pass found no `root_cause` spanning two nodes.
 
@@ -255,14 +255,15 @@ Suppression accounting, since the unreasoned count is itself a finding:
 
 ## Rules for filling it
 
-MUST Write the report with every gap still open. This document exists to state them: an unrun harness, an uncovered surface, an untiered finding, and an INVALID run each get a row here, and step 10 fixes them on explicit approval. A report withheld until its run came back clean would only ever describe a clean run.
+MUST Write the report with every gap still open. This document exists to state them: an unrun harness, an uncovered surface, an untiered finding, and an INVALID run each get a row here, and step 15 fixes them on explicit approval. A report withheld until its run came back clean would only ever describe a clean run.
 MUST Put coverage before findings. A report that leads with findings and buries its gaps reads as complete when it is not.
 MUST Fill the NOT-EXECUTED register with a reason on every row, even on a run that found plenty. A dimension the campaign never exercised is a limit on its central claim, and a limit stated only as a count reads as coverage.
 MUST Separate NOT EXECUTED from UNTESTED from INVALID from clean. A locus whose benign control failed has no verdict; a locus whose harness was never written was never tested; a locus whose scanner crashed was not scanned. All three read as clean when collapsed into one number.
 MUST Include the tool-integrity certification per surface, and mark a surface UNVERIFIED where the gremlin did not supply one. A wrapper returning 0 while running nothing was measured three separate ways in one run, so an exit code supports no coverage claim.
 MUST Report a structurally closed class with its census rather than omitting it, and say which role it left with nothing to do.
 MUST Include the premise-corrections table whenever an agent corrected a dispatched premise. Premise error is a property of the run's own aim, and it stays invisible without a place to record it.
-MUST Put the systemic-patterns section above the findings whenever step 8.5 filed a pattern wisp, and state its instance count and node span. A pattern rendered as N separate rows deep in a long table reads as N unrelated bugs.
+MUST Record live-spawn (step 9) and the network stage (step 13) as GRANTED, DECLINED, or NOT-OFFERED, and list the gaps a declined stage leaves open. Without a disposition line, an opt-in step that never ran is indistinguishable from one that ran and found nothing.
+MUST Put the systemic-patterns section above the findings whenever step 12 filed a pattern wisp, and state its instance count and node span. A pattern rendered as N separate rows deep in a long table reads as N unrelated bugs.
 MUST Cite a bead ID on every finding, since that is what survives the session and what a fix can be tracked against.
 MUST Keep the REFUTED section even when it is the only content. A campaign that found nothing real still tells the reader what was checked.
 MUST Set the budget actually used against the budget approved, so the reader can judge whether more time would find more.

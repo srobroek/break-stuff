@@ -1,6 +1,6 @@
 # Challenger Brief Template
 
-Construct one Brief for step 7. `challenger` sets the evidence tier on every
+Construct one Brief for step 11. `challenger` sets the evidence tier on every
 finding wisp. It reads and judges, and changes nothing.
 
 Pass observable facts per finding and withhold your own conclusion, since the
@@ -54,7 +54,7 @@ HARDENING with the failed precondition named as the reason.
 | the harness that produced it had a PASSING benign control | `control_path` on the harness wisp, plus the control's result in the gremlin's coverage wisp | a hostile failure beside a failing control confirms and refutes nothing, so the locus is UNTESTED |
 | the assertion fired | the runner output names the assertion | two assertions in one test stop at the first panic, leaving the second unfired while the test appears to have run |
 | the evidence is not profile-dependent | the harness asserts a VALUE, not a panic | a `debug_assert!` and an unchecked overflow both measure the build profile when release sets no `overflow-checks` |
-| a suppression covering the locus states a reason | the step-3.5 suppression list | a reasoned suppression caps at HARDENING; an unreasoned one caps nothing, so tier on the evidence |
+| a suppression covering the locus states a reason | the step-4 suppression list | a reasoned suppression caps at HARDENING; an unreasoned one caps nothing, so tier on the evidence |
 | the tool that produced it actually ran | the gremlin's tool-integrity certification | an UNVERIFIED or absent certification makes every tool-sourced finding on that surface HARDENING |
 | the run that produced it hit no resource limit | the coverage wisp for SIGKILL/137, an OOM message, ENOSPC, an image I/O error, or a lost log | the same rule as control-must-pass: an INVALID run measures nothing in either direction, so it neither supports a tier nor clears a locus |
 
@@ -125,7 +125,7 @@ MUST Label a finding `non-work` when you tier it REFUTED, and when its locus is 
 Then read the wisp back, because a tier that failed to write leaves the report
 claiming evidence it does not have. Stamp `by=challenger` so the report marks the
 finding independently challenged; a self-tier (`by=self`) is the inline-only path in
-`workflow.md` step 8.
+`workflow.md` step 11.
 
 ## Return
 The Challenger Output format from your agent definition: a verdict line with tier

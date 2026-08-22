@@ -12,7 +12,7 @@ into the image (`references/isolation.md`), not a stage that runs with the netwo
 Sending that to the network stage would put the DAST probes themselves on a networked
 container for no reason at all.
 
-This stage runs once, after step 8 and before the report, and it is a separate
+This stage runs once, after step 12 and before the report, and it is a separate
 opt-in the user names. It is not "the campaign with network on".
 
 MUST Run this stage in a container WITH egress, never on the host. The target stays mounted read-only and the same user, capability, and filesystem constraints apply. Egress is the only thing that changes, so a compromised tool still cannot write the target or reach the developer's machine.

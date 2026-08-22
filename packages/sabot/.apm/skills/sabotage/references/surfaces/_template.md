@@ -12,7 +12,7 @@ through, not an essay.
 
 ## Detect
 
-How the step-1 stack detection recognizes this surface: file globs, filenames,
+How the step-2 stack detection recognizes this surface: file globs, filenames,
 shebangs, manifest keys, directory conventions.
 
 ## Tools

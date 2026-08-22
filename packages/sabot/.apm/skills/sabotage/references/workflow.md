@@ -48,7 +48,7 @@ MUST Stamp the resolved artifacts dir on the epic before spawning any agent, so 
    parse functions, CLI commands, hook scripts, request handlers, config readers,
    agent definitions. Record each with a `file:line`.
 
-### Step 2.5: size the nodes before creating them
+### Sizing the nodes
 
 A surface is a class of attack; a NODE is the unit one set of agents runs against. A
 surface usually exceeds a node in size, and a node too large is sampled rather than
@@ -76,7 +76,7 @@ MUST Split a node rather than sampling it. A node that cannot be covered inside 
 MUST Translate an operator's stated unit into node beads explicitly. An instruction like "one run per crate" is a sizing decision, and leaving it unrecorded means the orchestrator improvises the split and nothing checks it.
 MUST Decide node size and parallelism together. Each node holds a container for the length of its run, so the node count and the concurrent-container ceiling are one decision: total nodes divided by the affordable concurrency gives the number of waves, and a node sized past the budget adds a wave rather than coverage.
 
-MUST Record the entry points before step 4. A fuzzer given no entry points invents its own scope and writes harnesses for code nobody calls.
+MUST Record the entry points before step 5. A fuzzer given no entry points invents its own scope and writes harnesses for code nobody calls.
 MUST Record each entry point as a bare `file:line` with no threat annotation. Do not mark which entries "map onto the stated threat", label a parser "hostile-response", or rank them by suspected relevance. That annotation is the orchestrator's hypothesis, and it reaches the scout through the entry-point list and narrows the census to the guessed spot. The user's threat orders the REPORT (stamped on the epic), never the recon input.
 
 ## Step 3: probe, propose, wait
@@ -96,7 +96,7 @@ MUST Record each entry point as a bare `file:line` with no threat annotation. Do
    the stack map, with each per-image assert result written to the artifacts dir.
    Tools run in the image, not on the host.
 
-MUST Delegate the image build, dev-dep bake, and `--assert-tools` to a spawned provisioner that returns only the ext-image tags, the stack map, and the assert result. Building inline pours every `docker build` and `cargo fetch` line into the orchestrator's context, which is the fat-payload-in-orchestrator anti-pattern step 9 forbids; the orchestrator manages the run, it does not build it.
+MUST Delegate the image build, dev-dep bake, and `--assert-tools` to a spawned provisioner that returns only the ext-image tags, the stack map, and the assert result. Building inline pours every `docker build` and `cargo fetch` line into the orchestrator's context, which is the fat-payload-in-orchestrator anti-pattern step 14 forbids; the orchestrator manages the run, it does not build it.
 MUST Have the provisioner VERIFY the image is complete before it returns success: run `scripts/install-tools.sh --probe` (which asserts every tool in the manifest answers inside its image) and, for the ext image, `run-contained.sh --assert-tools` over the full surface tool list. A missing tool is a build failure the provisioner FIXES in that same step (add the tool to the fragment, rebuild) before returning, not a gap it reports for a later retry. The provisioner returns success only when every expected tool answered; a "built" image that lacks `zizmor`, `osv-scanner`, or any manifest tool is an incomplete build, and a campaign that trusts it returns a meaningless clean for that dimension.
 NOT Never return a provisioned image on a partial tool set and let the campaign retry-install the rest. The image ships the complete toolset in one deterministic build; a scanner discovered missing at scan time has already produced a false clean for its threat dimension.
 MUST Build and extend the surface image autonomously here, without a separate confirmation gate. The interview already authorized the toolset; provisioning the image to hold it executes that approved plan rather than deciding anything new. The blast-radius opt-ins (live-spawn, DAST) stay gated; the image build does not.
@@ -108,7 +108,39 @@ MUST Build and extend the surface image autonomously here, without a separate co
    budget, and proceeds.
 5. Stamp the approved budget onto the run epic, so a resumed campaign reuses it.
 
-### Step 3.5: read the project's own security config
+## Step 4: repo-global pre-pass (scanners, baseline suite, self-read, and the project's own security config)
+
+Several facts are the same for every surface, so computing them per surface runs the
+same work N times in parallel. Run them once here, before the fan-out, and stamp the
+results on the epic for every agent to read. DELEGATE the whole step to one spawned
+pre-pass agent. That agent writes every output to the artifacts dir and returns only
+the stamp values (`global_scan_refs`, `baseline_test_ref`, `self_read_ref`, and the
+suppression list) as paths and counts:
+
+- executes the whole-tree scanners in the provisioned image,
+- runs the baseline test suite,
+- reads the repo self-doc and the project security config.
+
+The orchestrator stamps those on the epic; it never holds the scanner or test output
+itself.
+
+| Pre-pass work | Run once | Stamp on epic |
+|---|---|---|
+| Repo-global scanners: `dep-audit`/`secrets-scan` (or osv-scanner, gitleaks, cargo-audit), each whole-tree | one invocation, JSON to the artifacts dir | `global_scan_refs` (paths) |
+| The union of cross-surface scanner invocations: one `(tool, config, file-set)` run each, routed to owning surfaces via `surfaces/index.md` | one invocation per distinct tuple | `global_scan_refs` |
+| Baseline test suite (what already fails, per `surfaces/robustness.md`) | one run | `baseline_test_ref` |
+| Repo self-read: the falsifiable guarantees, documented limits, `SECURITY.md` scope, and git-incident notes | one read | `self_read_ref` |
+
+Each scout then reads `self_read_ref` instead of re-parsing the docs, and each
+gremlin cites `global_scan_refs` instead of re-running a whole-tree scanner. A
+surface gremlin runs only its own surface-specific scanners.
+
+MUST Run every repo-global scanner and the repo self-read once here, not per surface. A whole-tree dependency or secret scan run once per surface is the same scan N times, and the self-read re-parses the README and git history N times.
+MUST Delegate this step to a spawned agent that writes its output to the artifacts dir and returns only the stamp values (paths and counts). Running the whole-tree scanners and the baseline suite inline floods the orchestrator with the output it exists to keep OUT of its context, the same fat-payload rule as step 14.
+MUST Record a pre-pass scanner in each surface's coverage as "covered by pre-pass" rather than "not run", so the coverage table credits work the surface did not repeat.
+MUST Route a pre-pass finding to its owning surface per `surfaces/index.md`, so a secret in a workflow file is attributed to infra and a shared finding is not double-counted across surfaces.
+
+### The project's own security config
 
 Before running any scanner, find and read every config that governs it:
 
@@ -132,40 +164,7 @@ MUST Honor the project's config. Reporting a deliberately disabled rule as a new
 MUST Cap a finding at HARDENING only against a suppression that states a reason. An unreasoned suppression earns no cap, so a finding it covers is tiered on its own evidence.
 MUST Report the unreasoned-suppression count as its own HARDENING finding with the four counts above. One run measured 331 suppressions of which 82 carried no reason; the bare total would have read as 331 deliberate decisions.
 
-### Step 3.6: repo-global pre-pass (compute once, share on the epic)
-
-Several facts are the same for every surface, so computing them per surface runs the
-same work N times in parallel. Run them once here, before the fan-out, and stamp the
-results on the epic for every agent to read. DELEGATE the run to a spawned pre-pass
-agent, together with the step-3.5 config read. That agent does the following work,
-writing every output to the artifacts dir and returning only the stamp values
-(`global_scan_refs`, `baseline_test_ref`, `self_read_ref`, and the suppression list)
-as paths and counts:
-
-- executes the whole-tree scanners in the provisioned image,
-- runs the baseline test suite,
-- reads the repo self-doc and the project security config.
-
-The orchestrator stamps those on the epic; it never holds the scanner or test output
-itself.
-
-| Pre-pass work | Run once | Stamp on epic |
-|---|---|---|
-| Repo-global scanners: `dep-audit`/`secrets-scan` (or osv-scanner, gitleaks, cargo-audit), each whole-tree | one invocation, JSON to the artifacts dir | `global_scan_refs` (paths) |
-| The union of cross-surface scanner invocations: one `(tool, config, file-set)` run each, routed to owning surfaces via `surfaces/index.md` | one invocation per distinct tuple | `global_scan_refs` |
-| Baseline test suite (what already fails, per `surfaces/robustness.md`) | one run | `baseline_test_ref` |
-| Repo self-read: the falsifiable guarantees, documented limits, `SECURITY.md` scope, and git-incident notes | one read | `self_read_ref` |
-
-Each scout then reads `self_read_ref` instead of re-parsing the docs, and each
-gremlin cites `global_scan_refs` instead of re-running a whole-tree scanner. A
-surface gremlin runs only its own surface-specific scanners.
-
-MUST Run every repo-global scanner and the repo self-read once here, not per surface. A whole-tree dependency or secret scan run once per surface is the same scan N times, and the self-read re-parses the README and git history N times.
-MUST Delegate the pre-pass and the step-3.5 config read to a spawned agent that writes its output to the artifacts dir and returns only the stamp values (paths and counts). Running the whole-tree scanners and the baseline suite inline floods the orchestrator with the output it exists to keep OUT of its context, the same fat-payload rule as step 9.
-MUST Record a pre-pass scanner in each surface's coverage as "covered by pre-pass" rather than "not run", so the coverage table credits work the surface did not repeat.
-MUST Route a pre-pass finding to its owning surface per `surfaces/index.md`, so a secret in a workflow file is attributed to infra and a shared finding is not double-counted across surfaces.
-
-## Step 4: recon
+## Step 5: recon
 
 LOAD `recon.md` and follow it. Produce the trust map, invariant list, idiom census,
 and synthesized rules, then record each on the run epic and carry them into every
@@ -175,7 +174,7 @@ artifacts: the ranked, boundary-anchored vectors that become the fuzzer's work l
 MUST Recon before authoring, since a fuzzer with no invariants writes never-panics harnesses and nothing else.
 MUST Aim the standard packs here. An unaimed pack floods the report and the reader stops separating signal from volume.
 
-### Step 4.5: check which finding classes are structurally closed
+## Step 6: census the structurally closed finding classes
 
 A language or build setting can make a whole vulnerability class unreachable in this
 repo. Establish that once, here, and re-aim the campaign onto the classes that
@@ -183,7 +182,7 @@ remain.
 
 | Signal | Class it closes | Consequence for the run |
 |---|---|---|
-| `unsafe_code = "forbid"` workspace-wide with zero `unsafe` blocks | memory safety in Rust | crashes are logic defects; step 7 is a probable no-op |
+| `unsafe_code = "forbid"` workspace-wide with zero `unsafe` blocks | memory safety in Rust | crashes are logic defects; step 10 is a probable no-op |
 | a memory-safe language with no FFI and no native extension | memory safety | same |
 | every input arrives from the local filesystem or the local user | remote attack surface | reframe onto local and inter-process boundaries |
 | no `eval`/`exec`/template rendering of untrusted input | injection into the host language | reframe onto SQL, shell, and path construction |
@@ -192,7 +191,7 @@ MUST Census a closed class rather than asserting it. "0 `unsafe` blocks over 44 
 MUST Re-aim the campaign when a class is closed, and say so in the report. One run staffed a whole role for memory safety against a repo that forbids `unsafe`: 15 node-runs produced 0 crash wisps and the triager did nothing. The budget belonged on logic, ordering, and durability invariants.
 MUST Keep the class in the report as a closed class with its census, since "we found no memory-safety bugs" and "memory-safety bugs are structurally impossible here" are different claims and only the second is worth reading.
 
-## Step 5: author the attack plan
+## Step 7: author the attack plan
 
 Spawn one `fuzzer` per surface, in parallel, Briefed from `fuzzer-brief.md`. Each
 writes harnesses, corpora, vectors, and repo-specific rules from recon's
@@ -200,7 +199,7 @@ invariants. It files a wisp per artifact and runs nothing.
 
 `harness-only` mode stops here and reports what was written.
 
-## Step 6: attack
+## Step 8: attack
 
 Spawn one `gremlin` per surface node, in parallel, Briefed from
 `gremlin-brief.md`. Each one:
@@ -216,14 +215,14 @@ MUST Verify each harness reached its target using the runner's coverage output, 
 MUST Name the campaign-wide ceiling's observer, which is the main thread and no other role. A gremlin sees its own per-harness cap alone, so nothing measures the total unless the orchestrator records elapsed wall-clock against the approved `total_s` at each wave boundary and stops to re-approve before exceeding it. One run's approved `total_s` was 1800 and the run passed it roughly fiftyfold with no role positioned to notice.
 MUST Reserve the budget for the scanners recon aimed ON before allocating any of it to builds. `clippy` and the stock `opengrep` pack were dropped on three nodes of one run because a multi-target build consumed the clock, and recon had aimed both ON. A cheap mandated check that loses to an expensive optional build is a plan the budget table did not model.
 
-### Step 6 lateral channel: parallel gremlins must be able to reach each other
+### Lateral channel
 
 Surfaces run in parallel, so a blocker or a corrected fact one gremlin discovers has
 no route to its siblings. In one run a build panic on a read-only mount blocked
 several nodes for half the campaign because the node that diagnosed it had nowhere to
 publish the diagnosis.
 
-1. Create `<artifacts>/operational-notes.md` at step 6 open, and name its absolute
+1. Create `<artifacts>/operational-notes.md` at step 8 open, and name its absolute
    path in every gremlin Brief as both readable and appendable.
 2. Every gremlin appends a dated section for any fact that changes what a SIBLING
    would do: a blocker and its workaround, a tool that cannot run in the image, a
@@ -237,7 +236,7 @@ MUST Give the lateral channel a written home before the fan-out. A channel impro
 MUST Validate an environment fact on ONE node before writing it into every Brief. One run asserted that `/artifacts` was a per-container volume discarded on exit, fanned that to every gremlin, and the shared host bind filled the host disk: one node lost its whole test pass and another lost its harness attribution. A wrong recipe costs once per child it reached.
 MUST Append a retraction to the lateral channel with the original wording quoted, and renumber nothing. Editing a numbered instruction in place leaves readers citing an instruction whose text has changed under them.
 
-### Step 6.5: live-spawn agentic fuzzing (opt-in)
+## Step 9: live-spawn agentic fuzzing (opt-in)
 
 Requires the user to opt in on a PR, commit, or range target, against the specific
 skills or agents the user names. Every generated case runs against every named
@@ -246,18 +245,19 @@ target, inside a Worktrunk lease with canaries seeded outside it. See
 
 MUST Refuse live-spawn on a whole-repo target and say why, since it would attack every definition present.
 MUST Read the canaries and collect the artifacts before discarding the lease.
+MUST Record this stage as GRANTED, DECLINED, or NOT-OFFERED in the report. A skipped step with no disposition line is invisible, which is how one run silently skipped a step the numbering rendered as a sub-bullet.
 
-## Step 7: triage crashes
+## Step 10: triage crashes
 
 `triager` claims each crash batch. It dedups by stack, minimizes every input, then
 classifies memory-safety against robustness. Each minimized crash becomes a
 finding wisp, and its crash wisp closes.
 
-Skip this step when step 4.5 closed the memory-safety class and no crash wisp exists,
+Skip this step when step 6 closed the memory-safety class and no crash wisp exists,
 and record it as skipped-because-closed with the crash count. Spawning a triager over
 zero crashes spends a role on nothing.
 
-## Step 8: prove or refute
+## Step 11: prove or refute
 
 `challenger` claims every untiered finding wisp and stamps a tier plus an impact,
 Briefed from `challenger-brief.md`. Nothing is deleted. Where several findings share
@@ -281,7 +281,7 @@ output". The report must say which honest path was taken:
 MUST Prefer spawning `challenger` even in a non-interactive run, since independence comes from a fresh context rather than from a human being present.
 MUST Mark an inline tier `by=self` and headline the missing independent pass when spawning was impossible, because a self-judged finding presented as challenged is the dishonesty the two-agent split exists to prevent.
 
-### Step 8.5: synthesize the systemic patterns
+## Step 12: synthesize the systemic patterns
 
 Run one pass over the tiered finding set looking for the defect SHAPE that repeats
 across nodes. Individual findings are the input; the output is a small set of named
@@ -302,7 +302,17 @@ MUST Rank a pattern by its instance count and its span across nodes, and report 
 MUST File each pattern as its own wisp with its instance ids. A pattern living only in the report's prose is lost to the next campaign, which re-derives it or misses it.
 NOT Never let a pattern replace its instances. The instances keep their rows and their fixes; the pattern is an additional finding, per the no-delete rule.
 
-## Step 9: report
+## Step 13: network stage (opt-in)
+
+Requires a separate opt-in the user names; "run sabotage" is not it. LOAD
+`network-stage.md` and follow it. The stage runs once, in a container WITH egress,
+and it performs lookups rather than attacks: secret liveness, a fresh advisory DB
+against the baked one, action-tag drift, and the registry-only rule packs. A tool
+that only needs a one-time DOWNLOAD belongs in the image instead.
+
+MUST Record this stage as GRANTED, DECLINED, or NOT-OFFERED in the report, per `network-stage.md`. A declined stage is a known coverage boundary; an unmentioned one reads as full coverage.
+
+## Step 14: report
 
 Generate the structured JSON with `scripts/report-json.py --epic <epic-id> -o
 <artifacts>/run-<id>.json`, then emit the markdown per `report-template.md` from that
@@ -310,14 +320,14 @@ JSON rather than from the agents' replies. The script reads the finding set from
 beads export, so the report matches the durable graph. Cite bead IDs, list every
 written artifact by path, and state every coverage gap.
 
-MUST Emit the report with the gaps unresolved. This step has no precondition: an unrun harness, a surface with no coverage record, an untiered finding, and an INVALID run are what the report is FOR, so waiting for them to be fixed withholds it exactly when it says the most. The coverage gate in `beads-store.md` governs closing a surface node, never this step, and fixing anything is step 10, on explicit approval.
+MUST Emit the report with the gaps unresolved. This step has no precondition: an unrun harness, a surface with no coverage record, an untiered finding, and an INVALID run are what the report is FOR, so waiting for them to be fixed withholds it exactly when it says the most. The coverage gate in `beads-store.md` governs closing a surface node, never this step, and fixing anything is step 15, on explicit approval.
 MUST Fix a stamping gap here rather than reporting it. A campaign bead missing `sab-audit`, a non-defect record missing `non-work`, a priority disagreeing with the tier-impact table, and a REFUTED finding left open each cost one `bd update`, and none is evidence about the target, so none belongs in the NOT-EXECUTED register. `report-json.py` lists them under `stamping_gaps` for exactly that pass.
 MUST Manage the run by reading the graph, not by holding agent returns. Every agent returns a thin pointer (counts, bead ids, artifact paths) and writes its findings to wisps and artifacts, so the orchestrator's context stays flat across any number of surfaces and never compacts. Read the fat payloads from the wisps the returns point at, only when the report needs them.
 
-## Step 10: patch
+## Step 15: patch
 
 Only on explicit approval. Spawn `hardener` per approved finding, then re-run the
-relevant scanners from step 6 and the relevant harnesses from step 7 to verify.
+relevant scanners from step 8 and the relevant harnesses from step 10 to verify.
 
 `audit-only` refuses this step even when approval is offered. It means "do not FIX
 the findings", not "write nothing". A regression test that reproduces a PROVEN

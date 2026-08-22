@@ -107,7 +107,7 @@ def test_generator_scopes_first_party_to_this_repo():
 def test_every_shipped_script_with_a_shebang_is_executable():
     """The docs invoke these by bare path, so a 644 mode is a hard failure.
 
-    Measured by the self-run: `workflow.md` step 9 says to run
+    Measured by the self-run: `workflow.md` step 14 says to run
     `scripts/report-json.py --epic <id>`, and the file shipped 644, so the documented
     command died `Permission denied`. Ten of fifteen scripts were affected while five
     siblings were 755, which is the shape a git mode bit takes when nothing asserts it.

@@ -432,8 +432,8 @@ under `src-tauri/` plus a JS frontend). The manifests and their fetch commands:
   base with each detected stack's toolchain and bake each manifest's deps. Record
   every stack found so the report states which were provisioned.
 
-Record the manifest map in recon (step 2, alongside entry-point enumeration, since
-recon already walks the file set), and let the provisioning step at step 3 consume
+Record the manifest map alongside the step-2 entry-point enumeration, which already
+walks the file set, and let the provisioning step at step 3 consume
 it. Per stack, the toolchain's own resolver fetches exactly what its manifest names:
 
 | Stack | Declares dev-deps in | Bake with |
@@ -477,7 +477,7 @@ MUST Detect dev-deps from the target's manifest and lockfile, never a hardcoded 
 MUST Discover every manifest in the resolved target scope, not just a repo-root one. A workspace, monorepo, or multi-language target (a Tauri app is Rust plus a JS frontend) has several, and baking only the root manifest leaves a member crate or the frontend unprovisioned.
 MUST Extend the image with a toolchain per detected stack for a multi-language target, and state every stack provisioned in the report. The surface-to-image map is not 1:1 when one target needs both cargo and npm.
 MUST Bake the deps as their own layer keyed on the lockfile (copy manifest+lock, fetch, stop), so a source change reuses the cached deps rather than re-fetching every run.
-MUST Re-resolve a lockfile the fuzzer created AFTER the bake, inside the container, with `cargo generate-lockfile --offline` (or the stack's equivalent) into the disposable source copy. Provisioning bakes what the target's manifests declared at step 3, and step 5 then writes a `fuzz/` crate whose lockfile the authoring host resolved with network. Measured on `fits-header`: the new `fuzz/Cargo.lock` pinned `proc-macro2 1.0.107` against the image's baked `1.0.106`, and every `cargo fuzz build` died with `attempting to make an HTTP request, but --offline was specified`, which is a provisioned image failing on a dep it holds a different patch of. Re-resolving against the baked registry costs one offline pass; discovering it per gremlin costs one rebuild each.
+MUST Re-resolve a lockfile the fuzzer created AFTER the bake, inside the container, with `cargo generate-lockfile --offline` (or the stack's equivalent) into the disposable source copy. Provisioning bakes what the target's manifests declared at step 3, and step 7 then writes a `fuzz/` crate whose lockfile the authoring host resolved with network. Measured on `fits-header`: the new `fuzz/Cargo.lock` pinned `proc-macro2 1.0.107` against the image's baked `1.0.106`, and every `cargo fuzz build` died with `attempting to make an HTTP request, but --offline was specified`, which is a provisioned image failing on a dep it holds a different patch of. Re-resolving against the baked registry costs one offline pass; discovering it per gremlin costs one rebuild each.
 NOT Never COPY the target source into the image. The target is mounted read-only at run time; copying it into a build layer both defeats the read-only guarantee and persists the audited code in the image.
 
 ## No container runtime: fail the whole run, loudly
@@ -485,12 +485,12 @@ NOT Never COPY the target source into the image. The target is mounted read-only
 A container runtime (`docker`, `podman`, `finch`, `nerdctl`) is not optional. Since
 every target-touching tool runs in the container (What runs where), no runtime means
 the campaign cannot scan or execute anything safely, so it does not run a degraded
-subset: it aborts at step 3 with a clear message and a non-zero exit, before opening
+subset: it aborts at step 0 with a clear message and a non-zero exit, before opening
 the run graph or spawning any agent. A partial "static-only" run is not offered,
 because it would present an incomplete audit as a completed one and, for a compiling
 scanner, would run the target's build code on the host.
 
-MUST Probe for a container runtime at step 3 (part of the `install-tools.sh --probe` preflight) and, when none is present, ABORT the whole campaign with a loud message naming the missing runtime and a non-zero exit. Do not open the run graph, do not spawn a scout, do not run a host-side scan.
+MUST Probe for a container runtime at step 0 (part of the `install-tools.sh --probe` preflight) and, when none is present, ABORT the whole campaign with a loud message naming the missing runtime and a non-zero exit. Do not open the run graph, do not spawn a scout, do not run a host-side scan.
 MUST Abort the run when `bd` is absent too, per `beads-store.md`: no run graph means no durable state, so there is no campaign to run. Both the runtime and `bd` are hard preconditions, not degradable ones.
 MUST Never fall back to host execution or a static-only subset when no container is available. A host-only run is the exact unbounded risk the container exists to prevent, and a partial run presents an incomplete audit as a completed campaign.
 NOT Never weaken the container contract (add network, drop the mem cap, run root) to make a harness pass. A harness that only runs unconfined is a harness that does not run.

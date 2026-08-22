@@ -1,6 +1,6 @@
 # Hardener Brief Template
 
-Construct one Brief per approved finding at step 10. `hardener` patches product code,
+Construct one Brief per approved finding at step 15. `hardener` patches product code,
 writes a regression test, graduates the rule into the repo's own lint config, and
 re-runs the exact scanner and harness that produced the finding.
 
@@ -99,7 +99,7 @@ folded into the fix.
 | move a lint out of a group the config does not reach | add an `allow`, `nosec`, `.semgrepignore` entry, baseline entry, or any new suppression |
 | remove an unreasoned suppression | widen an existing suppression's scope |
 
-The suppression census from step 3.5 makes the forbidden direction diffable. Record
+The suppression census from step 4 makes the forbidden direction diffable. Record
 both counts before and after, from the project's own config:
 
     # before the patch, and again after

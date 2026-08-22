@@ -7,7 +7,7 @@ description: Attack code, scripts, hooks, or agents for vulns and robustness bug
 
 Attack a target across five surfaces, prove each finding with a traced path or a
 reproducing input, and report on two axes: evidence and impact. Product code stays
-untouched until step 10, which requires explicit approval; harnesses and regression
+untouched until step 15, which requires explicit approval; harnesses and regression
 tests are written freely.
 
 Beads hold the run state. Agents hand work to each other through wisps, so a
@@ -142,93 +142,108 @@ neither judges its own output.
 ## Workflow
 
 Run in order. `references/workflow.md` holds the full procedure; LOAD it first.
+Every step below is one numbered entry, including the two opt-in steps, because a
+step rendered as a sub-bullet was silently skipped on one live run.
 
+0. **Mode and preconditions.** Decide interactive or non-interactive, check the two
+   hard preconditions (a container runtime, `bd`) and ABORT on either, then pin the
+   scope mode: `quick`, `full`, `audit-only`, or `harness-only`.
 1. **Open the run.** Create the run epic and one surface node per detected surface
    per `references/beads-store.md`. Every later handoff attaches to this graph.
 2. **Resolve the target and detect surfaces.** LOAD `references/targeting.md`:
    resolve to an explicit file list plus base ref, choose in-place or worktree
    checkout, confirm scope. Map the target onto surfaces through
    `references/surfaces/index.md`. A repo hits several surfaces at once, and a
-   single hook usually hits both shell and robustness.
-   - **2.5. Size the nodes before creating them.** A surface usually exceeds what one
-     agent covers in one budget. Split against the entry-point count until each node
-     is one trust boundary an agent can enumerate, cover, and read inside the cap,
-     stamp `coverage_ratio` on each, and decide the node count together with the
-     concurrent-container ceiling. See `references/workflow.md`.
+   single hook usually hits both shell and robustness. Size each node before
+   creating it: split against the entry-point count until each node is one trust
+   boundary an agent can enumerate, cover, and read inside the cap, stamp
+   `coverage_ratio` on each, and decide the node count together with the
+   concurrent-container ceiling.
 3. **Probe, propose tools and budget, then wait** (blocking, interactive runs).
    See `references/tooling.md` with `references/installer.md`.
-   - **3.5. Read the project's own security config before running anything.**
-     Baselines, suppressions, `# nosec` / `#[allow]` / `.semgrepignore`, and
-     accepted-risk docs all govern. A rule the project disabled with a stated
-     reason caps at HARDENING.
-   - **3.6. Repo-global pre-pass.** Delegate to a spawned agent: run every whole-tree
-     scanner (deps, secrets), the union of cross-surface scanner invocations, the
-     baseline test suite, and the repo self-read ONCE, write the output to the
-     artifacts dir, and return only the stamp values. Stamp them on the epic;
-     surfaces cite them rather than recomputing per surface. Image provisioning and
-     this pre-pass both run in spawned agents so their tool output never enters the
-     orchestrator's context. See `references/workflow.md`.
-4. **Recon.** Spawn one `scout` per surface, in parallel, to derive this repo's own
+4. **Repo-global pre-pass.** Delegate to one spawned agent: run every whole-tree
+   scanner (deps, secrets), the union of cross-surface scanner invocations, the
+   baseline test suite, the repo self-read, and the project's own security config
+   ONCE, write the output to the artifacts dir, and return only the stamp values.
+   Stamp them on the epic; surfaces cite them rather than recomputing per surface.
+   Baselines, suppressions, `# nosec` / `#[allow]` / `.semgrepignore`, and
+   accepted-risk docs all govern: a rule the project disabled with a stated reason
+   caps at HARDENING. Image provisioning and this pre-pass both run in spawned
+   agents so their tool output never enters the orchestrator's context.
+5. **Recon.** Spawn one `scout` per surface, in parallel, to derive this repo's own
    threat model: what it claims about itself, where its trust boundaries sit, how it
    does things and which places deviate, plus validated semgrep or ast-grep rules
    for THIS codebase. Standard rulesets are used as they come, and what recon builds
    is the harness around them. LOAD `references/recon.md`; Brief from
    `references/scout-brief.md`.
-5. **Author the attack plan.** Spawn `fuzzer` per surface to write harnesses,
+6. **Census the structurally closed finding classes.** A language or build setting
+   can make a whole vulnerability class unreachable here. Census each closed class
+   with its counts, re-aim the campaign onto the classes that remain, and keep the
+   closed class in the report. See `references/workflow.md`.
+7. **Author the attack plan.** Spawn `fuzzer` per surface to write harnesses,
    seed corpora, and attack scenarios for every reachable entry point, mirroring
    the repo's own convention for where fuzz targets live. Scripts, hooks, and CLIs
    get the shipped `scripts/fuzz-cli.py`; agents and skills get
    `references/corpora/prompt-injection.md`. Each finished harness becomes a
    harness wisp. Each harness asserts an invariant recon discovered. Brief from
    `references/fuzzer-brief.md`, patterns in `references/harnesses.md`.
-6. **Attack.** Spawn one `gremlin` per surface node, in parallel. Each runs its
+8. **Attack.** Spawn one `gremlin` per surface node, in parallel. Each runs its
    surface's scanners plus the rules recon synthesized, claims the harness wisps
    for its surface, executes them
    inside the approved budget against local code, and reads for what scanners miss:
    trust boundaries, authz logic, guard bypasses, prompt-injection paths, unbounded
    work. Brief from `references/gremlin-brief.md`. Anything absent gets skipped,
    warned about, and recorded with an install hint; a scanner crash is an INVALID
-   run, since reporting it as "0 findings" hides the gap.
-7. **Triage crashes.** Every crash `gremlin` files becomes a crash wisp. `triager`
-   claims each batch, dedups by stack, minimizes to a smallest reproducing input,
-   and separates memory-safety from robustness. Brief from
-   `references/triager-brief.md`.
-8. **Prove or refute.** `challenger` claims the finding wisps and sets each
-   evidence tier, Briefed from `references/challenger-brief.md`. A refuted finding
-   is recorded as REFUTED alongside the refutation. Findings sharing a `root_cause`
-   are grouped, tiered once, and reported with an instance count.
-   - **8.5. Synthesize the systemic patterns.** Query the tiered finding set for a
-     `root_cause` spanning two or more nodes, and file each as a pattern wisp on the
-     epic with its instance ids. The main thread performs this step. A shape repeating
-     across nodes is the campaign's strongest statement, and no per-finding row
-     states it.
-   - **8.6. Network stage, only when the user opted in.** LOAD
-     `references/network-stage.md`. Only a remote service can say whether a leaked
-     credential is live, whether the baked OSV/trivy and `cargo-audit` databases are
-     stale, and what the registry-only rule packs report. This
-     stage runs in a container WITH egress, performs lookups rather than attacks, and
-     is DECLINED-by-default with the gaps recorded. A tool that only needs to DOWNLOAD
-     something (a Playwright browser, a CodeQL pack) belongs in the image instead: it
-     drives loopback offline once installed.
-9. **Report.** Emit via `references/report-template.md`, citing bead IDs so
-   remediation is trackable after the session ends.
-10. **Remediate on the route pinned in question 4, only on explicit approval.** LOAD
+   run, since reporting it as "0 findings" hides the gap. Open
+   `<artifacts>/operational-notes.md` here as the lateral channel between parallel
+   gremlins.
+9. **Live-spawn agentic fuzzing, only when the user opted in.** LOAD
+   `references/agentic-fuzz.md`. Generated cases run against the specific skills or
+   agents the user named, inside a Worktrunk lease with canaries seeded outside it.
+   Refused on a whole-repo target. Record the disposition as GRANTED, DECLINED, or
+   NOT-OFFERED.
+10. **Triage crashes.** Every crash `gremlin` files becomes a crash wisp. `triager`
+    claims each batch, dedups by stack, minimizes to a smallest reproducing input,
+    and separates memory-safety from robustness. Brief from
+    `references/triager-brief.md`.
+11. **Prove or refute.** `challenger` claims the finding wisps and sets each
+    evidence tier, Briefed from `references/challenger-brief.md`. A refuted finding
+    is recorded as REFUTED alongside the refutation. Findings sharing a `root_cause`
+    are grouped, tiered once, and reported with an instance count.
+12. **Synthesize the systemic patterns.** Query the tiered finding set for a
+    `root_cause` spanning two or more nodes, and file each as a pattern wisp on the
+    epic with its instance ids. The main thread performs this step. A shape repeating
+    across nodes is the campaign's strongest statement, and no per-finding row
+    states it.
+13. **Network stage, only when the user opted in.** LOAD
+    `references/network-stage.md`. Only a remote service can say whether a leaked
+    credential is live, whether the baked OSV/trivy and `cargo-audit` databases are
+    stale, and what the registry-only rule packs report. This
+    stage runs in a container WITH egress, performs lookups rather than attacks, and
+    is DECLINED-by-default with the gaps recorded. A tool that only needs to DOWNLOAD
+    something (a Playwright browser, a CodeQL pack) belongs in the image instead: it
+    drives loopback offline once installed. Record the disposition as GRANTED,
+    DECLINED, or NOT-OFFERED.
+14. **Report.** Emit via `references/report-template.md`, citing bead IDs so
+    remediation is trackable after the session ends.
+15. **Remediate on the route pinned in question 4, only on explicit approval.** LOAD
     `references/remediation.md`. Read the route off the epic rather than choosing one
     now.
     - **`harden`**: spawn `hardener` per approved finding, Briefed from
       `references/hardener-brief.md`. Re-run that finding's own recorded `repro_cmd`
-      before and after, quote both exit codes, then re-run steps 6 and 7. An
-      unchanged exit code is NOT FIXED and the finding stays open.
+      before and after, quote both exit codes, then re-run the attack and triage
+      steps (8 and 10). An unchanged exit code is NOT FIXED and the finding stays
+      open.
     - **`ticket`**: verify tracker access and destination, render every ticket body
       to the artifacts dir for approval, then file **one ticket per `root_cause`**
       with its instance list, evidence, repro, and proposed fix. Stamp each created
       id back onto the finding bead so a resumed run cannot double-file.
     - **`both`**: ticket first, then harden the approved subset, noting the ticket id.
-    - **`report only`**: stop at step 9.
+    - **`report only`**: stop at step 14.
 
 ## Hard rules
 
-MUST Fuzz and attack only local code in this repo or worktree. A network host, public endpoint, or third-party service is out of scope regardless of who asks. The step-8.6 network stage does not widen this: it looks a local artifact up against a published service, which is using that service as intended, and it still may not probe, fuzz, or attack anything remote.
+MUST Fuzz and attack only local code in this repo or worktree. A network host, public endpoint, or third-party service is out of scope regardless of who asks. The step-13 network stage does not widen this: it looks a local artifact up against a published service, which is using that service as intended, and it still may not probe, fuzz, or attack anything remote.
 MUST Attack this codebase rather than a model. An LLM red-team tool measures a model's alignment, which is a different target, so it stays out of scope even on the agents surface.
 MUST Cap every campaign with the wall-clock, job, and memory limits set in step 3, and stop when they are reached. The main thread measures elapsed wall-clock against the approved `total_s` at every wave boundary, since a per-harness cap leaves the campaign total unmeasured.
 MUST Treat every self-check in this skill's own tooling as a claim to verify. A wrapper's exit code, a "ran successfully" line, and an absent result file are all compatible with nothing having run, and the same fail-open shape appears in a campaign's tooling and in its target.
@@ -239,7 +254,7 @@ MUST Never author an input whose effect is irreversible even inside the containe
 MUST Keep every finding. A challenger-refuted finding is reported as REFUTED with its reason, and a finding with no traced path is reported as HARDENING.
 MUST Carry both axes plus a `file:line` on every finding: the evidence tier (PROVEN|REACHABLE|HARDENING|REFUTED) and the impact (CRITICAL|HIGH|MEDIUM|LOW).
 MUST Keep the write and execute roles apart. `fuzzer` never runs a harness it wrote, and `gremlin` never edits one it runs, because an agent that grades its own output hides its own bugs.
-MUST Leave product code untouched in steps 1 to 9. Steps 5 to 7 may only write harness files, corpora, and tests; `hardener` patches in step 10 on explicit approval, behind a verification re-run.
+MUST Leave product code untouched in steps 1 to 14. The authoring step (7), the attack step (8), the live-spawn step (9), and the triage step (10) may only write harness files, corpora, and tests; `hardener` patches in step 15 on explicit approval, behind a verification re-run.
 MUST Leave every written artifact uncommitted and list it in the report, since committing is the user's call.
 MUST Ask which tracker and which access method, and confirm the destination by listing it, before creating any ticket. Never infer the tracker from the git remote. A GitHub remote is not evidence that GitHub Issues is the destination, and a finding filed on a public mirror is a disclosure the user never authorized.
 MUST Treat a patch approval and a ticket approval as separate authorizations. Approving a code change does not authorize an external write, and approving a ticket does not authorize touching product code.
@@ -258,48 +273,48 @@ NOT Raw scanner output is HARDENING until a path or repro is traced, so do not r
 
 ## Scope modes
 
-- **quick**: steps 1 to 6 with a smoke campaign over existing harnesses, skipping new harness authoring and the challenger.
+- **quick**: steps 0 to 8, skipping the authoring step (7) in favour of a smoke campaign over existing harnesses, and skipping the challenger (11).
 - **full** (default): every step.
-- **audit-only**: steps 1 to 9 that describe findings without fixing them. Regression tests that reproduce a PROVEN finding are still written, since a test describes the bug; only the product-code change is withheld. The `ticket` remediation route is compatible with this mode and `harden` is not, because a ticket describes the work while a patch performs it.
-- **harness-only**: steps 1 to 5: author harnesses and corpora, execute nothing.
+- **audit-only**: steps 0 to 14 that describe findings without fixing them. Regression tests that reproduce a PROVEN finding are still written, since a test describes the bug; only the product-code change is withheld. The `ticket` remediation route is compatible with this mode and `harden` is not, because a ticket describes the work while a patch performs it.
+- **harness-only**: steps 0 to 7: author harnesses and corpora, execute nothing.
 
 ## References
 
 | File | When to load |
 |------|--------------|
-| `references/workflow.md` | Always, before step 1 |
+| `references/workflow.md` | Always, before step 0 |
 | `references/interview.md` | Steps 0, 2, 3: pin target, threat, surfaces, tools, budget, consent |
 | `references/beads-store.md` | Step 1: run graph, wisps, handoff, resume |
-| `references/escalation.md` | Steps 4, 6, 8: build the attack-vector baseline and chain findings |
+| `references/escalation.md` | Steps 5, 8, 11: build the attack-vector baseline and chain findings |
 | `references/targeting.md` | Step 2: any non-whole-repo target |
 | `references/surfaces/index.md` | Step 2: route target to surface docs |
-| `references/recon.md` | Step 4: derive the trust map, invariants, and repo-specific rules |
-| `references/scout-brief.md` | Step 4: build each `scout` Brief |
-| `references/surfaces/<surface>.md` | Steps 5 to 7: per-surface attacks and tools |
-| `references/tooling.md` | Steps 3 to 6: scanner catalog, invocation, overlap, class |
+| `references/recon.md` | Step 5: derive the trust map, invariants, and repo-specific rules |
+| `references/scout-brief.md` | Step 5: build each `scout` Brief |
+| `references/surfaces/<surface>.md` | Steps 7 to 10: per-surface attacks and tools |
+| `references/tooling.md` | Steps 3 to 8: scanner catalog, invocation, overlap, class |
 | `references/installer.md` | Step 3: install-flow contract and bundles |
-| `references/fuzzer-brief.md` | Step 5: build each `fuzzer` Brief |
-| `references/harnesses.md` | Step 5: harness patterns per target kind |
-| `references/gremlin-brief.md` | Step 6: build each `gremlin` Brief |
-| `references/fuzz-tools.md` | Steps 5 to 7: generator, mutator, minimizer, and coverage catalog |
-| `references/isolation.md` | Steps 5 to 7: container contract; authoring ban; host tripwire |
-| `references/fuzzing.md` | Step 6: budgets, runners, crash capture |
-| `references/corpora/prompt-injection.md` | Steps 5 to 6: agent-surface payloads |
-| `references/agentic-fuzz.md` | Steps 5 to 6: generated attacks against a hook, skill, or agent |
-| `references/triager-brief.md` | Step 7: build the `triager` Brief |
-| `references/challenger-brief.md` | Step 8: build the `challenger` Brief |
-| `references/network-stage.md` | Step 8.6: the egress-only lookups, and secret-verification consent |
-| `references/report-template.md` | Step 9: two-axis report format |
-| `references/remediation.md` | Step 10: route selection, tracker access, ticket schema, verification |
-| `references/hardener-brief.md` | Step 10: build each `hardener` Brief |
+| `references/fuzzer-brief.md` | Step 7: build each `fuzzer` Brief |
+| `references/harnesses.md` | Step 7: harness patterns per target kind |
+| `references/gremlin-brief.md` | Step 8: build each `gremlin` Brief |
+| `references/fuzz-tools.md` | Steps 7 to 10: generator, mutator, minimizer, and coverage catalog |
+| `references/isolation.md` | Steps 7 to 10: container contract; authoring ban; host tripwire |
+| `references/fuzzing.md` | Step 8: budgets, runners, crash capture |
+| `references/corpora/prompt-injection.md` | Steps 7 to 9: agent-surface payloads |
+| `references/agentic-fuzz.md` | Steps 7 to 9: generated attacks against a hook, skill, or agent |
+| `references/triager-brief.md` | Step 10: build the `triager` Brief |
+| `references/challenger-brief.md` | Step 11: build the `challenger` Brief |
+| `references/network-stage.md` | Step 13: the egress-only lookups, and secret-verification consent |
+| `references/report-template.md` | Step 14: two-axis report format |
+| `references/remediation.md` | Step 15: route selection, tracker access, ticket schema, verification |
+| `references/hardener-brief.md` | Step 15: build each `hardener` Brief |
 
 ## Agents
 
 | Agent | Role | Spawned |
 |-------|------|---------|
-| `scout` | Read-only recon: trust map, invariants, idiom census, repo-specific rules | Step 4, one per surface, parallel |
-| `fuzzer` | Authors harnesses, corpora, and vectors from recon's invariants; runs nothing | Step 5, one per surface, parallel |
-| `gremlin` | Executes scanners, synthesized rules, and harnesses per surface, and reads for what they miss | Step 6, one per surface node, parallel |
-| `triager` | Dedups, minimizes, and classifies crashes | Step 7, once per crash batch |
-| `challenger` | Read-only exploitability critic; sets the evidence tier | Step 8, once over the finding wisps |
-| `hardener` | Applies approved patches and re-verifies | Step 10, only after explicit approval |
+| `scout` | Read-only recon: trust map, invariants, idiom census, repo-specific rules | Step 5, one per surface, parallel |
+| `fuzzer` | Authors harnesses, corpora, and vectors from recon's invariants; runs nothing | Step 7, one per surface, parallel |
+| `gremlin` | Executes scanners, synthesized rules, and harnesses per surface, and reads for what they miss | Step 8, one per surface node, parallel |
+| `triager` | Dedups, minimizes, and classifies crashes | Step 10, once per crash batch |
+| `challenger` | Read-only exploitability critic; sets the evidence tier | Step 11, once over the finding wisps |
+| `hardener` | Applies approved patches and re-verifies | Step 15, only after explicit approval |

@@ -1,6 +1,6 @@
 # Triager Brief Template
 
-Construct one Brief for step 7. `triager` claims a crash-wisp batch, dedups by stack,
+Construct one Brief for step 10. `triager` claims a crash-wisp batch, dedups by stack,
 minimizes each crash to a smallest reproducing input, and classifies memory-safety
 against robustness. It runs a minimizer and nothing else.
 
@@ -65,7 +65,7 @@ MUST Check `wc -c` on every minimized input and refuse a 0-byte result. This pro
 MUST Keep the original input on disk beside the minimized one, and stamp both paths. A minimized input that stops reproducing after a code change leaves the original as the only evidence.
 
 ### Every write goes to the artifacts dir
-Steps 5 through 7 may write harnesses, corpora, and tests, and nothing else. A
+Steps 7, 8, 9, and 10 may write harnesses, corpora, and tests, and nothing else. A
 minimizer left on its runner's default output path is how a read-only step acquires
 write reach nobody approved.
 
@@ -118,7 +118,7 @@ assuming it, in the working directory, and record both counts:
 | a crash in a linked C or C++ dependency | the class is OPEN regardless of the Rust-side attribute |
 
 MUST Run both commands and paste their output before classifying anything. An assumed-closed class turns every memory-safety crash into a robustness note, which is the one misclassification the configuration was supposed to make impossible.
-MUST Report the structural closure to the main thread when it holds, naming the census counts. Step 4.5 records closed classes, and the report pairs each closed class with its census.
+MUST Report the structural closure to the main thread when it holds, naming the census counts. Step 6 records closed classes, and the report pairs each closed class with its census.
 
 ## Dedup by stack, and keep both wisps
 Two crashes are the same crash when their stacks agree on the top frame plus the

@@ -16,7 +16,7 @@ Four artifacts, all recorded on the run epic and handed to the fuzzers:
 | Trust map | every boundary where data crosses from less trusted to more trusted, with a `file:line` | the attack plan for every surface |
 | Invariant list | what the code assumes and never checks, phrased as a falsifiable claim | the harnesses and the synthesized rules |
 | Idiom census | how this repo does a thing, and every place that deviates | the deviation-hunting rules |
-| Repo-specific rules | semgrep or ast-grep rules written for THIS codebase | the scan in step 5 |
+| Repo-specific rules | semgrep or ast-grep rules written for THIS codebase | the scan in step 8 |
 | Input-shape map | each entry point's actual input protocol (raw bytes, single JSON, JSONL, msgpack, protobuf, argv, env, a schema or grammar the repo ships) | the generator choice in `fuzz-tools.md` |
 
 ## Procedure
