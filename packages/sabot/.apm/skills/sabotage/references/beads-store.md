@@ -59,6 +59,19 @@ levels down never appears, and a child inherits its parent's labels, so a
 label-only query over the shared database over-selects and bleeds across
 concurrent campaigns. The `run_id` field scopes every rollup to one run.
 
+`--parent` does NOT mean the same thing on both commands, verified on bd 1.2.2
+against a store with correct edges:
+
+| Query | Scope | Use it for |
+|---|---|---|
+| `bd list --parent <bead>` | direct children only | reading one level, such as the surface nodes under an epic |
+| `bd ready --parent <bead>` | every descendant | claiming work under a node, including harness wisps two levels down |
+
+So a gremlin claiming its harnesses wants `bd ready --parent <node> --label
+sab-harness --claim`, which reaches grandchildren and claims atomically. A rollup
+over a whole campaign still wants `--metadata-field run_id`, because
+`bd list --parent <epic>` stops at the surface nodes.
+
 | Object | Beads representation |
 |---|---|
 | Run | one **epic** bead; metadata `run_id`, `target`, `base_sha`, `budget` (JSON), `artifacts` (abs dir), `remediation_route` (`harden`\|`ticket`\|`both`\|`report only`), and on the `ticket` route `tracker` (JSON: system, access method, destination, whether public) |
