@@ -69,6 +69,7 @@ NOT Never retry a network failure, and never ask for network to complete a scan.
 
 ## Prove the scan scanned, with `assert-scan.py`
 
+MUST Never append `|| true` to a scanner invocation, and never route its exit code to `/dev/null`. The suppression turns a crash into a clean scan, and the empty output file it leaves behind is indistinguishable from a scan that found nothing. Measured: `ruff check --output-format=json . 2>/dev/null || true` against a read-only mount wrote a 0-byte file at rc=0; ruff had exited 2, unable to create its cache on the read-only filesystem, and the same scan with `--no-cache` returned rc=1 and 124 findings. A read-only target mount is the normal configuration, so this failure is expected rather than exotic.
 MUST Wrap every scanner that writes an output file in `$SABOT_SKILL_DIR/scripts/assert-scan.py --output <file> --tool <name> -- <command>`, and read its verdict rather than the tool's exit code. It deletes a stale output first, then checks the file exists, is non-empty, parses, and reports a nonzero file count. Exit 11 is NOT EXECUTED and exit 7 is a tool failure for `classify-failure.py`; neither is a clean scan.
 MUST Report any file in its `partial_parse_files` as unmeasured, naming the file. A partial parse still counts in `paths.scanned`, so the file looks covered while no rule ever reached the unparsed region: opengrep exited 0 over this package having left 3 lines of `run-contained.sh` unanalysed by all 301 rules. A file count cannot detect this and a findings count of zero cannot either.
 MUST Run `$SABOT_SKILL_DIR/scripts/validate-generated.py` over every generated rule file before scanning with it, and treat a rule that fails to compile or load as NOT EXECUTED for the loci it was written for.
@@ -213,6 +214,15 @@ catalogue.
    nothing and would otherwise read as clean. Stamp a `skips` array of
    `{tool, reason}` objects alongside the counts: "2 run, 8 skipped" beside "0 invalid"
    reads as coverage when the reasons are only in prose.
+
+   MUST Run the probe INSIDE the image, never on the host. A tool absent from the host is
+   the normal case: every scanner is baked into the surface image and the hard rules forbid
+   running one on the host at all, so `command -v <tool>` in a host shell measures nothing
+   about coverage. Quote the container form:
+   `<runtime> run --rm --network none <image> command -v <tool>`. Measured: a host probe
+   recorded bandit and opengrep as ABSENT on a run whose image carried both, which would
+   have put two false gaps in the NOT-EXECUTED register and understated what the campaign
+   could have run.
 
    MUST Probe a tool before recording it as absent, and quote the probe in the reason. A
    skip reason is a claim about the image, so `command -v <tool>` or
