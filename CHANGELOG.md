@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/srobroek/sabot/compare/v0.5.0...v0.5.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **sabot:** report a harness stopped by the clock, and warn that the poured formula goes stale ([#48](https://github.com/srobroek/sabot/issues/48)) ([e3bdba5](https://github.com/srobroek/sabot/commit/e3bdba5eb2300fc37288b500d8f73c6886c96d10))
+
 ## [0.5.0](https://github.com/srobroek/sabot/compare/v0.4.0...v0.5.0) (2026-08-22)
 
 
