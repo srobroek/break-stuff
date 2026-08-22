@@ -782,6 +782,23 @@ def not_executed_register(findings, coverage, surfaces, harnesses=()):
                           "the gremlin brief prescribes; a harness that reports itself "
                           "broken closes nothing on its own",
             })
+    # `budget_exhausted` says coverage was STILL GROWING when the clock ran out, which is a
+    # different claim from a harness that ran to a plateau: the first names a gap that more
+    # budget would close and the second does not. `beads-store.md` MUSTs distinguishing it
+    # from `reported`, and nothing here read it, so both arrived as the same clean record. A
+    # self-audit of this package caught it in the same sweep that found `partial_parse_files`
+    # and `total_s`, after two rounds of dismissing it as a status value.
+    for h in harnesses:
+        if h.get("state") == "budget_exhausted":
+            register.append({
+                "kind": "harness-stopped-on-the-clock", "id": h.get("id"),
+                "surface": h.get("surface"), "locus": h.get("entry_point"),
+                "reason": "this harness hit its wall-clock cap with coverage still climbing, "
+                          "so its entry point is PARTIALLY tested and more budget would test "
+                          "it further. State the remaining budget it asked for; a harness "
+                          "stopped by the clock is not a harness that found nothing",
+            })
+
     for c in coverage:
         # `scanners_skipped` is a list of NAMES. A count in its place is not a smaller
         # version of the field: "9 skipped" identifies none of the nine, and nothing
