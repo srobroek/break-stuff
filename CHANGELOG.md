@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/srobroek/sabot/compare/v0.4.0...v0.5.0) (2026-08-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sabot:** scripts/pour-campaign.sh is removed. Pour with `bd mol pour` directly and resolve gates with `bd gate resolve`.
+
+### Bug Fixes
+
+* **sabot:** close the four fail-opens a self-audit run found ([#47](https://github.com/srobroek/sabot/issues/47)) ([29aeb64](https://github.com/srobroek/sabot/commit/29aeb64463b71cae06fe465091e9731df604177c))
+* **sabot:** retract the inert-gate finding, and drop the script built on it ([#45](https://github.com/srobroek/sabot/issues/45)) ([884244e](https://github.com/srobroek/sabot/commit/884244efb41eb93880c30f9fb49d9533db2b3108))
+
 ## [0.4.0](https://github.com/srobroek/sabot/compare/v0.3.2...v0.4.0) (2026-08-22)
 
 
