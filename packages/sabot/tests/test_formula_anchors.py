@@ -183,3 +183,45 @@ def test_every_gate_has_a_wiring_row_in_the_pour_script(path):
             f"{step['id']}: no wiring row in pour-campaign.sh for {match.group(1)!r}; "
             "the gate would pour inert"
         )
+
+
+def _report_json():
+    """Load report-json.py as a module. It is a script, not a package member."""
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / ".apm/skills/sabotage/scripts/report-json.py"
+    spec = importlib.util.spec_from_file_location("report_json", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_every_declared_field_is_also_kept_by_its_bucket():
+    # The failure this prevents: a field is declared mandatory, an agent stamps it, and the
+    # renderer drops it because its bucket's keep-list never named it. Thirteen fields were
+    # in that state at once -- stamped correctly and discarded one function later -- and
+    # each looked from the report like an agent that had ignored a MUST.
+    mod = _report_json()
+    dropped = [
+        (bucket, key, src)
+        for bucket, fields in mod.DECLARED_FIELDS.items()
+        for key, src in fields
+        if key not in set(mod.KEEP_META.get(bucket, []))
+    ]
+    assert not dropped, (
+        f"declared-mandatory field(s) not in their bucket's KEEP_META: {dropped}. "
+        "A field that is required and then dropped cannot be reported either way."
+    )
+
+
+def test_every_declared_epic_field_is_kept():
+    mod = _report_json()
+    dropped = [(k, src) for k, src in mod.DECLARED_EPIC_FIELDS if k not in mod.EPIC_KEEP]
+    assert not dropped, f"declared epic field(s) missing from EPIC_KEEP: {dropped}"
+
+
+def test_every_declared_field_names_a_real_bucket():
+    mod = _report_json()
+    buckets = {b for _, b in mod.LABEL_BUCKET}
+    unknown = [b for b in mod.DECLARED_FIELDS if b not in buckets]
+    assert not unknown, f"DECLARED_FIELDS names bucket(s) with no label mapping: {unknown}"
