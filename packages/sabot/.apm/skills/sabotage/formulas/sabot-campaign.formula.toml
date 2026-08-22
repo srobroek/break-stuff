@@ -21,12 +21,18 @@
 # parallel with step 1, and neither `bd cook` nor `bd mol pour` reports an error.
 # `tests/test_formula_anchors.py` sweeps every var combination for exactly that.
 #
-# AFTER POURING, WIRE THE GATES. Verified on bd 1.2.2: a `[steps.gate]` step pours a
-# gate bead attached to the molecule root by parent-child ALONE, with no blocking edge,
-# so the approval it represents blocks nothing and the run walks straight past it.
-# Ordinary `needs` edges pour correctly as `blocks`, so this is specific to gates. Run
-# scripts/pour-campaign.sh instead of `bd mol pour` directly; it pours, then adds the
-# missing `bd dep` edges, then asserts that each gate blocks its target.
+# Pour with `bd mol pour sabot-campaign --var run_id=<id> --var target=<t>`, and drive the
+# run with `bd ready --parent <molecule-root>`. The `--parent` scope is not optional: an
+# unscoped `bd ready` returns the project's own open beads beside the campaign's steps, and
+# an orchestrator reading it claims project work as campaign work.
+#
+# A `[steps.gate]` step pours TWO beads: a task carrying the step's title and description,
+# and a `gate`-typed bead that blocks that task. The chain bd builds is
+# `predecessor -> gate -> gate task -> guarded step`, so an unresolved approval leaves
+# `bd ready` empty and `bd blocked` naming the step that waits. Resolve with
+# `bd gate resolve <gate-bead>`; `bd close` on the gate TASK fails while the gate is open,
+# and it names the gate bead in the error. `bd gate check` never resolves a human gate, so
+# an unattended run parks rather than assuming consent.
 
 formula = "sabot-campaign"
 description = "Sabot campaign {{run_id}} against {{target}}: attack across five surfaces, prove or refute each finding, report on two axes, and patch only on approval"
@@ -533,7 +539,14 @@ title = "step 15 gate: approve remediation {{run_id}}"
 type = "task"
 needs = ["report"]
 labels = ["sab-audit", "non-work"]
-condition = "{{autonomous}} == no"
+# Conditioned on the ROUTE rather than on `autonomous`, because a gate is only reachable
+# through the step it guards and step 15 exists only off the `report only` route. Measured
+# on a live pour: conditioned on `autonomous` alone, this gate poured while step 15 did
+# not, leaving an open approval with nothing to approve. bd evaluates ONE comparison per
+# condition -- a compound `{{a}} == x && {{b}} == y` is stored verbatim, never evaluated,
+# and silently filters the step out -- so the two conditions cannot be combined here.
+# An autonomous run resolves this gate immediately and records that it did.
+condition = "{{remediation_route}} != report only"
 description = """Human gate on remediation. Product code has been untouched for
 fourteen steps and this is where that ends.
 
