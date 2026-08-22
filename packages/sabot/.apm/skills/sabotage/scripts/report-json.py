@@ -455,6 +455,20 @@ def shape(bead, bucket):
         "parent": parent(bead),
         **kept,
     }
+
+    # `state` arrives by EITHER route, and the metadata stamp is not the documented one.
+    # `beads-store.md`'s state table prescribes `bd set-state`, which writes a
+    # `state:<value>` LABEL and an event bead and touches no metadata, so an agent that
+    # followed the table produced a record this renderer could not see. Measured: 161 wisps
+    # released with `bd set-state` carried the label and no metadata `state`, and every
+    # gap check that reads `state` treated all 161 as unstamped. The label wins where both
+    # exist, because `set-state` is the atomic path and a stale metadata stamp is exactly
+    # what it replaces.
+    if "state" in KEEP_META.get(bucket, []):
+        for label in bead.get("labels") or []:
+            if label.startswith("state:"):
+                rec["state"] = label.split(":", 1)[1]
+                break
     if "sab-chain" in set(bead.get("labels") or []):
         # A chain is an escalation built from findings already counted, so it is a real
         # result and not an additional defect. Read from the label, not the title: one
