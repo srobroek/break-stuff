@@ -21,6 +21,11 @@
 # parallel with step 1, and neither `bd cook` nor `bd mol pour` reports an error.
 # `tests/test_formula_anchors.py` sweeps every var combination for exactly that.
 #
+# RE-COPY THIS FILE INTO `<repo>/.beads/formulas/` AFTER EVERY EDIT. `bd` pours from the
+# installed copy, never from this one, and a stale copy pours the old DAG while reporting
+# success. Measured: a run poured a gate that a fix two commits earlier had already removed,
+# and the only symptom was an approval bead for a step that did not exist.
+#
 # Pour with `bd mol pour sabot-campaign --var run_id=<id> --var target=<t>`, and drive the
 # run with `bd ready --parent <molecule-root>`. The `--parent` scope is not optional: an
 # unscoped `bd ready` returns the project's own open beads beside the campaign's steps, and
