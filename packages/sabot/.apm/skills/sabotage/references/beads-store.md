@@ -406,3 +406,16 @@ run with `--metadata-field run_id=<id>`:
 MUST Include `state:invalid` and `state:budget_exhausted` harnesses in the resume set. An INVALID harness is `blocked` rather than `open`, so a resume that lists only `open` harnesses silently drops the exact entry points the previous run failed to test.
 MUST Verify a claim before stealing it. A wisp `in_progress` with a live assignee belongs to a running agent; treat it as dead only when the assignee's session is gone.
 NOT Re-running an already-executed harness wastes the budget and produces duplicate crash wisps, so check `state:executed` before dispatch.
+
+### `state` is read from the label, not only from metadata
+
+`bd set-state <id> state=<value> --reason "<why>"` is the documented path in the state
+table above. It writes a `state:<value>` LABEL plus an event bead and touches no
+metadata, so a reader that looks only at metadata sees nothing.
+
+`report-json.py` reads both, label first. Measured: 161 harness wisps released with
+`bd set-state` carried the label and no metadata `state`, and every gap check that reads
+`state` counted all 161 as unstamped -- 161 false gaps in one campaign's report, on
+records whose agent had followed this file exactly.
+
+MUST Set operational state with `bd set-state`, not with a metadata stamp. It is atomic, it records an event bead as the source of truth, and it removes the previous value of the same dimension rather than leaving two. A hand-written metadata `state` is what `set-state` exists to replace.
