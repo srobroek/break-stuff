@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/srobroek/sabot/compare/v0.5.1...v0.5.2) (2026-08-22)
+
+
+### Bug Fixes
+
+* **sabot:** document that operational state goes through bd set-state ([#51](https://github.com/srobroek/sabot/issues/51)) ([f8e18fb](https://github.com/srobroek/sabot/commit/f8e18fb2cee37f8b90d410cd473941622cc99ca7))
+
 ## [0.5.1](https://github.com/srobroek/sabot/compare/v0.5.0...v0.5.1) (2026-08-22)
 
 
