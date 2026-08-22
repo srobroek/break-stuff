@@ -126,9 +126,14 @@ KEEP_META = {
     # cannot: "absent" and "declined" and "requires network" are different gaps, and the
     # NOT-EXECUTED register exists to distinguish them. `not_executed_reason` does the
     # same for a blocked entry-point count.
+    # `partial_parse_files` is the coverage claim a file count cannot make. A partially
+    # parsed file still counts in `paths.scanned`, so it looks covered while no rule reached
+    # the unparsed region: opengrep exited 0 over this package having left 3 lines of
+    # `run-contained.sh` unanalysed by all 301 rules. `gremlin-brief.md` MUSTs reporting it
+    # and nothing here read it, which a self-audit of this package found and filed PROVEN.
     "coverage": ["scanners_run", "scanners_skipped", "harnesses_run", "harnesses_total",
                  "entry_points_total", "entry_points_executed", "surface", "skips",
-                 "not_executed_reason"],
+                 "not_executed_reason", "partial_parse_files"],
 }
 
 # Every field a MUST in this package requires an agent to stamp, with the file:line that
@@ -967,6 +972,21 @@ def main():
     # Measured: one campaign's epic carried none of remediation_route, tracker,
     # global_scan_refs, baseline_test_ref, or self_read_ref -- five MUSTs, nothing stamped,
     # and the report that read the epic asked for four keys and never missed the rest.
+    # The campaign ceiling. `workflow.md` MUSTs an owner for `total_s`, and nothing read it:
+    # one campaign exceeded its 1800s ceiling by roughly 50x with no part of the pipeline
+    # noticing, because the budget was stamped at step 3 and never compared to anything. A
+    # self-audit of this package found that and filed it PROVEN. Reported as a gap when the
+    # ceiling is absent, since a budget with no ceiling bounds nothing.
+    budget = report["epic"].get("budget") or {}
+    if isinstance(budget, dict) and not budget.get("total_s"):
+        report["stamping_gaps"].append({
+            "id": report["epic"].get("id"), "bucket": "epic",
+            "issue": "the budget carries no `total_s`, so the campaign has no wall-clock "
+                     "ceiling to be measured against. One run overran an 1800s ceiling by "
+                     "roughly 50x and nothing detected it, because the only record of the "
+                     "ceiling was the stamp nobody read.",
+        })
+
     epic_missing = [(k, src) for k, src in DECLARED_EPIC_FIELDS
                     if k not in report["epic"]]
     if epic_missing:
