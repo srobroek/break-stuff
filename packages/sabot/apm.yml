@@ -1,5 +1,5 @@
 name: sabot
-version: 0.3.2
+version: 0.4.0
 description: >-
   Offensive and robustness auditor. Attacks a codebase, script, hook, agent, or
   config across five surfaces (code-level memory and logic, shell scripts and
