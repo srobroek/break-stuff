@@ -49,13 +49,18 @@ import sys
 
 # Which sab-* label sorts a bead into which bucket. Order matters: the first match
 # wins, so sab-surface (inherited by every child) is checked last.
+# Order matters twice over. The first match wins, so the MORE SPECIFIC label is checked
+# first: a pattern wisp is created with `sab-finding,sab-pattern` because it IS a finding
+# (it has a tier, an impact, and a priority), and checking `sab-finding` first sorted all 8
+# patterns on one run into `findings` and left the patterns bucket empty. `sab-surface` is
+# checked last for the opposite reason -- every child inherits it.
 LABEL_BUCKET = [
+    ("sab-pattern", "patterns"),
+    ("sab-rule", "rules"),
     ("sab-harness", "harnesses"),
     ("sab-crash", "crashes"),
     ("sab-finding", "findings"),
     ("sab-coverage", "coverage"),
-    ("sab-pattern", "patterns"),
-    ("sab-rule", "rules"),
     ("sab-surface", "surfaces"),
 ]
 
